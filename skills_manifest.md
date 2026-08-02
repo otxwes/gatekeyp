@@ -1,6 +1,6 @@
 # Project Skills Manifest
 
-This document tracks the technical capabilities and "skills" (derived from the `anthropics/skills` framework) that will be utilized during the development of the Decentralized Key System.
+This document tracks the technical capabilities and "skills" (derived from the `anthropics/skills` framework) that will be utilized during the development of Gatekeyp.
 
 ## 1. Development & Technical Skills
 *Primary use: Phase 1 (Core Architecture) and Phase 2 (Map & Navigation)*
