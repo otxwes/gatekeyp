@@ -26,7 +26,8 @@ class DecryptionError(ValueError):
 
 class DatabaseHandler:
     """
-    Handles interactions with the database for Keys, Events, and Content Blocks.
+    Handles interactions with the database for Keys, Events, Content Blocks,
+    Media Assets, Bulletins, and Comments.
     Implements encryption-at-rest for sensitive payloads (Fernet/AES-GCM).
     """
 
@@ -95,6 +96,44 @@ class DatabaseHandler:
                 PRIMARY KEY (key_hash, content_id, content_type)
             )
         """)
+        # Phase 2: Media assets (flyers, images, documents)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS media_assets (
+                asset_id TEXT PRIMARY KEY,
+                event_id TEXT,
+                key_id TEXT,
+                filename TEXT,
+                mime_type TEXT,
+                size_bytes INTEGER,
+                data BLOB,
+                created_at TEXT
+            )
+        """)
+        # Phase 2: Secure communication boards (bulletins)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bulletins (
+                bulletin_id TEXT PRIMARY KEY,
+                event_id TEXT,
+                key_id TEXT,
+                title TEXT,
+                body TEXT,
+                author_id TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """)
+        # Phase 2: Comments on bulletins
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS comments (
+                comment_id TEXT PRIMARY KEY,
+                bulletin_id TEXT,
+                key_id TEXT,
+                body TEXT,
+                author_id TEXT,
+                created_at TEXT,
+                parent_comment_id TEXT
+            )
+        """)
         self.connection.commit()
 
     def _migrate_schema(self) -> None:
@@ -112,6 +151,15 @@ class DatabaseHandler:
         self._ensure_column("events", "location_data", "TEXT")
         self._ensure_column("events", "created_at", "TEXT")
 
+        # Phase 2: Check and add missing columns to 'media_assets'
+        self._ensure_column("media_assets", "created_at", "TEXT")
+
+        # Phase 2: Check and add missing columns to 'bulletins'
+        self._ensure_column("bulletins", "updated_at", "TEXT")
+
+        # Phase 2: Check and add missing columns to 'comments'
+        self._ensure_column("comments", "parent_comment_id", "TEXT")
+
         self.connection.commit()
 
     def _ensure_column(self, table: str, column: str, col_type: str) -> None:
@@ -128,6 +176,14 @@ class DatabaseHandler:
     def _decrypt(self, ciphertext: str) -> str:
         """Decrypt a sensitive string retrieved from storage."""
         return self.fernet.decrypt(ciphertext.encode()).decode()
+
+    def _encrypt_bytes(self, data: bytes) -> bytes:
+        """Encrypt sensitive binary data for storage at rest."""
+        return self.fernet.encrypt(data)
+
+    def _decrypt_bytes(self, ciphertext: bytes) -> bytes:
+        """Decrypt sensitive binary data retrieved from storage."""
+        return self.fernet.decrypt(ciphertext)
 
     def _now_iso(self) -> str:
         """Return current UTC time in ISO format."""
@@ -341,6 +397,275 @@ class DatabaseHandler:
         )
         results = self.cursor.fetchall()
         return [r[0] for r in results]
+
+    # ------------------------------------------------------------------
+    # Media Assets (Phase 2)
+    # ------------------------------------------------------------------
+
+    def add_media_asset(
+        self,
+        asset_id: str,
+        event_id: str,
+        key_id: str,
+        filename: str,
+        mime_type: str,
+        data: bytes,
+    ) -> None:
+        """
+        Add a media asset (flyer, image, document), encrypting the binary
+        data at rest. Also creates a key_content_link for key-gated access.
+        """
+        now = self._now_iso()
+        encrypted_data = self._encrypt_bytes(data)
+        self.cursor.execute(
+            """
+            INSERT INTO media_assets
+                (asset_id, event_id, key_id, filename, mime_type, size_bytes, data, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (asset_id, event_id, key_id, filename, mime_type, len(data), encrypted_data, now),
+        )
+        self.add_key_content_link(key_id, asset_id, "media")
+        self.connection.commit()
+
+    def get_media_asset(self, asset_id: str) -> dict | None:
+        """Retrieve a media asset, decrypting the binary data."""
+        self.cursor.execute("SELECT * FROM media_assets WHERE asset_id = ?", (asset_id,))
+        result = self.cursor.fetchone()
+        if result:
+            try:
+                data = self._decrypt_bytes(result[6])
+            except (ValueError, TypeError) as err:
+                message = f"Failed to decrypt media asset {asset_id}"
+                raise DecryptionError(message) from err
+            return {
+                "id": result[0],
+                "event_id": result[1],
+                "key_id": result[2],
+                "filename": result[3],
+                "mime_type": result[4],
+                "size_bytes": result[5],
+                "data": data,
+                "created_at": result[7],
+            }
+        return None
+
+    def list_media_assets(self, event_id: str | None = None) -> list[dict]:
+        """List media assets, optionally filtered by event. Does not return binary data."""
+        if event_id:
+            self.cursor.execute("SELECT * FROM media_assets WHERE event_id = ?", (event_id,))
+        else:
+            self.cursor.execute("SELECT * FROM media_assets")
+        results = self.cursor.fetchall()
+        return [
+            {
+                "id": r[0],
+                "event_id": r[1],
+                "key_id": r[2],
+                "filename": r[3],
+                "mime_type": r[4],
+                "size_bytes": r[5],
+                "created_at": r[7],
+            }
+            for r in results
+        ]
+
+    def delete_media_asset(self, asset_id: str) -> bool:
+        """Delete a media asset. Returns True if an asset was deleted."""
+        self.cursor.execute("DELETE FROM media_assets WHERE asset_id = ?", (asset_id,))
+        self.connection.commit()
+        return self.cursor.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Bulletins (Phase 2 - Secure Communication Boards)
+    # ------------------------------------------------------------------
+
+    def add_bulletin(
+        self,
+        bulletin_id: str,
+        event_id: str,
+        key_id: str,
+        title: str,
+        body: str,
+        author_id: str,
+    ) -> None:
+        """
+        Add a bulletin (communication board post), encrypting the body at rest.
+        Also creates a key_content_link for key-gated access.
+        """
+        now = self._now_iso()
+        encrypted_body = self._encrypt(body)
+        self.cursor.execute(
+            """
+            INSERT INTO bulletins
+                (bulletin_id, event_id, key_id, title, body, author_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (bulletin_id, event_id, key_id, title, encrypted_body, author_id, now, now),
+        )
+        self.add_key_content_link(key_id, bulletin_id, "bulletin")
+        self.connection.commit()
+
+    def get_bulletin(self, bulletin_id: str) -> dict | None:
+        """Retrieve a bulletin, decrypting the body."""
+        self.cursor.execute("SELECT * FROM bulletins WHERE bulletin_id = ?", (bulletin_id,))
+        result = self.cursor.fetchone()
+        if result:
+            try:
+                body = self._decrypt(result[4])
+            except (ValueError, TypeError) as err:
+                message = f"Failed to decrypt bulletin {bulletin_id}"
+                raise DecryptionError(message) from err
+            return {
+                "id": result[0],
+                "event_id": result[1],
+                "key_id": result[2],
+                "title": result[3],
+                "body": body,
+                "author_id": result[5],
+                "created_at": result[6],
+                "updated_at": result[7],
+            }
+        return None
+
+    def list_bulletins(self, event_id: str | None = None) -> list[dict]:
+        """List bulletins, optionally filtered by event. Does not return body content."""
+        if event_id:
+            self.cursor.execute(
+                "SELECT * FROM bulletins WHERE event_id = ? ORDER BY created_at DESC",
+                (event_id,),
+            )
+        else:
+            self.cursor.execute("SELECT * FROM bulletins ORDER BY created_at DESC")
+        results = self.cursor.fetchall()
+        return [
+            {
+                "id": r[0],
+                "event_id": r[1],
+                "key_id": r[2],
+                "title": r[3],
+                "author_id": r[5],
+                "created_at": r[6],
+                "updated_at": r[7],
+            }
+            for r in results
+        ]
+
+    def update_bulletin(
+        self, bulletin_id: str, title: str | None = None, body: str | None = None
+    ) -> bool:
+        """Update a bulletin's title and/or body. Returns True if updated."""
+        now = self._now_iso()
+
+        if title is not None and body is not None:
+            self.cursor.execute(
+                "UPDATE bulletins SET title = ?, body = ?, updated_at = ? WHERE bulletin_id = ?",
+                (title, self._encrypt(body), now, bulletin_id),
+            )
+        elif title is not None:
+            self.cursor.execute(
+                "UPDATE bulletins SET title = ?, updated_at = ? WHERE bulletin_id = ?",
+                (title, now, bulletin_id),
+            )
+        elif body is not None:
+            self.cursor.execute(
+                "UPDATE bulletins SET body = ?, updated_at = ? WHERE bulletin_id = ?",
+                (self._encrypt(body), now, bulletin_id),
+            )
+        else:
+            return False
+
+        self.connection.commit()
+        return self.cursor.rowcount > 0
+
+    def delete_bulletin(self, bulletin_id: str) -> bool:
+        """Delete a bulletin and its comments. Returns True if a bulletin was deleted."""
+        # Delete associated comments first
+        self.cursor.execute("DELETE FROM comments WHERE bulletin_id = ?", (bulletin_id,))
+        # Delete the bulletin
+        self.cursor.execute("DELETE FROM bulletins WHERE bulletin_id = ?", (bulletin_id,))
+        self.connection.commit()
+        return self.cursor.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Comments (Phase 2 - Secure Communication Boards)
+    # ------------------------------------------------------------------
+
+    def add_comment(
+        self,
+        comment_id: str,
+        bulletin_id: str,
+        key_id: str,
+        body: str,
+        author_id: str,
+        parent_comment_id: str | None = None,
+    ) -> None:
+        """Add a comment to a bulletin, encrypting the body at rest."""
+        now = self._now_iso()
+        encrypted_body = self._encrypt(body)
+        self.cursor.execute(
+            """
+            INSERT INTO comments
+                (comment_id, bulletin_id, key_id, body, author_id, created_at, parent_comment_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+            (comment_id, bulletin_id, key_id, encrypted_body, author_id, now, parent_comment_id),
+        )
+        self.connection.commit()
+
+    def get_comment(self, comment_id: str) -> dict | None:
+        """Retrieve a comment, decrypting the body."""
+        self.cursor.execute("SELECT * FROM comments WHERE comment_id = ?", (comment_id,))
+        result = self.cursor.fetchone()
+        if result:
+            try:
+                body = self._decrypt(result[3])
+            except (ValueError, TypeError) as err:
+                message = f"Failed to decrypt comment {comment_id}"
+                raise DecryptionError(message) from err
+            return {
+                "id": result[0],
+                "bulletin_id": result[1],
+                "key_id": result[2],
+                "body": body,
+                "author_id": result[4],
+                "created_at": result[5],
+                "parent_comment_id": result[6],
+            }
+        return None
+
+    def list_comments(self, bulletin_id: str) -> list[dict]:
+        """List all comments for a bulletin, decrypting bodies."""
+        self.cursor.execute(
+            "SELECT * FROM comments WHERE bulletin_id = ? ORDER BY created_at ASC",
+            (bulletin_id,),
+        )
+        results = self.cursor.fetchall()
+        comments: list[dict] = []
+        for r in results:
+            try:
+                body = self._decrypt(r[3])
+            except (ValueError, TypeError) as err:
+                message = f"Failed to decrypt comment {r[0]}"
+                raise DecryptionError(message) from err
+            comments.append(
+                {
+                    "id": r[0],
+                    "bulletin_id": r[1],
+                    "key_id": r[2],
+                    "body": body,
+                    "author_id": r[4],
+                    "created_at": r[5],
+                    "parent_comment_id": r[6],
+                }
+            )
+        return comments
+
+    def delete_comment(self, comment_id: str) -> bool:
+        """Delete a comment. Returns True if a comment was deleted."""
+        self.cursor.execute("DELETE FROM comments WHERE comment_id = ?", (comment_id,))
+        self.connection.commit()
+        return self.cursor.rowcount > 0
 
     # ------------------------------------------------------------------
     # Lifecycle

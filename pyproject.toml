@@ -33,7 +33,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = ["D", "COM812", "ISC001", "PLR0911"]
+ignore = ["D", "COM812", "ISC001", "PLR0911", "PLR0913", "PLR0917"]
 
 [tool.ruff.lint.per-file-ignores]
 # Test files use unittest-style assertions and fixtures
@@ -55,8 +55,10 @@ ignore = ["D", "COM812", "ISC001", "PLR0911"]
     "PT025",   # Use regular assert instead of unittest-style
     "PT026",   # Use regular assert instead of unittest-style
     "PT027",   # Use regular assert instead of unittest-style
+    "PLR2004", # Magic value used in comparison (test assertions)
     "PTH100",  # os.path.abspath should be replaced by Path.resolve
     "PTH120",  # os.path.dirname should be replaced by Path.parent
+    "S101",    # Use of assert (pytest-style assertions)
     "S105",    # Possible hardcoded password (test fixtures)
     "S106",    # Possible hardcoded password (test fixtures)
     "S107",    # Possible hardcoded password (test fixtures)
