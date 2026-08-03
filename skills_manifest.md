@@ -40,6 +40,22 @@ This document tracks the technical capabilities and "skills" (derived from the `
 | `insecure_defaults.md` | Adapted from [trailofbits/skills](https://github.com/trailofbits/skills) | Detects fail-open insecure defaults (hardcoded secrets, weak auth, permissive security). |
 | `modern_python.md` | Adapted from [trailofbits/skills](https://github.com/trailofbits/skills) | Modern Python tooling (uv, ruff, ty) and best practices. |
 
+## Development Infrastructure
+
+The project leverages the following tooling to ensure clean, reproducible, and secure development:
+
+| Tool | Purpose | Configuration |
+| :--- | :--- | :--- |
+| **uv** | Python package manager with virtual environment isolation | `pyproject.toml`, `uv.lock` |
+| **Docker** | Containerization for reproducible runtime environments | `Dockerfile`, `docker-compose.yml` |
+| **MCP Servers** | Model Context Protocol servers for AI-assisted development | `.mcp.json` |
+| **Sub-Agents** | Parallelized research and analysis workflows | `.agents/workflows.json` |
+| **Pre-commit** | Lifecycle hooks for linting, formatting, and validation | `.pre-commit-config.yaml` |
+| **Ruff** | Fast Python linter and formatter | `pyproject.toml` → `[tool.ruff]` |
+| **Ty** | Python type checker | `pyproject.toml` → `[tool.ty]` |
+| **Hypothesis** | Property-based testing framework | `pyproject.toml` → `[tool.uv]` |
+| **pip-audit** | Supply chain vulnerability scanning | `pyproject.toml` → `[dependency-groups]` |
+
 ## Mapping to Project Roadmap
 | Project Phase | Relevant Skills | Purpose |
 | :--- | :--- | :--- |
