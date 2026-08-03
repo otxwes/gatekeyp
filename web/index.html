@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gatekeyp — Event Organizing Toolkit</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>🔐 Gatekeyp</h1>
+        <p class="tagline">Privacy-preserving, federated event organizing</p>
+    </header>
+
+    <main>
+        <section id="create-event" class="card">
+            <h2>Create Event</h2>
+            <form id="create-event-form">
+                <label for="title">Title</label>
+                <input type="text" id="title" required maxlength="256">
+
+                <label for="description">Description</label>
+                <textarea id="description" required maxlength="65536" rows="4"></textarea>
+
+                <label for="organizer-id">Organizer ID</label>
+                <input type="text" id="organizer-id" required maxlength="256" placeholder="@user:instance">
+
+                <label for="location-data">Location (optional)</label>
+                <input type="text" id="location-data" maxlength="1024">
+
+                <button type="submit">Create Event</button>
+            </form>
+            <div id="create-event-result" class="result"></div>
+        </section>
+
+        <section id="event-details" class="card hidden">
+            <h2>Event Details</h2>
+            <div id="event-details-content"></div>
+        </section>
+
+        <section id="access-keys" class="card hidden">
+            <h2>Access Keys</h2>
+            <form id="generate-key-form">
+                <label for="key-days">Key lifetime (days)</label>
+                <input type="number" id="key-days" value="30" min="1" max="365">
+
+                <label for="key-owner">Owner ID (optional)</label>
+                <input type="text" id="key-owner" maxlength="256">
+
+                <button type="submit">Generate Access Key</button>
+            </form>
+            <div id="generate-key-result" class="result"></div>
+            <div id="access-keys-list"></div>
+        </section>
+
+        <section id="content" class="card hidden">
+            <h2>Content</h2>
+            <form id="add-content-form">
+                <label for="content-type">Content Type</label>
+                <input type="text" id="content-type" required maxlength="64" placeholder="description, schedule, ...">
+
+                <label for="content-payload">Payload</label>
+                <textarea id="content-payload" required maxlength="65536" rows="4"></textarea>
+
+                <button type="submit">Add Content</button>
+            </form>
+            <div id="add-content-result" class="result"></div>
+            <div id="content-blocks"></div>
+        </section>
+
+        <section id="decommission" class="card hidden">
+            <h2>Decommission Event</h2>
+            <p class="warning">This will revoke all keys for this event. This action cannot be undone.</p>
+            <button id="decommission-btn" class="danger">Decommission Event</button>
+            <div id="decommission-result" class="result"></div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Gatekeyp — secure, federated event management</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
