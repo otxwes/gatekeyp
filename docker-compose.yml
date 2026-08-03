@@ -1,0 +1,29 @@
+# Gatekeyp development and production orchestration
+# Usage: docker compose up -d
+
+services:
+  gatekeyp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gatekeyp
+    restart: unless-stopped
+    environment:
+      # Fail-secure: these MUST be provided. The app refuses to start without them.
+      GATEKEYP_MASTER_KEY: ${GATEKEYP_MASTER_KEY:?GATEKEYP_MASTER_KEY is required}
+      GATEKEYP_HMAC_SECRET: ${GATEKEYP_HMAC_SECRET:?GATEKEYP_HMAC_SECRET is required}
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist the SQLite database outside the container
+      - gatekeyp-data:/app/data
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+
+volumes:
+  gatekeyp-data:

@@ -23,50 +23,59 @@
 - [x] Write integration tests for the full request flow (Gateway → KeyManager → DatabaseHandler) — 7 tests covering success, invalid input, missing content, expired keys, and event fallback.
 - [x] All 13 tests pass.
 
-## Phase 1: Core Architecture (Security-Hardened)
+## Phase 1: Core Architecture (Security-Hardened) ✅
 *Goal: Harden key management, database schema, and API gateway.*
 
 ### Key Management
-- [ ] Replace plain SHA-256 with HMAC-SHA256 (keyed by per-instance secret) or Argon2id for stored key verification.
-- [ ] Add key rotation and revocation support.
-- [ ] Enforce minimum key entropy at generation.
+- [x] Replace plain SHA-256 with HMAC-SHA256 (keyed by per-instance secret) for stored key verification.
+- [x] Add optional Argon2id support for higher-cost key verification.
+- [x] Add key rotation and revocation support.
+- [x] Enforce minimum key entropy at generation (128 bits / 16 bytes).
+- [x] Add constant-time key comparison (`hmac.compare_digest`).
+- [x] Fail-secure: require `GATEKEYP_HMAC_SECRET` env var; refuse to start without it.
 
 ### Database
-- [ ] Add `created_at`, `location_data` columns to schema.
-- [ ] Add `key_content_links` join table (many-to-many key ↔ content mapping).
-- [ ] Add encryption-at-rest for sensitive payloads (Fernet/AES-GCM with master key).
-- [ ] Add federation fields (owner identifier prefix) to schema.
+- [x] Add `created_at`, `location_data` columns to schema.
+- [x] Add `key_content_links` join table (many-to-many key ↔ content mapping).
+- [x] Add encryption-at-rest for sensitive payloads (Fernet/AES-GCM with master key).
+- [x] Add federation fields (owner identifier prefix) to schema.
+- [x] Add key revocation fields (`revoked`, `revoked_at`).
+- [x] Fail-secure: require `GATEKEYP_MASTER_KEY` env var; refuse to start without it.
+- [x] Add schema migration for backward compatibility with existing databases.
 
 ### Gateway
-- [ ] Add rate limiting (per-IP and per-key) with exponential backoff.
-- [ ] Harden input validation.
-- [ ] Add structured audit logging (no PII).
+- [x] Add rate limiting (per-IP and per-key) with exponential backoff.
+- [x] Harden input validation (type checks, length limits, whitespace rejection).
+- [x] Add structured audit logging (no PII, no raw keys).
+- [x] Rate limiting resets on successful authentication.
 
 ### Tests
-- [ ] Unit tests for negative/edge cases (invalid, expired, revoked keys; brute-force attempts; unauthorized content access).
-- [ ] Integration tests for the full request flow.
-- [ ] Security audit checklist passes (see `docs/threat_model.md`).
+- [x] Unit tests for negative/edge cases (invalid, expired, revoked keys; brute-force attempts; unauthorized content access).
+- [x] Integration tests for the full request flow.
+- [x] Property-based tests (Hypothesis) for key hashing, generation, federation parsing, and encryption roundtrips.
+- [x] Security audit tests validating the threat model checklist (encryption at rest, keyed hashing, rate limiting, no PII in logs, no third-party tracking).
+- [x] All 77 tests pass.
 
-## Phase 2: Map & Navigation (Privacy-Preserving)
+## Phase 2: Content & Communication Layer
+*Goal: Build the interface for organizers and participants.*
+- [ ] Develop content hosting (flyers, descriptions, media) with encryption-at-rest.
+- [ ] Create "Secure Communication Boards" (bulletins/comments) restricted by Key.
+
+## Phase 3: Frontend & UX/UI Design
+*Goal: Ensure the platform is intuitive and aesthetically compelling.*
+- [ ] Develop a mobile-first responsive web application.
+- [ ] Refine Security UI to ensure seamless user experience during key entry.
+
+## Phase 4: Map & Navigation (Privacy-Preserving)
 *Goal: Integrate open-source maps without third-party tracking.*
 - [ ] Select open-source map tiles (e.g., OpenStreetMap, self-hosted).
 - [ ] Implement basic routing/geofencing without third-party tracking.
 - [ ] Link specific Keys to geographic coordinates or routes.
 
-## Phase 3: Content & Communication Layer
-*Goal: Build the interface for organizers and participants.*
-- [ ] Develop content hosting (flyers, descriptions, media) with encryption-at-rest.
-- [ ] Create "Secure Communication Boards" (bulletins/comments) restricted by Key.
-
-## Phase 4: Payment & Ticketing System
+## Phase 5: Payment & Ticketing System
 *Goal: Implement privacy-preserving financial transactions.*
 - [ ] Research and integrate privacy-focused payment rails (e.g., Monero).
 - [ ] Develop ticketing logic that generates a "ticket" upon successful payment.
-
-## Phase 5: Frontend & UX/UI Design
-*Goal: Ensure the platform is intuitive and aesthetically compelling.*
-- [ ] Develop a mobile-first responsive web application.
-- [ ] Refine Security UI to ensure seamless user experience during key entry.
 
 ## Cross-Cutting: Federation
 *Goal: Support multi-instance key validation without a central registry.*
@@ -84,7 +93,12 @@
 
 ## Context for Future Sessions
 *This section is updated as we progress to maintain continuity.*
-- Current focus: Phase 0 - Foundation & Hardening is **complete** (all 13 tests pass).
-- Next: Phase 1 - Core Architecture (security hardening: HMAC/Argon2id key hashing, encryption at rest, rate limiting).
+- Current focus: Phase 1 - Core Architecture (security hardening) is **complete** (all 77 tests pass).
+- Next: Phase 2 - Content & Communication Layer (content hosting, secure communication boards).
 - Environment uses `python3` (not `python`).
 - `KeyManager` accepts an optional shared `DatabaseHandler`; `Gateway` passes its own `db` to `KeyManager`.
+- **Required environment variables:**
+  - `GATEKEYP_MASTER_KEY`: Fernet-compatible master key for encryption-at-rest (fail-secure).
+  - `GATEKEYP_HMAC_SECRET`: Per-instance secret for HMAC keyed hashing (fail-secure).
+- **Test setup:** `pytest.ini` configures `pythonpath = . tests`; `tests/helpers.py` provides shared test constants.
+- **Dependencies:** `cryptography`, `argon2-cffi`, `pytest`, `hypothesis`.

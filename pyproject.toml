@@ -1,0 +1,72 @@
+[project]
+name = "gatekeyp"
+version = "0.1.0"
+description = "A privacy-preserving, federated event-organizing toolkit with a secure Key system"
+requires-python = ">=3.11"
+dependencies = [
+    "cryptography>=42.0.0",
+    "argon2-cffi>=23.1.0",
+]
+
+[dependency-groups]
+dev = [
+    {include-group = "lint"},
+    {include-group = "test"},
+    {include-group = "audit"},
+]
+lint = [
+    "ruff",
+    "ty",
+    "pre-commit",
+]
+test = [
+    "pytest>=8.0.0",
+    "hypothesis>=6.0.0",
+]
+audit = [
+    "pip-audit",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["D", "COM812", "ISC001", "PLR0911"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files use unittest-style assertions and fixtures
+"tests/**" = [
+    "ANN001",  # Missing type annotation for function argument
+    "ANN201",  # Missing return type annotation for public function
+    "ANN202",  # Missing return type annotation for private function
+    "CPY001",  # Missing copyright notice
+    "ERA001",  # Commented-out code (section headers in tests)
+    "PLC0415", # Import should be at top-level
+    "PT009",   # Use regular assert instead of unittest-style
+    "PT011",   # Use regular assert instead of unittest-style
+    "PT012",   # Use regular assert instead of unittest-style
+    "PT013",   # Use regular assert instead of unittest-style
+    "PT015",   # Use regular assert instead of unittest-style
+    "PT018",   # Use regular assert instead of unittest-style
+    "PT023",   # Use regular assert instead of unittest-style
+    "PT024",   # Use regular assert instead of unittest-style
+    "PT025",   # Use regular assert instead of unittest-style
+    "PT026",   # Use regular assert instead of unittest-style
+    "PT027",   # Use regular assert instead of unittest-style
+    "PTH100",  # os.path.abspath should be replaced by Path.resolve
+    "PTH120",  # os.path.dirname should be replaced by Path.parent
+    "S105",    # Possible hardcoded password (test fixtures)
+    "S106",    # Possible hardcoded password (test fixtures)
+    "S107",    # Possible hardcoded password (test fixtures)
+    "S108",    # Possible hardcoded temporary file
+    "SLF001",  # Private member access (test fixtures)
+    "TID252",  # Relative imports
+]
+
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.uv]
+package = false

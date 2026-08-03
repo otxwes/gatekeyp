@@ -29,6 +29,10 @@ venv/
 env/
 ENV/
 
+# MCP / agent config (local overrides only)
+.mcp.local.json
+.agents/local/
+
 # Databases
 *.db
 *.sqlite

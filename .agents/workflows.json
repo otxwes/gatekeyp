@@ -1,0 +1,59 @@
+{
+  "workflows": {
+    "security-review": {
+      "description": "Parallel security review of code changes",
+      "agents": [
+        {
+          "name": "dependency-audit",
+          "prompt": "Audit all dependencies in pyproject.toml and uv.lock for known vulnerabilities. Check for outdated packages, insecure versions, and supply chain risks. Report findings with severity levels.",
+          "tools": ["execute_command", "read_file", "search_files"]
+        },
+        {
+          "name": "code-security",
+          "prompt": "Review src/ for security issues: insecure defaults, weak crypto usage, improper key handling, injection vulnerabilities, and missing input validation. Cross-reference with docs/threat_model.md and skills/security_audit.md.",
+          "tools": ["read_file", "search_files", "list_code_definition_names"]
+        },
+        {
+          "name": "test-coverage",
+          "prompt": "Review tests/ for coverage gaps. Identify untested code paths, missing edge cases, and areas where property-based testing (hypothesis) could strengthen the suite. Cross-reference with skills/property_based_testing.md.",
+          "tools": ["read_file", "search_files", "list_code_definition_names"]
+        }
+      ]
+    },
+    "code-quality": {
+      "description": "Parallel code quality and consistency checks",
+      "agents": [
+        {
+          "name": "lint-check",
+          "prompt": "Run ruff check on src/ and tests/. Fix any issues found and report what was fixed.",
+          "tools": ["execute_command", "read_file", "replace_in_file"]
+        },
+        {
+          "name": "type-check",
+          "prompt": "Run ty check on src/. Fix any type errors found and report what was fixed.",
+          "tools": ["execute_command", "read_file", "replace_in_file"]
+        },
+        {
+          "name": "modern-python",
+          "prompt": "Review src/ for modern Python best practices per skills/modern_python.md. Check for type hints, dataclasses, pathlib usage, and other modern idioms.",
+          "tools": ["read_file", "search_files", "replace_in_file"]
+        }
+      ]
+    },
+    "documentation": {
+      "description": "Parallel documentation consistency checks",
+      "agents": [
+        {
+          "name": "docs-review",
+          "prompt": "Review docs/ for consistency with the current codebase. Flag any outdated specifications or missing documentation.",
+          "tools": ["read_file", "search_files"]
+        },
+        {
+          "name": "skill-alignment",
+          "prompt": "Review skills/ to ensure they align with the project's coding principles and current practices. Flag any outdated guidance.",
+          "tools": ["read_file", "search_files"]
+        }
+      ]
+    }
+  }
+}

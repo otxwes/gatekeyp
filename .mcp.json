@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "security-audit": {
+      "command": "uv",
+      "args": ["run", "pip-audit"],
+      "env": {}
+    },
+    "code-quality": {
+      "command": "uv",
+      "args": ["run", "ruff", "check", "src/", "tests/"],
+      "env": {}
+    },
+    "type-check": {
+      "command": "uv",
+      "args": ["run", "ty", "check", "src/"],
+      "env": {}
+    }
+  }
+}

@@ -75,12 +75,13 @@ This document identifies the primary adversaries, trust boundaries, and data flo
 
 ## 7. Security Checklist (per phase)
 
-- [ ] No third-party tracking/analytics dependencies
-- [ ] All sensitive payloads encrypted at rest
-- [ ] Keys stored as keyed hashes (HMAC/Argon2id), never plaintext
-- [ ] Rate limiting on all key-validation endpoints
-- [ ] Audit logging without PII
-- [ ] TLS enforced on all external connections
-- [ ] Key expiration + revocation supported
-- [ ] Federated validation is opt-in and authenticated
-- [ ] Threat model reviewed and updated each phase
+### Phase 1 Status
+- [x] No third-party tracking/analytics dependencies
+- [x] All sensitive payloads encrypted at rest (Fernet/AES-GCM)
+- [x] Keys stored as keyed hashes (HMAC-SHA256), never plaintext
+- [x] Rate limiting on all key-validation endpoints (per-IP and per-key, exponential backoff)
+- [x] Audit logging without PII (structured, no raw keys)
+- [ ] TLS enforced on all external connections (deferred to Phase 2+ when web framework is added)
+- [x] Key expiration + revocation supported
+- [ ] Federated validation is opt-in and authenticated (deferred to Cross-Cutting: Federation)
+- [x] Threat model reviewed and updated each phase

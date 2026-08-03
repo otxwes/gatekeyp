@@ -39,5 +39,10 @@ Every skill file must include:
 ---
 
 ## Current Active Skills
+- `coding_principals.md` (Karpathy Guidelines - all coding tasks)
 - `security_audit.md` (Security & Privacy)
 - `ui_ux_design.md` (Aesthetics & UX)
+- `property_based_testing.md` (Testing & Coverage)
+- `supply_chain_audit.md` (Dependency Security)
+- `insecure_defaults.md` (Config & Secrets Security)
+- `modern_python.md` (Python Tooling)
