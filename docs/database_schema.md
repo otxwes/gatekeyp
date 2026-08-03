@@ -1,6 +1,6 @@
-# Database Schema: Phase 1 - Core Architecture
+# Database Schema: Phase 1 & 2 - Core Architecture + Content & Communication
 
-This document defines the database schema for Gatekeyp, focusing on the core infrastructure needed to manage keys and associated content blocks, with security hardening for encryption-at-rest and federation support.
+This document defines the database schema for Gatekeyp, covering the core infrastructure for keys and content blocks, plus the content hosting and communication board tables added in Phase 2. All sensitive payloads are encrypted at rest with security hardening for encryption-at-rest and federation support.
 
 ## 1. Entities Overview
 
@@ -34,11 +34,44 @@ The `key_content_links` join table maps keys to content items.
 - **Content_ID**: Reference to a content block or event.
 - **Content_Type**: Type of content ("block" or "event").
 
+### 1.5 Media Assets (Phase 2)
+The `media_assets` table stores uploaded files (flyers, images, documents) gated by Keys.
+- **Asset_ID**: Unique identifier for the media asset.
+- **Event_ID**: Reference to the owning event.
+- **Key_ID**: Reference to the required key to access this asset.
+- **Filename**: Original filename (stored encrypted).
+- **Content_Type**: MIME type (validated against allowlist).
+- **Size_Bytes**: File size in bytes (max 10 MB).
+- **Data**: The file contents, **encrypted at rest** (Fernet/AES-GCM).
+- **Created_At**: Timestamp for management.
+
+### 1.6 Bulletins (Phase 2)
+The `bulletins` table stores communication board posts gated by Keys.
+- **Bulletin_ID**: Unique identifier for the bulletin.
+- **Event_ID**: Reference to the owning event.
+- **Key_ID**: Reference to the required key to access this bulletin.
+- **Author**: Author identifier (stored encrypted).
+- **Body**: The bulletin content, **encrypted at rest** (Fernet/AES-GCM).
+- **Created_At**: Timestamp for management.
+- **Updated_At**: Timestamp for last update.
+
+### 1.7 Comments (Phase 2)
+The `comments` table stores threaded comments on bulletins.
+- **Comment_ID**: Unique identifier for the comment.
+- **Bulletin_ID**: Reference to the parent bulletin.
+- **Parent_Comment_ID**: Optional reference to a parent comment (for threading).
+- **Author**: Author identifier (stored encrypted).
+- **Body**: The comment content, **encrypted at rest** (Fernet/AES-GCM).
+- **Created_At**: Timestamp for management.
+
 ## 2. Relationships
 
 - **Event -> Content Blocks**: One event contains many content blocks.
 - **Key -> Content Blocks**: A key can unlock one or more content blocks (many-to-many via `key_content_links`).
 - **Key -> Events**: A key can unlock one or more events (many-to-many via `key_content_links`).
+- **Event -> Media Assets**: One event has many media assets.
+- **Event -> Bulletins**: One event has many bulletins.
+- **Bulletin -> Comments**: One bulletin has many comments (threaded via `parent_comment_id`).
 
 ## 3. Schema Definition (SQL)
 
@@ -81,12 +114,45 @@ The `key_content_links` join table maps keys to content items.
 | content_type | TEXT | Type of content ("block" or "event"). |
 | PRIMARY KEY | (key_hash, content_id, content_type) | Composite primary key. |
 
+### `media_assets` Table (Phase 2)
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| asset_id | TEXT PRIMARY KEY | Unique identifier. |
+| event_id | VARCHAR | Foreign Key to `events`. |
+| key_id | VARCHAR | Foreign Key to `keys`. |
+| filename | TEXT | **Encrypted** original filename. |
+| content_type | VARCHAR(128) | MIME type (validated against allowlist). |
+| size_bytes | INTEGER | File size in bytes (max 10 MB). |
+| data | BLOB | **Encrypted** file contents (Fernet/AES-GCM). |
+| created_at | TEXT | Creation timestamp (ISO format, UTC). |
+
+### `bulletins` Table (Phase 2)
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| bulletin_id | TEXT PRIMARY KEY | Unique identifier. |
+| event_id | VARCHAR | Foreign Key to `events`. |
+| key_id | VARCHAR | Foreign Key to `keys`. |
+| author | TEXT | **Encrypted** author identifier. |
+| body | TEXT | **Encrypted** bulletin content (Fernet/AES-GCM). |
+| created_at | TEXT | Creation timestamp (ISO format, UTC). |
+| updated_at | TEXT | Last update timestamp (ISO format, UTC). |
+
+### `comments` Table (Phase 2)
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| comment_id | TEXT PRIMARY KEY | Unique identifier. |
+| bulletin_id | VARCHAR | Foreign Key to `bulletins`. |
+| parent_comment_id | VARCHAR | Optional Foreign Key to `comments` (threading). |
+| author | TEXT | **Encrypted** author identifier. |
+| body | TEXT | **Encrypted** comment content (Fernet/AES-GCM). |
+| created_at | TEXT | Creation timestamp (ISO format, UTC). |
+
 ## 4. Security Features
 
 ### Encryption at Rest
 - **Master Key**: Required via `GATEKEYP_MASTER_KEY` environment variable (fail-secure).
 - **Algorithm**: Fernet (AES-128-CBC + HMAC-SHA256) from the `cryptography` library.
-- **Encrypted Fields**: `content_blocks.payload`, `events.location_data`.
+- **Encrypted Fields**: `content_blocks.payload`, `events.location_data`, `media_assets.filename`, `media_assets.data`, `bulletins.author`, `bulletins.body`, `comments.author`, `comments.body`.
 - **Key Hashes**: Stored as HMAC-SHA256 keyed by `GATEKEYP_HMAC_SECRET` (never plaintext).
 
 ### Fail-Secure Configuration

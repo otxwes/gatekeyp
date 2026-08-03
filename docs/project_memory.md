@@ -117,16 +117,23 @@ This document serves as the durable, self-improving memory for the Gatekeyp proj
 ### 4.1 Architecture
 
 - **Gatekeyp is a privacy-preserving, federated event-organizing toolkit**.
-- **Core components**: `src/core/key_manager.py` (Key system), `src/api/gateway.py` (API gateway), `src/db/database_handler.py` (database).
-- **Key system**: Uses Argon2 for password hashing and `cryptography` for encryption.
+- **Core components**:
+  - `src/core/key_manager.py` — Key system (HMAC-SHA256, Argon2id, rotation, revocation)
+  - `src/core/content_manager.py` — Media assets, bulletins, comments (encrypted at rest)
+  - `src/core/event_lifecycle.py` — Event creation, access keys, decommissioning
+  - `src/api/gateway.py` — Rate-limited API gateway
+  - `src/api/server.py` — FastAPI HTTP server + static web UI
+  - `src/db/database_handler.py` — SQLite with encryption-at-rest (Fernet/AES-GCM)
+- **Key system**: Uses HMAC-SHA256 keyed hashing (per-instance secret) and optional Argon2id for higher-cost verification.
 - **Federation**: See `docs/federation_specification.md` for the federation design.
 - **Database schema**: See `docs/database_schema.md` for the schema design.
 - **Key specification**: See `docs/key_specification.md` for the Key system design.
+- **Web UI**: `web/` directory contains the static frontend (HTML, CSS, JS) served by the FastAPI server.
 
 ### 4.2 Roadmap
 
-- **Phase 1**: Core Architecture (Key logic, database, secure backend)
-- **Phase 2**: Content & Communication (flyers, descriptions, media)
+- **Phase 1**: Core Architecture (Key logic, database, secure backend) ✅
+- **Phase 2**: Content & Communication (flyers, descriptions, media) ✅
 - **Phase 3**: Frontend & UX/UI Design
 - **Phase 4**: Map & Navigation (OpenStreetMap, geofencing)
 - **Phase 5**: Payment & Ticketing (Monero)
@@ -158,4 +165,28 @@ This document serves as the durable, self-improving memory for the Gatekeyp proj
 - Continue building out Phase 1 (Core Architecture)
 - Add CI/CD pipeline (GitHub Actions)
 - Add more property-based tests for crypto operations
+- Consider adding a `docs/decisions.md` for architectural decision records (ADRs)
+
+### 2026-08-02 — Phase 2: Content & Communication Layer
+
+**What was done:**
+- Implemented `ContentManager` for media assets (flyers, images, documents) with encryption-at-rest
+- Implemented secure communication boards (bulletins with encrypted bodies, threaded comments)
+- Implemented `EventLifecycleManager` for end-to-end event orchestration (creation, access keys, decommissioning)
+- Added FastAPI HTTP server (`src/api/server.py`) with RESTful endpoints for all features
+- Added static web UI (`web/`) — mobile-first, privacy-preserving frontend
+- Added `fastapi`, `python-multipart`, and `uvicorn` dependencies
+- Expanded test suite from 77 to 123 tests (all passing)
+
+**Lessons learned:**
+1. FastAPI's `UploadFile` requires `python-multipart` for form data handling
+2. Static file serving in FastAPI is straightforward with `StaticFiles` and `FileResponse`
+3. CORS middleware is needed for development when the frontend and API are on different origins
+4. Content managers should share the same `DatabaseHandler` and `KeyManager` instances to maintain consistency
+5. Event lifecycle management benefits from a dedicated manager class that orchestrates multiple services
+6. MIME-type validation and size limits are essential for media upload security
+
+**Next steps:**
+- Begin Phase 3: Frontend & UX/UI Design (refine web UI, accessibility, responsive polish)
+- Add CI/CD pipeline (GitHub Actions)
 - Consider adding a `docs/decisions.md` for architectural decision records (ADRs)

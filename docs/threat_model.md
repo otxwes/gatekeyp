@@ -81,7 +81,16 @@ This document identifies the primary adversaries, trust boundaries, and data flo
 - [x] Keys stored as keyed hashes (HMAC-SHA256), never plaintext
 - [x] Rate limiting on all key-validation endpoints (per-IP and per-key, exponential backoff)
 - [x] Audit logging without PII (structured, no raw keys)
-- [ ] TLS enforced on all external connections (deferred to Phase 2+ when web framework is added)
+- [x] TLS enforced on all external connections (FastAPI server with HTTPS support)
 - [x] Key expiration + revocation supported
 - [ ] Federated validation is opt-in and authenticated (deferred to Cross-Cutting: Federation)
+- [x] Threat model reviewed and updated each phase
+
+### Phase 2 Status
+- [x] Media uploads validated (MIME-type allowlist, 10 MB size limit)
+- [x] Media assets, bulletins, and comments encrypted at rest (Fernet/AES-GCM)
+- [x] All content access key-gated (valid key required for upload/retrieval)
+- [x] No third-party tracking/analytics in web UI
+- [x] Web UI served from same process (no external CDN dependencies)
+- [x] Event lifecycle management enforces key expiration and revocation
 - [x] Threat model reviewed and updated each phase

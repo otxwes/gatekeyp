@@ -18,15 +18,32 @@ Gatekeyp is designed to help communities organize events while prioritizing:
   - Key rotation and revocation support
   - Minimum key entropy enforcement (128 bits)
   - Constant-time comparison (`hmac.compare_digest`)
+- **Event Lifecycle Management**: Full event lifecycle orchestration
+  - Event creation with master key generation
+  - Attendee access key generation, listing, and revocation
+  - Content block management (descriptions, schedules, etc.)
+  - Event decommissioning (revokes all keys)
+- **Content Management**: Key-gated content hosting and communication boards
+  - Media asset upload/retrieval (flyers, images, documents) with MIME-type validation
+  - Secure bulletins (communication board posts) with encrypted bodies
+  - Threaded comments with parent-comment support
+  - All content encrypted at rest and gated by Keys
 - **Federated Validation**: Support for multi-instance key validation without a central registry
 - **Database Schema**: SQLite-based storage with encryption-at-rest for sensitive payloads
-  - Fernet/AES-GCM encryption for content payloads and event locations
+  - Fernet/AES-GCM encryption for content payloads, event locations, media, bulletins, and comments
   - `key_content_links` join table for many-to-many key ↔ content mapping
   - `created_at`, `location_data`, `owner_id`, and revocation fields
 - **API Gateway**: Rate-limited, validated endpoints for key verification
   - Per-IP and per-key rate limiting with exponential backoff
   - Hardened input validation
   - Structured audit logging (no PII)
+- **FastAPI Server**: HTTP API with web UI
+  - RESTful endpoints for events, content, media, bulletins, and comments
+  - Static web UI served from the same process
+  - CORS support for development
+- **Web UI**: Mobile-first, privacy-preserving frontend
+  - Create events, manage keys, upload media, post bulletins and comments
+  - No third-party tracking or analytics
 
 ## Project Structure
 
@@ -36,10 +53,11 @@ Gatekeyp is designed to help communities organize events while prioritizing:
 ├── .pre-commit-config.yaml  # Lifecycle hooks
 ├── docs/            # Specifications and threat model
 ├── src/
-│   ├── api/         # API gateway
-│   ├── core/        # Key management logic
+│   ├── api/         # API gateway, FastAPI server
+│   ├── core/        # Key management, content management, event lifecycle
 │   └── db/          # Database handler
 ├── tests/           # Unit, integration, property-based, and security tests
+├── web/             # Static web UI (HTML, CSS, JS)
 ├── pyproject.toml   # Modern dependency management (uv)
 ├── uv.lock          # Locked dependency versions (commit this!)
 ├── Dockerfile       # Containerization
@@ -157,7 +175,7 @@ Parallel sub-agent workflows are defined in [.agents/workflows.json](.agents/wor
 See [roadmap.md](roadmap.md) for the full development roadmap, including:
 - Phase 0: Foundation & Hardening ✅
 - Phase 1: Core Architecture (Security-Hardened) ✅
-- Phase 2: Content & Communication Layer
+- Phase 2: Content & Communication Layer ✅
 - Phase 3: Frontend & UX/UI Design
 - Phase 4: Map & Navigation (Privacy-Preserving)
 - Phase 5: Payment & Ticketing System

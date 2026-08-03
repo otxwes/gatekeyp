@@ -56,15 +56,41 @@
 - [x] Security audit tests validating the threat model checklist (encryption at rest, keyed hashing, rate limiting, no PII in logs, no third-party tracking).
 - [x] All 77 tests pass.
 
-## Phase 2: Content & Communication Layer
+## Phase 2: Content & Communication Layer ✅
 *Goal: Build the interface for organizers and participants.*
-- [ ] Develop content hosting (flyers, descriptions, media) with encryption-at-rest.
-- [ ] Create "Secure Communication Boards" (bulletins/comments) restricted by Key.
+
+### Content Hosting
+- [x] Implement `ContentManager` for media assets (flyers, images, documents) with encryption-at-rest.
+- [x] MIME-type validation and size limits for media uploads (10 MB max).
+- [x] Key-gated access to all content (valid key required for upload/retrieval).
+- [x] Media asset CRUD (upload, get, list, delete).
+
+### Secure Communication Boards
+- [x] Implement bulletins (communication board posts) with encrypted bodies.
+- [x] Implement threaded comments with parent-comment support.
+- [x] Key-gated access to bulletins and comments.
+- [x] Bulletin CRUD (create, get, list, update, delete).
+- [x] Comment posting, listing, and deletion.
+
+### Event Lifecycle Management
+- [x] Implement `EventLifecycleManager` for end-to-end event orchestration.
+- [x] Event creation with master key generation (365-day default lifetime).
+- [x] Attendee access key generation (30-day default lifetime), listing, and revocation.
+- [x] Content block management (descriptions, schedules, etc.).
+- [x] Event decommissioning (revokes master key and all access keys).
+
+### FastAPI Server & Web UI
+- [x] Implement FastAPI HTTP server with RESTful endpoints for all features.
+- [x] Static web UI served from the same process.
+- [x] Mobile-first, privacy-preserving frontend (no third-party tracking).
+- [x] CORS support for development.
+- [x] All 123 tests pass.
 
 ## Phase 3: Frontend & UX/UI Design
 *Goal: Ensure the platform is intuitive and aesthetically compelling.*
-- [ ] Develop a mobile-first responsive web application.
 - [ ] Refine Security UI to ensure seamless user experience during key entry.
+- [ ] Enhance web UI with additional event management features.
+- [ ] Add responsive design polish and accessibility improvements.
 
 ## Phase 4: Map & Navigation (Privacy-Preserving)
 *Goal: Integrate open-source maps without third-party tracking.*
@@ -93,12 +119,15 @@
 
 ## Context for Future Sessions
 *This section is updated as we progress to maintain continuity.*
-- Current focus: Phase 1 - Core Architecture (security hardening) is **complete** (all 77 tests pass).
-- Next: Phase 2 - Content & Communication Layer (content hosting, secure communication boards).
+- Current focus: Phase 2 - Content & Communication Layer is **complete** (all 123 tests pass).
+- Next: Phase 3 - Frontend & UX/UI Design (refine web UI, accessibility, responsive polish).
 - Environment uses `python3` (not `python`).
 - `KeyManager` accepts an optional shared `DatabaseHandler`; `Gateway` passes its own `db` to `KeyManager`.
+- `ContentManager` requires shared `DatabaseHandler` and `KeyManager` instances.
+- `EventLifecycleManager` requires shared `DatabaseHandler`, `KeyManager`, and `ContentManager` instances.
+- FastAPI server (`src/api/server.py`) wires all services together and serves the static web UI.
 - **Required environment variables:**
   - `GATEKEYP_MASTER_KEY`: Fernet-compatible master key for encryption-at-rest (fail-secure).
   - `GATEKEYP_HMAC_SECRET`: Per-instance secret for HMAC keyed hashing (fail-secure).
 - **Test setup:** `pytest.ini` configures `pythonpath = . tests`; `tests/helpers.py` provides shared test constants.
-- **Dependencies:** `cryptography`, `argon2-cffi`, `pytest`, `hypothesis`.
+- **Dependencies:** `cryptography`, `argon2-cffi`, `fastapi`, `python-multipart`, `uvicorn`, `pytest`, `hypothesis`.
