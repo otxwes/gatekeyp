@@ -117,7 +117,7 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-Hooks run: ruff lint + format, mypy type checking, safety dependency audit, and general file checks.
+Hooks run: ruff lint + format, and general file checks (AST, JSON, TOML, YAML, debug statements, EOF, whitespace, large files).
 
 ### Containerization
 
@@ -133,6 +133,10 @@ make docker-down
 ```
 
 The Dockerfile uses a multi-stage build with a non-root user, read-only filesystem, and dropped capabilities for security.
+
+### Project Memory
+
+The project maintains a durable, self-improving memory in [docs/project_memory.md](docs/project_memory.md). It captures lessons learned, tooling solutions, process improvements, and coding practices. The [project_memory skill](skills/project_memory.md) governs how to use and update this memory.
 
 ### MCP Servers
 

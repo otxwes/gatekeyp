@@ -46,3 +46,4 @@ Every skill file must include:
 - `supply_chain_audit.md` (Dependency Security)
 - `insecure_defaults.md` (Config & Secrets Security)
 - `modern_python.md` (Python Tooling)
+- `project_memory.md` (Durable Project Memory & Self-Improvement)

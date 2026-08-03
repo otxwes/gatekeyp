@@ -39,6 +39,7 @@ This document tracks the technical capabilities and "skills" (derived from the `
 | `supply_chain_audit.md` | Adapted from [trailofbits/skills](https://github.com/trailofbits/skills) | Identifies dependencies at heightened risk of exploitation or takeover. |
 | `insecure_defaults.md` | Adapted from [trailofbits/skills](https://github.com/trailofbits/skills) | Detects fail-open insecure defaults (hardcoded secrets, weak auth, permissive security). |
 | `modern_python.md` | Adapted from [trailofbits/skills](https://github.com/trailofbits/skills) | Modern Python tooling (uv, ruff, ty) and best practices. |
+| `project_memory.md` | Custom | Durable project guidance memory for self-improvement and knowledge retention. |
 
 ## Development Infrastructure
 
@@ -75,3 +76,4 @@ The project leverages the following tooling to ensure clean, reproducible, and s
 | `supply_chain_audit.md` | Phase 1 | Audits dependencies (cryptography, argon2-cffi, pytest). |
 | `insecure_defaults.md` | Phase 1 | Reviews config/env handling for fail-open vulnerabilities. |
 | `modern_python.md` | All | Modern Python tooling for project setup and migration. |
+| `project_memory.md` | All | Durable project memory for self-improvement and knowledge retention. |
