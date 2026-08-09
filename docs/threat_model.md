@@ -1,8 +1,8 @@
-# Threat Model: Gatekeyp
+# Threat Model: gatekeyp
 
 ## 1. Purpose
 
-This document identifies the primary adversaries, trust boundaries, and data flows of Gatekeyp. It guides security decisions across all development phases, prioritizing **data minimization**, **local-first architecture**, and **resistance to surveillance** per the project's core tenets.
+This document identifies the primary adversaries, trust boundaries, and data flows of gatekeyp. It guides security decisions across all development phases, prioritizing **data minimization**, **local-first architecture**, and **resistance to surveillance** per the project's core tenets.
 
 ## 2. Adversaries
 

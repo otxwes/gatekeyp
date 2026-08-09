@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Gatekeyp contributors
+# Copyright (c) 2026 gatekeyp contributors
 
 import os
 from pathlib import Path
@@ -129,7 +129,7 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
         gateway = Gateway(db=db, key_manager=key_manager, rate_limiter=rate_limiter)
 
     app = FastAPI(
-        title="Gatekeyp API",
+        title="gatekeyp API",
         description="Privacy-preserving, federated event-organizing toolkit",
         version="0.1.0",
     )

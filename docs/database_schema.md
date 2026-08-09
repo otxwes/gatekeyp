@@ -1,6 +1,6 @@
 # Database Schema: Phase 1 & 2 - Core Architecture + Content & Communication
 
-This document defines the database schema for Gatekeyp, covering the core infrastructure for keys and content blocks, plus the content hosting and communication board tables added in Phase 2. All sensitive payloads are encrypted at rest with security hardening for encryption-at-rest and federation support.
+This document defines the database schema for gatekeyp, covering the core infrastructure for keys and content blocks, plus the content hosting and communication board tables added in Phase 2. All sensitive payloads are encrypted at rest with security hardening for encryption-at-rest and federation support.
 
 ## 1. Entities Overview
 

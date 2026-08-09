@@ -4,7 +4,7 @@
 .DEFAULT_GOAL := help
 
 help:
-	@echo "Gatekeyp Development Commands"
+	@echo "gatekeyp Development Commands"
 	@echo "============================="
 	@echo "  make setup        - Create virtual environment and install all dependencies (uv)"
 	@echo "  make install      - Sync dependencies from lockfile (uv)"

@@ -1,6 +1,6 @@
 # Project Memory
 
-This document serves as the durable, self-improving memory for the Gatekeyp project. It captures lessons learned, tooling solutions, process improvements, and coding practices discovered during development. **This is a living document** — update it whenever you encounter a worthwhile lesson.
+This document serves as the durable, self-improving memory for the gatekeyp project. It captures lessons learned, tooling solutions, process improvements, and coding practices discovered during development. **This is a living document** — update it whenever you encounter a worthwhile lesson.
 
 ## How to Use This Document
 
@@ -116,7 +116,7 @@ This document serves as the durable, self-improving memory for the Gatekeyp proj
 
 ### 4.1 Architecture
 
-- **Gatekeyp is a privacy-preserving, federated event-organizing toolkit**.
+- **gatekeyp is a privacy-preserving, federated event-organizing toolkit**.
 - **Core components**:
   - `src/core/key_manager.py` — Key system (HMAC-SHA256, Argon2id, rotation, revocation)
   - `src/core/content_manager.py` — Media assets, bulletins, comments (encrypted at rest)

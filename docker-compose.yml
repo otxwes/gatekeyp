@@ -1,4 +1,4 @@
-# Gatekeyp development and production orchestration
+# gatekeyp development and production orchestration
 # Usage: docker compose up -d
 
 services:
