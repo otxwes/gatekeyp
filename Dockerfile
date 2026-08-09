@@ -1,4 +1,4 @@
-# Gatekeyp - Privacy-preserving federated event toolkit
+# gatekeyp - Privacy-preserving federated event toolkit
 # Multi-stage build for minimal production image
 
 # Stage 1: Build dependencies

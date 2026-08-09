@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Gatekeyp contributors
+# Copyright (c) 2026 gatekeyp contributors
 
 import hashlib
 import hmac
@@ -58,7 +58,7 @@ class InvalidKeyFormatError(ValueError):
 
 class KeyManager:
     """
-    Core logic for handling and validating keys within Gatekeyp.
+    Core logic for handling and validating keys within gatekeyp.
 
     Security hardening (Phase 1):
     - HMAC-SHA256 keyed by a per-instance secret for stored key verification

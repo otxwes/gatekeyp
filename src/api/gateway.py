@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Gatekeyp contributors
+# Copyright (c) 2026 gatekeyp contributors
 
 import base64
 import json

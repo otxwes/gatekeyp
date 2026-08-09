@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Gatekeyp contributors
+# Copyright (c) 2026 gatekeyp contributors
 
 from src.core.content_manager import (
     ALLOWED_MIME_TYPES,

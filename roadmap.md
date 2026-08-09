@@ -1,4 +1,4 @@
-# Roadmap: Gatekeyp
+# Roadmap: gatekeyp
 
 ## Project Objectives
 - Build a privacy-preserving, federated event-organizing toolkit.

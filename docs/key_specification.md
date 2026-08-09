@@ -1,7 +1,7 @@
-# Gatekeyp Key Specification
+# gatekeyp Key Specification
 
 ## 1. Overview
-The "Key" is the primary mechanism for gatekeeping content in Gatekeyp. It allows users to access restricted information (e.g., event locations, contact details) only if they possess a valid key provided by an organizer.
+The "Key" is the primary mechanism for gatekeeping content in gatekeyp. It allows users to access restricted information (e.g., event locations, contact details) only if they possess a valid key provided by an organizer.
 
 ## 2. Key Types
 - **Public Keys:** Used for identification but not for direct decryption/access of secret data (if applicable).

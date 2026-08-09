@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Gatekeyp contributors
+# Copyright (c) 2026 gatekeyp contributors
 
 import secrets
 
@@ -45,7 +45,7 @@ class ContentAccessError(PermissionError):
 class ContentManager:
     """
     Manages content hosting (media assets, flyers, descriptions) and
-    secure communication boards (bulletins, comments) for Gatekeyp.
+    secure communication boards (bulletins, comments) for gatekeyp.
 
     All content is gated by Keys and encrypted at rest.
     """

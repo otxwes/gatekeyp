@@ -1,10 +1,10 @@
-# Gatekeyp
+# gatekeyp
 
 A privacy-preserving, federated event-organizing toolkit with a secure "Key" system that gates access to event content.
 
 ## Overview
 
-Gatekeyp is designed to help communities organize events while prioritizing:
+gatekeyp is designed to help communities organize events while prioritizing:
 - **Data minimization** - Collect only what's necessary
 - **Local-first architecture** - Resolve keys locally whenever possible
 - **Resistance to surveillance** - No third-party tracking, minimal data retention
@@ -88,7 +88,7 @@ make setup
 
 ### Required Environment Variables
 
-Gatekeyp uses **fail-secure** configuration: the application refuses to start if these are missing.
+gatekeyp uses **fail-secure** configuration: the application refuses to start if these are missing.
 
 ```bash
 # Fernet-compatible master key for encryption-at-rest

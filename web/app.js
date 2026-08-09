@@ -1,4 +1,4 @@
-// Gatekeyp Web UI — client-side logic
+// gatekeyp Web UI — client-side logic
 
 const API_BASE = "";
 
