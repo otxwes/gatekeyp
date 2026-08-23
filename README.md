@@ -41,9 +41,12 @@ gatekeyp is designed to help communities organize events while prioritizing:
   - RESTful endpoints for events, content, media, bulletins, and comments
   - Static web UI served from the same process
   - CORS support for development
-- **Web UI**: Mobile-first, privacy-preserving frontend
-  - Create events, manage keys, upload media, post bulletins and comments
-  - No third-party tracking or analytics
+- **Web UI**: Mobile-first, privacy-preserving frontend (hash-routed SPA, no build step)
+  - Organizer desk: create / open events, six-tab workspace (Overview, Content,
+    Bulletin board, Media, Access keys, Decommission), one-time master-key modal
+  - Attendee door: unlock an invite with an access key, then read content,
+    post on the bulletin board, comment, and view media — no account required
+  - Keys held only in the session tab (sessionStorage); no third-party tracking or analytics
 
 ## Project Structure
 
@@ -176,7 +179,7 @@ See [roadmap.md](roadmap.md) for the full development roadmap, including:
 - Phase 0: Foundation & Hardening ✅
 - Phase 1: Core Architecture (Security-Hardened) ✅
 - Phase 2: Content & Communication Layer ✅
-- Phase 3: Frontend & UX/UI Design
+- Phase 3: Frontend & UX/UI Design ✅
 - Phase 4: Map & Navigation (Privacy-Preserving)
 - Phase 5: Payment & Ticketing System
 

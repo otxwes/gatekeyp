@@ -50,7 +50,7 @@ class DatabaseHandler:
         if master_key is None:
             raise MissingMasterKeyError
         self.fernet = Fernet(master_key.encode() if isinstance(master_key, str) else master_key)
-        self.connection = sqlite3.connect(db_path)
+        self.connection = sqlite3.connect(db_path, check_same_thread=False)
         self.cursor = self.connection.cursor()
         self._initialize_tables()
         self._migrate_schema()
@@ -397,6 +397,38 @@ class DatabaseHandler:
         )
         results = self.cursor.fetchall()
         return [r[0] for r in results]
+
+    def get_parent_event(self, content_id: str) -> str | None:
+        """
+        Resolve a content item to its owning event.
+
+        Event ids map to themselves; content blocks, bulletins and media
+        assets resolve to their ``event_id``. Returns ``None`` for unknown
+        ids. Used to let any key with event-level access read or contribute
+        to content created after the key was issued.
+
+        Args:
+            content_id: An event, block, bulletin or media asset id.
+
+        Returns:
+            The owning event id, or ``None`` if the item is not found.
+        """
+        if not content_id:
+            return None
+        self.cursor.execute("SELECT 1 FROM events WHERE event_id = ?", (content_id,))
+        if self.cursor.fetchone():
+            return content_id
+        for table in ("content_blocks", "bulletins", "media_assets"):
+            event_queries = {
+                "content_blocks": "SELECT event_id FROM content_blocks WHERE block_id = ?",
+                "bulletins": "SELECT event_id FROM bulletins WHERE bulletin_id = ?",
+                "media_assets": "SELECT event_id FROM media_assets WHERE asset_id = ?",
+            }
+            self.cursor.execute(event_queries[table], (content_id,))
+            row = self.cursor.fetchone()
+            if row:
+                return row[0]
+        return None
 
     # ------------------------------------------------------------------
     # Media Assets (Phase 2)

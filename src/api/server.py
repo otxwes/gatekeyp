@@ -2,9 +2,10 @@
 
 import os
 from pathlib import Path
+from urllib.parse import quote
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -257,12 +258,22 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             raise HTTPException(status_code=400, detail=str(err)) from err
 
     @app.get("/api/media/{asset_id}")
-    def get_media(asset_id: str, key: str) -> dict:
-        """Retrieve a media asset."""
+    def get_media(asset_id: str, key: str) -> Response:
+        """Retrieve a media asset as raw binary with its MIME type."""
         try:
-            return content_manager.get_media(input_key=key, asset_id=asset_id)
+            asset = content_manager.get_media(input_key=key, asset_id=asset_id)
         except (ContentValidationError, ContentAccessError) as err:
             raise HTTPException(status_code=400, detail=str(err)) from err
+
+        filename = quote(asset["filename"])
+        return Response(
+            content=asset["data"],
+            media_type=asset["mime_type"],
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Cache-Control": "no-store",
+            },
+        )
 
     @app.post("/api/events/{event_id}/bulletins")
     def create_bulletin(event_id: str, request: CreateBulletinRequest) -> dict:
@@ -306,6 +317,52 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             return content_manager.get_comments(input_key=key, bulletin_id=bulletin_id)
         except (ContentValidationError, ContentAccessError) as err:
             raise HTTPException(status_code=400, detail=str(err)) from err
+
+    @app.get("/api/bulletins/{bulletin_id}")
+    def get_bulletin(bulletin_id: str, key: str) -> dict:
+        """Retrieve a single bulletin including its decrypted body."""
+        try:
+            return content_manager.get_bulletin(input_key=key, bulletin_id=bulletin_id)
+        except (ContentValidationError, ContentAccessError) as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+
+    @app.delete("/api/bulletins/{bulletin_id}")
+    def delete_bulletin(bulletin_id: str, key: str) -> dict:
+        """Delete a bulletin and its comments."""
+        try:
+            deleted = content_manager.delete_bulletin(input_key=key, bulletin_id=bulletin_id)
+        except (ContentValidationError, ContentAccessError) as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+        else:
+            return {"deleted": deleted}
+
+    @app.delete("/api/comments/{comment_id}")
+    def delete_comment(comment_id: str, key: str) -> dict:
+        """Delete a single comment."""
+        try:
+            deleted = content_manager.delete_comment(input_key=key, comment_id=comment_id)
+        except (ContentValidationError, ContentAccessError) as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+        else:
+            return {"deleted": deleted}
+
+    @app.get("/api/events/{event_id}/media")
+    def list_media(event_id: str, key: str) -> list[dict]:
+        """List media assets for an event (metadata only)."""
+        try:
+            return content_manager.list_media(input_key=key, event_id=event_id)
+        except (ContentValidationError, ContentAccessError) as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+
+    @app.delete("/api/media/{asset_id}")
+    def delete_media(asset_id: str, key: str) -> dict:
+        """Delete a media asset."""
+        try:
+            deleted = content_manager.delete_media(input_key=key, asset_id=asset_id)
+        except (ContentValidationError, ContentAccessError) as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+        else:
+            return {"deleted": deleted}
 
     # Static Web UI
     static_dir = Path(__file__).parent.parent.parent / "web"

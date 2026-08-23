@@ -1,84 +1,184 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>gatekeyp — Event Organizing Toolkit</title>
+    <meta name="description" content="gatekeyp — a privacy-preserving, federated event-organizing toolkit. Organize gatherings and share keyed invitations without adtech or tracking.">
+    <meta name="color-scheme" content="light dark">
+    <title>gatekeyp — events worth attending, gated by keys</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23c9421e' d='M7.5 11a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2.4a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2Z'/%3E%3Cpath fill='none' stroke='%23c9421e' stroke-linecap='round' stroke-width='2' d='M11 11 20 2M16 6l3 3M13 9l2.5-2.5'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <header>
-        <h1>🔐 gatekeyp</h1>
-        <p class="tagline">Privacy-preserving, federated event organizing</p>
-    </header>
+    <a class="skip-link" href="#main">Skip to content</a>
 
-    <main>
-        <section id="create-event" class="card">
-            <h2>Create Event</h2>
-            <form id="create-event-form">
-                <label for="title">Title</label>
-                <input type="text" id="title" required maxlength="256">
+    <div class="app">
+        <header class="topbar">
+            <a class="brand" href="#/" aria-label="gatekeyp — home">
+                <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="7.5" cy="15.5" r="4.5"></circle>
+                    <path d="M11 11 20 2m-4 4 3 3m-6 0 2.5-2.5"></path>
+                </svg>
+                <span class="brand-name">gatekeyp</span>
+            </a>
+            <nav class="topnav" aria-label="Primary">
+                <a class="nav-link" href="#/organize">Organize</a>
+                <a class="nav-link" href="#/join">Join</a>
+            </nav>
+            <button id="theme-toggle" type="button" class="icon-btn" title="Toggle light / dark theme" aria-label="Toggle light or dark theme">
+                <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4"></circle>
+                    <path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+                </svg>
+                <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11Z"></path>
+                </svg>
+            </button>
+        </header>
 
-                <label for="description">Description</label>
-                <textarea id="description" required maxlength="65536" rows="4"></textarea>
+        <main id="main" class="stage">
+            <div class="stage-inner">
 
-                <label for="organizer-id">Organizer ID</label>
-                <input type="text" id="organizer-id" required maxlength="256" placeholder="@user:instance">
+                <!-- ================= Landing ================= -->
+                <section id="view-home" class="view">
+                    <div class="hero">
+                        <p class="eyebrow">a keyed, community tool</p>
+                        <h1 class="hero-title">Gatherings that<br>stay where you put them.</h1>
+                        <p class="hero-lede">
+                            gatekeyp is a privacy-preserving toolkit for organizing events and
+                            sharing them with a small circle. No accounts, no adtech, no tracking —
+                            just an event and a key.
+                        </p>
+                        <div class="hero-actions">
+                            <a class="btn btn-primary" href="#/organize">Make an event</a>
+                            <a class="btn btn-ghost" href="#/join">Unlock an invite</a>
+                        </div>
+                        <div id="home-session" class="home-session" hidden></div>
+                    </div>
+                </section>
 
-                <label for="location-data">Location (optional)</label>
-                <input type="text" id="location-data" maxlength="1024">
 
-                <button type="submit">Create Event</button>
-            </form>
-            <div id="create-event-result" class="result"></div>
-        </section>
+                <!-- ================= Organize ================= -->
+                <section id="view-organize" class="view" hidden>
+                    <!-- entry: create / open -->
+                    <div id="organize-entry">
+                        <header class="view-head">
+                            <p class="eyebrow">Organizer desk</p>
+                            <h2 class="view-title">Make an event</h2>
+                            <p class="view-sub">
+                                Create a gathering, then keep its key private. When the event is ready,
+                                hand out access keys to the people you trust.
+                            </p>
+                        </header>
 
-        <section id="event-details" class="card hidden">
-            <h2>Event Details</h2>
-            <div id="event-details-content"></div>
-        </section>
+                        <div class="split-cards">
+                            <form id="create-event-form" class="card form-card" autocomplete="off">
+                                <h3 class="card-title">New gathering</h3>
+                                <div class="field">
+                                    <label for="title">Title <span class="req">*</span></label>
+                                    <input type="text" id="title" name="title" required maxlength="256"
+                                           placeholder="Open Mic Night" autocomplete="off">
+                                </div>
+                                <div class="field">
+                                    <label for="description">Description <span class="req">*</span></label>
+                                    <textarea id="description" name="description" required maxlength="65536"
+                                              rows="4" placeholder="An informal evening of music, readings, and snacks."></textarea>
+                                </div>
+                                <div class="field">
+                                    <label for="organizer-id">Organizer handle</label>
+                                    <input type="text" id="organizer-id" name="organizer_id" maxlength="256"
+                                           placeholder="@you:instance.example" autocomplete="off">
+                                </div>
+                                <div class="field">
+                                    <label for="location-data">Where it happens <span class="opt">optional</span></label>
+                                    <input type="text" id="location-data" name="location_data" maxlength="1024"
+                                           placeholder="Comfort Station — 40.75, -73.98" autocomplete="off">
+                                </div>
+                                <p id="create-note" class="form-note" role="status" aria-live="polite"></p>
+                                <button type="submit" class="btn btn-primary btn-block" id="create-btn">
+                                    Create event
+                                </button>
+                            </form>
 
-        <section id="access-keys" class="card hidden">
-            <h2>Access Keys</h2>
-            <form id="generate-key-form">
-                <label for="key-days">Key lifetime (days)</label>
-                <input type="number" id="key-days" value="30" min="1" max="365">
+                            <form id="open-event-form" class="card form-card" autocomplete="off">
+                                <h3 class="card-title">Open an existing event</h3>
+                                <p class="card-lead">Returning organizer? Enter the event ID and the master key
+                                   you saved when it was created.</p>
+                                <div class="field">
+                                    <label for="open-event-id">Event ID</label>
+                                    <input type="text" id="open-event-id" name="event_id" required
+                                           placeholder="event_b3c9…" spellcheck="false" autocomplete="off">
+                                </div>
+                                <div class="field">
+                                    <label for="open-master-key">Master key</label>
+                                    <input type="password" id="open-master-key" name="master_key" required
+                                           placeholder="local:…" spellcheck="false" autocomplete="off">
+                                </div>
+                                <p id="open-note" class="form-note" role="status" aria-live="polite"></p>
+                                <button type="submit" class="btn btn-secondary btn-block" id="open-btn">
+                                    Open workspace
+                                </button>
+                            </form>
+                        </div>
+                    </div>
 
-                <label for="key-owner">Owner ID (optional)</label>
-                <input type="text" id="key-owner" maxlength="256">
+                    <!-- workspace: rendered by app.js -->
+                    <div id="organize-workspace" hidden>
+                        <div id="organize-views"></div>
+                    </div>
+                </section>
 
-                <button type="submit">Generate Access Key</button>
-            </form>
-            <div id="generate-key-result" class="result"></div>
-            <div id="access-keys-list"></div>
-        </section>
+                <!-- ================= Join ================= -->
+                <section id="view-join" class="view" hidden>
+                    <!-- entry: unlock -->
+                    <div id="join-entry">
+                        <header class="view-head">
+                            <p class="eyebrow">Attendee door</p>
+                            <h2 class="view-title">Unlock an invite</h2>
+                            <p class="view-sub">
+                                A key unlocks a gathering — nothing more. Enter the event ID from your
+                                invitation plus the access key you received.
+                            </p>
+                        </header>
 
-        <section id="content" class="card hidden">
-            <h2>Content</h2>
-            <form id="add-content-form">
-                <label for="content-type">Content Type</label>
-                <input type="text" id="content-type" required maxlength="64" placeholder="description, schedule, ...">
+                        <form id="join-form" class="card form-card join-card" autocomplete="off">
+                            <h3 class="card-title">Your event key</h3>
+                            <div class="field">
+                                <label for="join-event-id">Event ID</label>
+                                <input type="text" id="join-event-id" name="event_id" required
+                                       placeholder="event_b3c9…" spellcheck="false" autocomplete="off">
+                            </div>
+                            <div class="field">
+                                <label for="join-access-key">Access key</label>
+                                <input type="password" id="join-access-key" name="access_key" required
+                                       placeholder="local:…" spellcheck="false" autocomplete="off">
+                            </div>
+                            <p class="key-hint">Your key is used only to decrypt this event's content and never
+                               leaves your session — close the tab and it's gone.</p>
+                            <p id="join-note" class="form-note" role="status" aria-live="polite"></p>
+                            <button type="submit" class="btn btn-primary btn-block" id="join-btn">
+                                Unlock event
+                            </button>
+                        </form>
+                    </div>
 
-                <label for="content-payload">Payload</label>
-                <textarea id="content-payload" required maxlength="65536" rows="4"></textarea>
+                    <!-- event page: rendered by app.js -->
+                    <div id="join-event" hidden>
+                        <div id="join-views"></div>
+                    </div>
+                </section>
 
-                <button type="submit">Add Content</button>
-            </form>
-            <div id="add-content-result" class="result"></div>
-            <div id="content-blocks"></div>
-        </section>
+            </div>
+        </main>
 
-        <section id="decommission" class="card hidden">
-            <h2>Decommission Event</h2>
-            <p class="warning">This will revoke all keys for this event. This action cannot be undone.</p>
-            <button id="decommission-btn" class="danger">Decommission Event</button>
-            <div id="decommission-result" class="result"></div>
-        </section>
-    </main>
+        <footer class="footer">
+            <p>Privacy by default: no analytics, no trackers, no accounts. Content is encrypted at rest and
+               keys are held by you.</p>
+        </footer>
+    </div>
 
-    <footer>
-        <p>gatekeyp — secure, federated event management</p>
-    </footer>
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="false"></div>
+    <div id="modal-root"></div>
 
     <script src="app.js"></script>
 </body>

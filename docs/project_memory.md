@@ -134,7 +134,7 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
 
 - **Phase 1**: Core Architecture (Key logic, database, secure backend) ✅
 - **Phase 2**: Content & Communication (flyers, descriptions, media) ✅
-- **Phase 3**: Frontend & UX/UI Design
+- **Phase 3**: Frontend & UX/UI Design ✅
 - **Phase 4**: Map & Navigation (OpenStreetMap, geofencing)
 - **Phase 5**: Payment & Ticketing (Monero)
 
@@ -190,3 +190,34 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
 - Begin Phase 3: Frontend & UX/UI Design (refine web UI, accessibility, responsive polish)
 - Add CI/CD pipeline (GitHub Actions)
 - Consider adding a `docs/decisions.md` for architectural decision records (ADRs)
+
+### 2026-08-18 — Phase 3: Frontend & UX/UI Design (Redesign)
+
+**What was done:**
+- Repaired `web/index.html` structure (balanced sections, forms, containers; added toast/modal roots).
+- Rewrote `web/style.css` as a complete editorial/minimalist design (~1620 lines: design tokens, dark/light themes, responsive breakpoints, reduced-motion, print).
+- Implemented `web/app.js` as a hash-routed, dependency-free SPA (~1330 lines):
+  - Organizer desk: create / open events; six-tab workspace (Overview, Content,
+    Bulletin board, Media, Access keys, Decommission); one-time master-key modal.
+  - Attendee door: key-based unlock, content/bulletins/media with commenting.
+  - Session keys in `sessionStorage`; raw keys shown once; toasts, confirm
+    modals, loading/empty states, theme toggle, keyboard + reduced-motion support.
+
+**Lessons learned:**
+1. No Node.js runtime and no reliable JS formatter on this machine — validated
+   the 1333-line SPA with a purpose-built Python lexer (balanced delimiters,
+   strings, comments, and nested template literals verify structurally sound).
+2. The terminal corrupts large heredocs — use the editor tool for file writes.
+3. The venv's `cryptography` wheel is x86_64 — tests must run under Rosetta:
+   `arch -x86_64 python -m pytest -q` (136 pass).
+4. Gateway `/api/access` returns `{status, data}` with HTTP 200 even on errors —
+   the attendee unlock flow must branch on `status`, not HTTP status.
+5. Matching the SPA markup to pre-existing CSS hooks (badges, bulletin tiles,
+   toasts, media tiles) meant most component classes were already styled;
+   only a small CSS addendum (`.badge-ghost`, standalone `.section-sub/.section-text`,
+   flex `.inline-form`) was needed.
+
+**Next steps:**
+- Phase 4: Map & Navigation (OpenStreetMap, geofencing) — begin.
+- Run the SPA against a live server for a manual end-to-end pass.
+- Add CI/CD pipeline (GitHub Actions) including a JS syntax-check job.
