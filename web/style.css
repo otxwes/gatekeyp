@@ -43,6 +43,15 @@
     --bad: #b92f2f;
     --bad-soft: rgba(185, 47, 47, 0.11);
 
+    /* Ink for filled control surfaces (text/icon on accent & bad) — AA in both themes */
+    --accent-contrast: #ffffff;
+    --bad-contrast: #ffffff;
+
+    /* Deeper status ink for chip/badge text on soft washes — AA on light ground */
+    --ok-deep: #16663f;
+    --warn-deep: #7a530e;
+    --bad-deep: #9b2626;
+
     /* Elevation + shape */
     --shadow-1: 0 1px 2px rgba(30, 25, 18, 0.05), 0 2px 8px rgba(30, 25, 18, 0.05);
     --shadow-2: 0 6px 22px rgba(30, 25, 18, 0.12), 0 2px 6px rgba(30, 25, 18, 0.07);
@@ -118,6 +127,15 @@
     --bad: #ef6355;
     --bad-soft: rgba(239, 99, 85, 0.15);
 
+    /* Ink for filled control surfaces — near-black on bright vermilion/semantic red (§10) */
+    --accent-contrast: #161210;
+    --bad-contrast: #161210;
+
+    /* Deep variants lifted a touch brighter than vivid — keeps badge/chip text ≥ 5:1 even on surface-2 (§10) */
+    --ok-deep: #44c08a;
+    --warn-deep: #d9aa47;
+    --bad-deep: #ff7d6b;
+
     --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.3);
     --shadow-2: 0 6px 22px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
     color-scheme: dark;
@@ -146,7 +164,7 @@ body {
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    transition: background-color 0.25s ease, color 0.25s ease;
+    transition: background-color var(--dur-view) var(--ease-in-out), color var(--dur-view) var(--ease-in-out);
 }
 
 img,
@@ -286,6 +304,7 @@ p {
     font-weight: 500;
     padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-s);
+    transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 
 .nav-link:hover {
@@ -311,7 +330,7 @@ p {
     background: var(--surface);
     color: var(--ink-soft);
     cursor: pointer;
-    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+    transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 
 .icon-btn:hover {
@@ -350,7 +369,7 @@ p {
 }
 
 .view {
-    animation: view-in 0.28s ease both;
+    animation: view-in var(--dur-view) var(--ease-out) both;
 }
 
 @keyframes view-in {
@@ -519,7 +538,7 @@ p {
     border-radius: var(--radius-s);
     padding: 0.6em 0.75em;
     width: 100%;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .field textarea {
@@ -581,8 +600,8 @@ p {
     padding: 0.62em 1.2em;
     cursor: pointer;
     text-decoration: none;
-    transition: background-color 0.15s ease, border-color 0.15s ease,
-                color 0.15s ease, transform 0.05s ease;
+    transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out),
+                color var(--dur-fast) var(--ease-out), transform var(--dur-micro) var(--ease-out);
 }
 
 .btn:hover {
@@ -602,13 +621,13 @@ p {
 .btn-primary {
     background: var(--accent);
     border-color: var(--accent);
-    color: #fff;
+    color: var(--accent-contrast);
 }
 
 .btn-primary:hover {
     background: var(--accent-deep);
     border-color: var(--accent-deep);
-    color: #fff;
+    color: var(--accent-contrast);
 }
 
 .btn-secondary {
@@ -634,12 +653,12 @@ p {
 .btn-danger {
     background: var(--bad);
     border-color: var(--bad);
-    color: #fff;
+    color: var(--bad-contrast);
 }
 
 .btn-danger:hover {
     filter: brightness(1.08);
-    color: #fff;
+    color: var(--bad-contrast);
 }
 
 .btn-sm {
@@ -706,6 +725,7 @@ p {
     cursor: pointer;
     white-space: nowrap;
     margin-bottom: -1px;
+    transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
 }
 
 .tab:hover {
@@ -771,7 +791,7 @@ p {
 }
 
 .master-banner .mb-copy strong {
-    color: var(--warn);
+    color: var(--warn-deep);
 }
 
 /* Key value display (master key, access key) */
@@ -821,17 +841,17 @@ p {
 }
 
 .badge-active {
-    color: var(--ok);
+    color: var(--ok-deep);
     background: var(--ok-soft);
 }
 
 .badge-revoked {
-    color: var(--bad);
+    color: var(--bad-deep);
     background: var(--bad-soft);
 }
 
 .badge-warn {
-    color: var(--warn);
+    color: var(--warn-deep);
     background: var(--warn-soft);
 }
 
@@ -854,7 +874,7 @@ p {
     border-radius: var(--radius-m);
     background: var(--surface);
     padding: var(--space-4) var(--space-5);
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .item:hover {
@@ -1014,6 +1034,7 @@ p {
     border-radius: var(--radius-m);
     background: var(--surface);
     padding: var(--space-4) var(--space-5);
+    transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .bulletin-card.bulletin-open {
@@ -1051,7 +1072,7 @@ p {
     font-size: 1rem;
     cursor: pointer;
     padding: 0 var(--space-1);
-    transition: transform 0.18s ease;
+    transition: transform var(--dur-fast) var(--ease-out);
 }
 
 .bulletin-card.bulletin-open .b-toggle {
@@ -1071,6 +1092,7 @@ p {
 
 .bulletin-card.bulletin-open .bulletin-body {
     display: block;
+    animation: bulletin-in var(--dur-fast) var(--ease-out) both;
 }
 
 .bulletin-meta {
@@ -1363,7 +1385,7 @@ p {
     box-shadow: var(--shadow-2);
     padding: var(--space-3) var(--space-4);
     font-size: var(--text-sm);
-    animation: toast-in 0.22s ease both;
+    animation: toast-in var(--dur-std) var(--ease-out) both;
 }
 
 @keyframes toast-in {
@@ -1405,12 +1427,17 @@ p {
 }
 
 .toast.is-leaving {
-    animation: toast-out 0.18s ease both;
+    animation: toast-out var(--dur-fast) var(--ease-out) both;
 }
 
 @keyframes toast-out {
     from { opacity: 1; transform: translateY(0); }
     to   { opacity: 0; transform: translateY(8px); }
+}
+
+@keyframes bulletin-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ------------------------------------------------------------
@@ -1426,7 +1453,7 @@ p {
     align-items: center;
     justify-content: center;
     padding: var(--space-4);
-    animation: fade-in 0.15s ease both;
+    animation: fade-in var(--dur-fast) var(--ease-out) both;
 }
 
 @keyframes fade-in {
@@ -1444,7 +1471,7 @@ p {
     max-height: calc(100vh - 2 * var(--space-5));
     overflow: auto;
     padding: var(--space-5);
-    animation: modal-in 0.18s ease both;
+    animation: modal-in var(--dur-std) var(--ease-out) both;
 }
 
 @keyframes modal-in {
@@ -1627,6 +1654,12 @@ p {
 
     .card,
     .item,
+    .bulletin-card,
+    .media-tile {
+        box-shadow: none;
+        break-inside: avoid;
+    }
+}
 
 /* ------------------------------------------------------------
    18. JS-rendered components (driven by app.js)
@@ -1656,11 +1689,4 @@ p {
 /* Bulletin body text node (nested in the already-styled .bulletin-body) */
 .b-body-text {
     margin: 0 0 var(--space-3);
-}
-
-    .bulletin-card,
-    .media-tile {
-        box-shadow: none;
-        break-inside: avoid;
-    }
 }

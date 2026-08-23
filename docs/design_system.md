@@ -84,6 +84,8 @@ Full definitions live in `web/style.css` §1; roles:
 | `--line` / `--line-strong` | `#e6e0d4` / `#d8d0c2` | `#332e28` / `#423c34` | hairline borders |
 | `--accent` (+ deep / strong / soft) | `#c7421e` family | `#ff5c37` family | action, live state, key moment |
 | `--ok` / `--warn` / `--bad` (+ soft) | green / amber / red | brightened | semantic status |
+| `--ok-deep` / `--warn-deep` / `--bad-deep` | `#16663f` / `#7a530e` / `#9b2626` | `#44c08a` / `#d9aa47` / `#ff7d6b` | chip/badge ink on soft washes — AA in both themes (item 3) |
+| `--accent-contrast` / `--bad-contrast` | `#ffffff` / `#ffffff` | `#161210` / `#161210` | ink on filled accent/bad control surfaces (item 3) |
 
 ### 4.2 Rules
 
@@ -132,7 +134,11 @@ Full definitions live in `web/style.css` §1; roles:
 - **Vocabulary:** `view-in` (fade + 6px rise) route change; `modal-in` (fade + 10px rise +
   0.98 scale) overlays; `toast-in/out` (fade + 8px); button press = 1px translateY; hover =
   color/border change only.
-- Tokens are declared now; the Phase 3.5 motion pass wires them into the rules above.
+- **Wired (Phase 3.5 item 4, 2026-08):** every rule consumes the tokens — `view-in`, tabs and
+  nav links via `--dur-view`; modal & toast entrances via `--dur-std`; buttons, fields, badges,
+  items, bulletin, toast-out & fade-in via `--dur-fast`; button press via `--dur-micro`; theme
+  cross-fade via `--dur-view` × `--ease-in-out`. The §17 `prefers-reduced-motion` switch is the
+  global off switch. No hardcoded durations/easings remain in the sheet.
 
 ## 8. No generic generated-look (the decline list)
 
@@ -174,9 +180,12 @@ themes* and resolves any drift. Canonical states:
 
 ## 10. Accessibility & responsive baseline
 
-- **Contrast:** WCAG AA in both themes. Spot checks: accent `#c7421e` on white ≈ **4.9:1**
-  (AA normal text); verify `ink-soft`/`ink-faint` pairs on paper in light and on the brightened
-  dark palette (both themes already pass 4.5+ for body; re-check when values drift).
+- **Contrast:** WCAG AA in both themes. Spot checks (item 3, 2026-08): accent `#c7421e` on
+  white ≈ **5.0:1**; dark accent `#ff5c37` carries near-black `--accent-contrast` ≈ **6.1:1**;
+  light chips on soft washes — ok `#16663f` ≈ **6.0:1**, warn `#7a530e` ≈ **5.8:1**, bad
+  `#9b2626` ≈ **6.5:1**; dark chips — ok `#44c08a` ≈ **5.2:1**, warn `#d9aa47` ≈ **5.4:1**, bad
+  `#ff7d6b` ≈ **5.1:1** (worst-case `--surface-2`). Body `ink-soft`/`ink-faint` pairs already
+  pass 4.5+ in both themes; re-check when values drift.
 - **Targets:** ≥ 44px for primary controls; dense inline rows may use `btn-sm` with gaps so
   effective touch zones stay usable.
 - **Keyboard:** full tab order, skip link, `Escape` closes modals, `aria-selected` on tabs,
