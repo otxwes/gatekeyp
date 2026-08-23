@@ -84,13 +84,47 @@
 - [x] Static web UI served from the same process.
 - [x] Mobile-first, privacy-preserving frontend (no third-party tracking).
 - [x] CORS support for development.
-- [x] All 123 tests pass.
+- [x] All 136 tests pass.
 
 ## Phase 3: Frontend & UX/UI Design
 *Goal: Ensure the platform is intuitive and aesthetically compelling.*
-- [ ] Refine Security UI to ensure seamless user experience during key entry.
-- [ ] Enhance web UI with additional event management features.
-- [ ] Add responsive design polish and accessibility improvements.
+- [x] Refine Security UI to ensure seamless user experience during key entry.
+- [x] Enhance web UI with additional event management features.
+- [x] Add responsive design polish and accessibility improvements.
+
+Delivered as `web/app.js` — a hash-routed, dependency-free SPA that drives the
+repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
+- Organizer desk: create / open events (one-time master-key modal), then a
+  six-tab workspace — Overview, Content, Bulletin board, Media, Access keys,
+  Decommission — framed by a master-key banner.
+- Attendee door: unlock an invite with an access key, then read content, post
+  on the bulletin board, leave comments, and view media — no account needed.
+- Session keys live only in `sessionStorage` (dropped when the tab closes);
+  raw keys are shown exactly once in a modal with copy-to-clipboard.
+- Toasts, confirm modals, loading + empty states, light/dark theme toggle
+  (respects `prefers-color-scheme`), full keyboard support, reduced motion.
+
+## Phase 3.5: UX & Visual Design Iteration (Are.na-Minimal)
+*Goal: Take the SPA from "functional" to a deliberate, handcrafted identity — Are.na-informed minimal & sleek: quiet editorial, warm off-white ground, near-black ink, strong serif display type, generous air, hairline borders, one restrained accent, calm motion. This track *tightens* the Phase-3 editorial root rather than rebuilding it.*
+
+- [ ] Write `docs/design_system.md` — type pairing/scale/leading, light & dark theme tokens, spacing rhythm, radii/shadows, motion language (durations/easing + `prefers-reduced-motion`), and explicit "no generic generated-look" rules.
+- [ ] Typography + grid pass on `web/style.css` — tighten scale/measure/leading, impose a real grid on the desk & door surfaces, and tame the current "vibe-coded" looseness.
+- [ ] Component + state unification — buttons/cards/badges/toasts/modals/empty/loading/error/focus/disabled consistent across both themes.
+- [ ] Motion & micro-interactions — route/tab transitions, modal & toast entrances, button feedback (keep reduced-motion support).
+- [ ] Build a small in-house motif/ornament set (stamps, hatches, key-art) reused by the UI and the Phase-3.6 invite cards.
+- [ ] Accessibility + responsive review (WCAG AA in both themes, 44px targets) and a light/dark x mobile/desktop x owner/attendee QA matrix.
+
+## Phase 3.6: Steganographic Invite Keys (Key-Distribution UX)
+*Goal: Replace the "copy/paste a hex blob" moment with a beautiful, shareable invite artifact that *contains* the key — dropped at the attendee door instead of typed. Server surface unchanged (HMAC + expiry + revocation); keys never leave a client tab.*
+*Sequencing: 3.5 founds the design system the invite cards are drawn on; 3.6 follows and may run in parallel with Phase 4 (Map).*
+
+- [ ] `web/stego.js` — zero-dependency PNG low-bit codec: manual PNG parse + `CompressionStream`/`DecompressionStream` inflate, LSB/RGB payload with checksum + repetition for robustness (avoids canvas colour-management corruption).
+- [ ] `web/invite_card.js` — canvas invite-card renderer (event title/date/location + Phase-3.5 ornament + QR fallback); embeds event id + access key.
+- [ ] Vendor MIT `qrcode-generator` (single-file, ~10 KB) as the "still scannable after social re-encode" fallback printed on the card.
+- [ ] Organizer UX — "Download invite card" beside the existing copy-key flow in the Access-keys tab.
+- [ ] Attendee UX — "drop or paste your invite" zone above the unlock form on the door; decode locally, auto-fill event id + access key (manual entry always works).
+- [ ] Docs — `docs/steganography_invites.md` + threat-model note (PNG-only / no-re-encode warning; opsec value vs. QR; payload = event id + access key; parity with expiry + revocation; no new server surface).
+- [ ] Tests — Hypothesis encode<->decode round-trips, decode of a known fixture, E2E via the demo server.
 
 ## Phase 4: Map & Navigation (Privacy-Preserving)
 *Goal: Integrate open-source maps without third-party tracking.*
@@ -102,6 +136,27 @@
 *Goal: Implement privacy-preserving financial transactions.*
 - [ ] Research and integrate privacy-focused payment rails (e.g., Monero).
 - [ ] Develop ticketing logic that generates a "ticket" upon successful payment.
+
+## Phase 6: Local Situation Awareness (Public Safety Radio + AI)
+*Goal: A privacy-preserving "situation layer" for an event — real-time, event-adjacent awareness for organizers & attendees, derived from public-safety radio and interpreted locally by an open ML pipeline.*
+
+### Research findings (2026-08) — see `docs/research_notes/06_scanner_intel.md` for sources
+- **Broadcastify has NO public live-audio API.** The Feed Catalog API (v1.3) is *metadata-only* and licensee-gated ("currently not issuing additional licenses"); the Feed Owner API is feed-providers-only; the Calls Upload API is *push-only* (you upload clips to them). Live streams are not consumable programmatically.
+- **Sanctioned bulk audio:** Broadcastify archives via RadioReference **premium** (fee), licensed **CC BY 3.0** ("Audio Provided by Broadcastify") — suited to post-event analysis/training, not real-time.
+- **The viable real-time path is self-production:** RTL-SDR/AirSpy + **trunk-recorder** (GPL — the open-source engine that actually supplies Broadcastify & OpenMHz feeds) decodes per-talkgroup audio + JSON metadata locally, surfaced via **Rdio Scanner / Trunk Player** or a small local `src/intel/` service. Fully self-hosted — fits the project's local-first, no-third-party-tracking ethos, with zero API-key/ToS dependency.
+- **Fallback feed source:** **OpenMHz** (free JSON-call API, by the same author as trunk-recorder) where a system is already monitored; verify availability at build time.
+- **Dominant risk = encryption:** growing P25-AES adoption means many metros' police audio simply does not exist for anyone (Broadcastify, OpenMHz, or self-hosted). Documented example: OpenMHz's origin city (DC) broadcasts Fire/EMS/City on the open system, but DC PD is encrypted. A per-metro pre-flight check is mandatory.
+- **Legal/ethical baseline:** receiving unencrypted public-safety radio is lawful federally; some states restrict scanners (in-vehicle use, "in furtherance of a crime"). Never decrypt or circumvent encryption. Broadcastify's own LE ToS restricts feeds to *routine dispatch* channels (no tactical/NCIC/records).
+
+### Phase 6 work
+- [x] Write `docs/research_notes/06_scanner_intel.md` (seeded from 2026-08 research; expand and add per-metro pre-flight at build time).
+- [ ] **Path A (recommended): self-hosted SDR capture** (near-venue or venue receiver). RTL-SDR/AirSpy + `trunk-recorder` -> per-talkgroup audio clips + JSON call records (talkgroup/site/frequency/source); expose via Rdio Scanner or a minimal local `src/intel/` service.
+- [ ] **Path B: OpenMHz API** ingestion where coverage already exists (zero hardware), flagged per-metro availability.
+- [ ] **Path C: Broadcastify** — Feed Catalog API (metadata) for audience discovery/monitoring + premium archives (CC-BY) for post-event analysis & model training. Not real-time.
+- [ ] AI interpretation pipeline (local-first): per-clip STT (`faster-whisper` / `vosk` local; cloud optional), talkgroup-aware structuring (dispatch = the permissible channel; filter routine traffic), incident-type + location extraction, geofence/alerting tied to Phase-4 map coordinates, LLM "situation brief" for organizers/attendees; **no raw audio retained by default**.
+- [ ] Ethics & privacy position: monitoring agencies, not attendees; civilian PII/medical redaction; transparent labeling; opt-in visibility; publish the position in `docs/threat_model.md`.
+- [ ] Module boundaries: separate `src/intel/` service + ephemeral/encrypted DB tables; no third-party analytics; consistent with the federated/self-hosted architecture.
+- [ ] Open decisions to revisit: target metro(s)? real-time vs post-event only? local vs cloud ML? hardware/cloud budget?
 
 ## Cross-Cutting: Federation
 *Goal: Support multi-instance key validation without a central registry.*
@@ -119,8 +174,9 @@
 
 ## Context for Future Sessions
 *This section is updated as we progress to maintain continuity.*
-- Current focus: Phase 2 - Content & Communication Layer is **complete** (all 123 tests pass).
-- Next: Phase 3 - Frontend & UX/UI Design (refine web UI, accessibility, responsive polish).
+- Current focus: Phase 3 - Frontend & UX/UI Design is **complete** (full SPA in `web/app.js`; redesign in `web/style.css`; markup repaired in `web/index.html`).
+- Next: Phase 3.5 - UX & Visual Design Iteration (Are.na-minimal), then Phase 3.6 - Steganographic Invite Keys, then Phase 4 - Map & Navigation.
+- Test suite: 140 tests passing (Phase-3/fix work and new `tests/test_api_server.py` are still uncommitted). On Apple Silicon, run `arch -x86_64 python -m pytest -q` (the venv's `cryptography` wheel is x86_64).
 - Environment uses `python3` (not `python`).
 - `KeyManager` accepts an optional shared `DatabaseHandler`; `Gateway` passes its own `db` to `KeyManager`.
 - `ContentManager` requires shared `DatabaseHandler` and `KeyManager` instances.

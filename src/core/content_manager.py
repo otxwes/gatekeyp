@@ -109,12 +109,21 @@ class ContentManager:
     # Key Access Verification
     # ------------------------------------------------------------------
 
-    def _verify_key_access(self, input_key: str, content_id: str) -> str:
+    def _verify_key_access(
+        self, input_key: str, content_id: str, *, allow_event_access: bool = False
+    ) -> str:
         """
         Verify that a key grants access to a content item.
 
         Returns the key hash if access is granted.
         Raises ContentAccessError if the key is invalid or does not grant access.
+
+        Args:
+            input_key: The raw key string.
+            content_id: The content id to check (event, block, bulletin or asset).
+            allow_event_access: If True, also grant access when the content
+                belongs to an event the key can unlock. Used for read and
+                participation operations; destructive operations never enable it.
         """
         validation = self.key_manager.validate_key(input_key)
         if validation["status"] != "valid":
@@ -122,11 +131,22 @@ class ContentManager:
 
         key_hash = validation["hash"]
         content_ids = self.db.get_content_ids_for_key(key_hash)
-        if not any(c["content_id"] == content_id for c in content_ids):
-            message = "Key does not grant access to this content"
-            raise ContentAccessError(message)
+        if any(c["content_id"] == content_id for c in content_ids):
+            return key_hash
 
-        return key_hash
+        # Event-scope fallback: bulletins, media and content blocks belong to
+        # an event, so any key that can unlock that event may read them and
+        # contribute, even when the item was added after the key was issued
+        # (access keys snapshot their links at generation time).
+        if allow_event_access:
+            parent_event = self.db.get_parent_event(content_id)
+            if parent_event is not None and any(
+                c["content_id"] == parent_event for c in content_ids
+            ):
+                return key_hash
+
+        message = "Key does not grant access to this content"
+        raise ContentAccessError(message)
 
     # ------------------------------------------------------------------
     # Media Assets (Content Hosting)
@@ -201,7 +221,7 @@ class ContentManager:
             The media asset including decrypted binary data.
         """
         # Verify the key grants access to this asset
-        self._verify_key_access(input_key, asset_id)
+        self._verify_key_access(input_key, asset_id, allow_event_access=True)
 
         asset = self.db.get_media_asset(asset_id)
         if asset is None:
@@ -322,7 +342,7 @@ class ContentManager:
             The bulletin including decrypted body.
         """
         # Verify the key grants access to this bulletin
-        self._verify_key_access(input_key, bulletin_id)
+        self._verify_key_access(input_key, bulletin_id, allow_event_access=True)
 
         bulletin = self.db.get_bulletin(bulletin_id)
         if bulletin is None:
@@ -433,7 +453,7 @@ class ContentManager:
         self._validate_text(author_id, "author_id", MAX_AUTHOR_ID_LENGTH)
 
         # Verify the key grants access to this bulletin
-        key_hash = self._verify_key_access(input_key, bulletin_id)
+        key_hash = self._verify_key_access(input_key, bulletin_id, allow_event_access=True)
 
         # Generate a unique comment ID
         comment_id = self._generate_id("comment")
@@ -470,7 +490,7 @@ class ContentManager:
             List of comments including decrypted bodies.
         """
         # Verify the key grants access to this bulletin
-        self._verify_key_access(input_key, bulletin_id)
+        self._verify_key_access(input_key, bulletin_id, allow_event_access=True)
 
         return self.db.list_comments(bulletin_id)
 

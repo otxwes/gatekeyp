@@ -179,6 +179,58 @@ class TestMediaAssets:
         with pytest.raises(ContentAccessError):
             content_manager.get_media("local:other-key", result["id"])
 
+    def test_media_readable_by_event_key(
+        self, db, key_manager, content_manager, setup_event_and_key
+    ):
+        """An attendee (event-only) key can read media uploaded later by the organizer."""
+        raw_key = setup_event_and_key["raw_key"]
+        event_id = setup_event_and_key["event_id"]
+
+        # Organizer uploads media with their key
+        result = content_manager.upload_media(
+            input_key=raw_key,
+            event_id=event_id,
+            filename="flyer.png",
+            mime_type="image/png",
+            data=b"secret-flyer",
+        )
+
+        # A second key linked only to the event (like a later-issued access key)
+        attendee_raw = "local:attendee-key-abcdef123"
+        attendee_hash = key_manager.hash_key(attendee_raw.split(":", 1)[1])
+        db.add_key(hash_key=attendee_hash, key_type="access", owner_id="local")
+        db.add_key_content_link(attendee_hash, event_id, "event")
+
+        asset = content_manager.get_media(attendee_raw, result["id"])
+        assert asset["data"] == b"secret-flyer"
+
+        # A key with no event access at all is still denied
+        with pytest.raises(ContentAccessError):
+            content_manager.get_media("local:other-key", result["id"])
+
+    def test_media_not_deletable_by_event_key(
+        self, db, key_manager, content_manager, setup_event_and_key
+    ):
+        """Event access does not grant destructive rights (delete stays keyed to the author)."""
+        raw_key = setup_event_and_key["raw_key"]
+        event_id = setup_event_and_key["event_id"]
+
+        result = content_manager.upload_media(
+            input_key=raw_key,
+            event_id=event_id,
+            filename="flyer.png",
+            mime_type="image/png",
+            data=b"secret-flyer",
+        )
+
+        attendee_raw = "local:attendee-key-abcdef123"
+        attendee_hash = key_manager.hash_key(attendee_raw.split(":", 1)[1])
+        db.add_key(hash_key=attendee_hash, key_type="access", owner_id="local")
+        db.add_key_content_link(attendee_hash, event_id, "event")
+
+        with pytest.raises(ContentAccessError):
+            content_manager.delete_media(attendee_raw, result["id"])
+
     def test_list_media(self, content_manager, setup_event_and_key):
         """Test listing media assets for an event."""
         raw_key = setup_event_and_key["raw_key"]
@@ -464,6 +516,68 @@ class TestComments:
                 body="Should fail",
                 author_id="@bob:local",
             )
+
+    def test_attendee_event_key_can_comment(
+        self, db, key_manager, content_manager, setup_event_and_key
+    ):
+        """An attendee (event-only) key can comment on bulletins posted after the key was issued."""
+        raw_key = setup_event_and_key["raw_key"]
+        event_id = setup_event_and_key["event_id"]
+
+        bulletin = content_manager.create_bulletin(
+            input_key=raw_key,
+            event_id=event_id,
+            title="Announcement",
+            body="Posted by the organizer",
+            author_id="@organizer:local",
+        )
+
+        # Attendee key linked only to the event, not to the bulletin
+        attendee_raw = "local:attendee-key-abcdef123"
+        attendee_hash = key_manager.hash_key(attendee_raw.split(":", 1)[1])
+        db.add_key(hash_key=attendee_hash, key_type="access", owner_id="local")
+        db.add_key_content_link(attendee_hash, event_id, "event")
+
+        comment = content_manager.post_comment(
+            input_key=attendee_raw,
+            bulletin_id=bulletin["id"],
+            body="I will be there!",
+            author_id="@pebble:local",
+        )
+        assert comment["id"].startswith("comment_")
+
+        comments = content_manager.get_comments(attendee_raw, bulletin["id"])
+        assert len(comments) == 1
+        assert comments[0]["body"] == "I will be there!"
+
+    def test_attendee_cannot_delete_comment(
+        self, db, key_manager, content_manager, setup_event_and_key
+    ):
+        """Event access does not let attendees delete comments authored by others."""
+        raw_key = setup_event_and_key["raw_key"]
+        event_id = setup_event_and_key["event_id"]
+
+        bulletin = content_manager.create_bulletin(
+            input_key=raw_key,
+            event_id=event_id,
+            title="Announcement",
+            body="Posted by the organizer",
+            author_id="@organizer:local",
+        )
+        comment = content_manager.post_comment(
+            input_key=raw_key,
+            bulletin_id=bulletin["id"],
+            body="Organizer note",
+            author_id="@organizer:local",
+        )
+
+        attendee_raw = "local:attendee-key-abcdef123"
+        attendee_hash = key_manager.hash_key(attendee_raw.split(":", 1)[1])
+        db.add_key(hash_key=attendee_hash, key_type="access", owner_id="local")
+        db.add_key_content_link(attendee_hash, event_id, "event")
+
+        with pytest.raises(ContentAccessError):
+            content_manager.delete_comment(attendee_raw, comment["id"])
 
     def test_delete_comment(self, content_manager, setup_event_and_key):
         """Test deleting a comment."""
