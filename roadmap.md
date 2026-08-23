@@ -107,8 +107,8 @@ repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
 ## Phase 3.5: UX & Visual Design Iteration (Are.na-Minimal)
 *Goal: Take the SPA from "functional" to a deliberate, handcrafted identity — Are.na-informed minimal & sleek: quiet editorial, warm off-white ground, near-black ink, strong serif display type, generous air, hairline borders, one restrained accent, calm motion. This track *tightens* the Phase-3 editorial root rather than rebuilding it.*
 
-- [ ] Write `docs/design_system.md` — type pairing/scale/leading, light & dark theme tokens, spacing rhythm, radii/shadows, motion language (durations/easing + `prefers-reduced-motion`), and explicit "no generic generated-look" rules.
-- [ ] Typography + grid pass on `web/style.css` — tighten scale/measure/leading, impose a real grid on the desk & door surfaces, and tame the current "vibe-coded" looseness.
+- [x] Write `docs/design_system.md` — type pairing/scale/leading, light & dark theme tokens, spacing rhythm, radii/shadows, motion language (durations/easing + `prefers-reduced-motion`), and explicit "no generic generated-look" rules.
+- [x] Typography + grid pass on `web/style.css` — tighten scale/measure/leading, impose a real grid on the desk & door surfaces, and tame the current "vibe-coded" looseness.
 - [ ] Component + state unification — buttons/cards/badges/toasts/modals/empty/loading/error/focus/disabled consistent across both themes.
 - [ ] Motion & micro-interactions — route/tab transitions, modal & toast entrances, button feedback (keep reduced-motion support).
 - [ ] Build a small in-house motif/ornament set (stamps, hatches, key-art) reused by the UI and the Phase-3.6 invite cards.
