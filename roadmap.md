@@ -95,8 +95,8 @@
 Delivered as `web/app.js` — a hash-routed, dependency-free SPA that drives the
 repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
 - Organizer desk: create / open events (one-time master-key modal), then a
-  six-tab workspace — Overview, Content, Bulletin board, Media, Access keys,
-  Decommission — framed by a master-key banner.
+  four-tab workspace — Content, Bulletin board, Media, Access keys — plus a header
+  Decommission action, framed by a master-key banner.
 - Attendee door: unlock an invite with an access key, then read content, post
   on the bulletin board, leave comments, and view media — no account needed.
 - Session keys live only in `sessionStorage` (dropped when the tab closes);
@@ -105,26 +105,26 @@ repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
   (respects `prefers-color-scheme`), full keyboard support, reduced motion.
 
 ## Phase 3.5: UX & Visual Design Iteration (Are.na-Minimal)
-*Goal: Take the SPA from "functional" to a deliberate, handcrafted identity — Are.na-informed minimal & sleek: quiet editorial, warm off-white ground, near-black ink, strong serif display type, generous air, hairline borders, one restrained accent, calm motion. This track *tightens* the Phase-3 editorial root rather than rebuilding it.*
+*Goal: Take the SPA from "functional" to a deliberate, handcrafted identity — Are.na-informed minimal & sleek: quiet editorial, monochrome paper & ink (Monochrome Edition, v1 — the warm/vermilion palette is retired), strong serif display type, generous air, hairline borders, one ink accent, texture instead of color, calm motion. This track *tightens* the Phase-3 editorial root rather than rebuilding it.*
 
 - [x] Write `docs/design_system.md` — type pairing/scale/leading, light & dark theme tokens, spacing rhythm, radii/shadows, motion language (durations/easing + `prefers-reduced-motion`), and explicit "no generic generated-look" rules.
 - [x] Typography + grid pass on `web/style.css` — tighten scale/measure/leading, impose a real grid on the desk & door surfaces, and tame the current "vibe-coded" looseness.
 - [x] Component + state unification — buttons/cards/badges/toasts/modals/empty/loading/error/focus/disabled consistent across both themes.
 - [x] Motion & micro-interactions — route/tab transitions, modal & toast entrances, button feedback (keep reduced-motion support).
-- [ ] Build a small in-house motif/ornament set (stamps, hatches, key-art) reused by the UI and the Phase-3.6 invite cards.
-- [ ] Accessibility + responsive review (WCAG AA in both themes, 44px targets) and a light/dark x mobile/desktop x owner/attendee QA matrix.
+- [x] Build a small in-house motif/ornament set (stamps, hatches, key-art) reused by the UI and the Phase-3.6 invite cards. — **Done 2026-08-30.** Monochrome texture language (`web/style.css` §17): `--hatch-soft/-fill/-strong` fills, `.voided` composite + `--dot` paper tooth; wired into master banner, empty states, decommission modal, state badges, and toasts. Primitive classes (`hatch-*`, `.voided`) are the vocabulary Phase 3.6 invite cards build on. Documented as design-system §12.
+- [x] Accessibility + responsive review (WCAG AA in both themes, 44px targets) and a light/dark x mobile/desktop x owner/attendee QA matrix. — **Done 2026-08-30.** Grayscale ramp verified AA/AAA (ink 18.9:1 light / 18.0:1 dark; faint 5.3:1 / 7.0:1; chips ≥ 8:1 worst case); icon-btn raised 38→44px, tabs ≥ 40px; non-color status glyphs (`⚠`/`✓`) added to form notes; full matrix in `docs/qa_matrix.md`.
 
 ## Phase 3.6: Steganographic Invite Keys (Key-Distribution UX)
 *Goal: Replace the "copy/paste a hex blob" moment with a beautiful, shareable invite artifact that *contains* the key — dropped at the attendee door instead of typed. Server surface unchanged (HMAC + expiry + revocation); keys never leave a client tab.*
 *Sequencing: 3.5 founds the design system the invite cards are drawn on; 3.6 follows and may run in parallel with Phase 4 (Map).*
 
-- [ ] `web/stego.js` — zero-dependency PNG low-bit codec: manual PNG parse + `CompressionStream`/`DecompressionStream` inflate, LSB/RGB payload with checksum + repetition for robustness (avoids canvas colour-management corruption).
-- [ ] `web/invite_card.js` — canvas invite-card renderer (event title/date/location + Phase-3.5 ornament + QR fallback); embeds event id + access key.
-- [ ] Vendor MIT `qrcode-generator` (single-file, ~10 KB) as the "still scannable after social re-encode" fallback printed on the card.
-- [ ] Organizer UX — "Download invite card" beside the existing copy-key flow in the Access-keys tab.
-- [ ] Attendee UX — "drop or paste your invite" zone above the unlock form on the door; decode locally, auto-fill event id + access key (manual entry always works).
-- [ ] Docs — `docs/steganography_invites.md` + threat-model note (PNG-only / no-re-encode warning; opsec value vs. QR; payload = event id + access key; parity with expiry + revocation; no new server surface).
-- [ ] Tests — Hypothesis encode<->decode round-trips, decode of a known fixture, E2E via the demo server.
+- [x] `web/stego.js` — zero-dependency PNG low-bit codec: manual PNG parse + `CompressionStream`/`DecompressionStream` inflate, LSB/RGB payload with checksum + repetition for robustness (avoids canvas colour-management corruption). — **Done 2026-08-30.** Full codec (`embed`/`extract`/payload/QR helpers) mirrored byte-for-byte in `tests/stego_ref.py`; golden vectors + the JXA (JavaScriptCore) cross-check pin JS↔Python agreement, and caught two real bugs during development (missing IIFE invocation; float64-`SEED` imprecision).
+- [x] `web/invite_card.js` — canvas invite-card renderer (event title/date/location + Phase-3.5 ornament + QR fallback); embeds event id + access key. — **Done 2026-08-30.** Portrait 800×1200 paper-and-ink card (keyhole motif, hatch/keyline bands, dotted tooth, serif display type) + stego download.
+- [x] Vendor MIT `qrcode-generator` (single-file, ~10 KB) as the "still scannable after social re-encode" fallback printed on the card. — **Done 2026-08-30.** `web/vendor/qrcode-generator.js` + LICENSE.
+- [x] Organizer UX — "Download invite card" beside the existing copy-key flow in the Access-keys tab. — **Done 2026-08-30.** "Also make an invite card" in the one-shot key modal + per-row "Card" action (re-enters the raw key — keys are shown once by design and never stored).
+- [x] Attendee UX — "drop or paste your invite" zone above the unlock form on the door; decode locally, auto-fill event id + access key (manual entry always works). — **Done 2026-08-30.** Drop / paste image / paste `gkp:` text / choose file; auto-fills the existing form.
+- [x] Docs — `docs/steganography_invites.md` + threat-model note (PNG-only / no-re-encode warning; opsec value vs. QR; payload = event id + access key; parity with expiry + revocation; no new server surface). — **Done 2026-08-30.**
+- [x] Tests — Hypothesis encode<->decode round-trips, decode of a known fixture, E2E via the demo server. — **Done 2026-08-30.** 21 new tests (`tests/test_stego_invites.py`), committed fixture, JXA cross-check; live-server browser E2E is the final pass of this phase.
 
 ## Phase 4: Map & Navigation (Privacy-Preserving)
 *Goal: Integrate open-source maps without third-party tracking.*
@@ -174,9 +174,9 @@ repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
 
 ## Context for Future Sessions
 *This section is updated as we progress to maintain continuity.*
-- Current focus: Phase 3 - Frontend & UX/UI Design is **complete** (full SPA in `web/app.js`; redesign in `web/style.css`; markup repaired in `web/index.html`).
-- Next: Phase 3.5 - UX & Visual Design Iteration (Are.na-minimal), then Phase 3.6 - Steganographic Invite Keys, then Phase 4 - Map & Navigation.
-- Test suite: 140 tests passing (Phase-3/fix work and new `tests/test_api_server.py` are still uncommitted). On Apple Silicon, run `arch -x86_64 python -m pytest -q` (the venv's `cryptography` wheel is x86_64).
+- Current focus: Phase 3 - Frontend & UX/UI Design is **complete** (full SPA in `web/app.js`; redesign in `web/style.css`; markup repaired in `web/index.html`). Phase 3.5 - UX & Visual Design Iteration is **complete** (Monochrome Edition: B&W palette + motif set §19, a11y + QA matrix). Phase 3.6 - Steganographic Invite Keys is **complete** (codec + card + QR fallback + organizer/attendee UX + docs + tests).
+- Next: Phase 4 - Map & Navigation. Invite-card art reuses the Phase-3.5 motif primitives (`--hatch-*`, `.voided`) — design-system §12.
+- Test suite: 164 tests passing (`arch -x86_64 python -m pytest -q`; the venv's `cryptography` wheel is x86_64 on Apple Silicon). Plus `python -m tests.jxa_stego_check` for the JS↔Python codec agreement, and `python -m tests.stego_ref --write-fixture` to regenerate the invite-card fixture.
 - Environment uses `python3` (not `python`).
 - `KeyManager` accepts an optional shared `DatabaseHandler`; `Gateway` passes its own `db` to `KeyManager`.
 - `ContentManager` requires shared `DatabaseHandler` and `KeyManager` instances.

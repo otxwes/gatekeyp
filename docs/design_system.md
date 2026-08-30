@@ -1,6 +1,6 @@
 # GateKeyp Design System
 
-*`docs/design_system.md` — the source of truth for the visual & interaction language. v0 (Phase 3.5, 2026-08).*
+*`docs/design_system.md` — the source of truth for the visual & interaction language. v1 — Monochrome Edition (Phase 3.5, 2026-08). v0 shipped the warm/vermilion palette; v1 moves the UI to pure paper & ink and adds the motif set.*
 
 ## 1. Purpose
 
@@ -14,10 +14,11 @@ pattern isn't here, don't invent it in CSS — add it here first, then wire the 
 
 ## 2. Principles
 
-1. **Are.na-minimal, not SaaS-generic.** Quiet editorial warmth: warm paper, near-black ink,
-   generous air, hairline borders. If a screen "feels generated," it is wrong — see §9.
-2. **One accent, used as a verb.** Vermilion (`--accent`) is for *action and live state* —
-   primary buttons, links, active nav/tab, the key moment. It never decorates.
+1. **Are.na-minimal, not SaaS-generic.** Monochrome paper & ink, generous air, hairline
+   borders. If a screen "feels generated," it is wrong — see §8.
+2. **One ink, used as a verb.** Black (`--accent`) is the single accent — primary buttons,
+   active nav/tab, the key moment. It never decorates; in dark it inverts to white. Texture
+   (stamps, hatches — §12) does the work color used to do.
 3. **Text is the hero; type does the work.** Three faces, each with a job: serif display for
    identity & invitation, system sans for UI & reading, mono for keys & data. Nothing else.
 4. **Privacy-lean by construction.** No webfonts, no trackers, no remote assets. The UI is as
@@ -47,9 +48,9 @@ pattern isn't here, don't invent it in CSS — add it here first, then wire the 
 | lg | `--text-lg` | 22 | card & modal titles |
 | xl | `--text-xl` | 28 | *(reserved — panel titles)* |
 | 2xl | `--text-2xl` | 36 | view/page titles (fluid clamp) |
-| 3xl | `--text-3xl` | 48 | hero display (fluid clamp) |
+| 3xl | `--text-3xl` | 48 | *(reserved — keynote display)* |
 
-Display titles (`hero-title`, `view-title`, `ws-title`, `ep-title`) are **fluid** (`clamp()`), sitting
+Display titles (`view-title`, `ws-title`, `ep-title`) are **fluid** (`clamp()`), sitting
 between the fixed steps; everything else picks a step.
 
 ### 3.3 Leading & measure
@@ -78,22 +79,25 @@ Full definitions live in `web/style.css` §1; roles:
 
 | Token | Light | Dark | Role |
 |---|---|---|---|
-| `--paper` / `--paper-deep` | `#faf8f4` / `#f3efe7` | `#161412` / `#12110e` | page ground / wells & footer |
-| `--surface` / `--surface-2` | `#ffffff` / `#f5f1ea` | `#201d19` / `#27231f` | cards / inset wells |
-| `--ink` / `--ink-soft` / `--ink-faint` | `#21201c` / `#6d675c` / `#9b9488` | `#f0ece2` / `#b9b1a1` / `#827a6b` | text hierarchy |
-| `--line` / `--line-strong` | `#e6e0d4` / `#d8d0c2` | `#332e28` / `#423c34` | hairline borders |
-| `--accent` (+ deep / strong / soft) | `#c7421e` family | `#ff5c37` family | action, live state, key moment |
-| `--ok` / `--warn` / `--bad` (+ soft) | green / amber / red | brightened | semantic status |
-| `--ok-deep` / `--warn-deep` / `--bad-deep` | `#16663f` / `#7a530e` / `#9b2626` | `#44c08a` / `#d9aa47` / `#ff7d6b` | chip/badge ink on soft washes — AA in both themes (item 3) |
-| `--accent-contrast` / `--bad-contrast` | `#ffffff` / `#ffffff` | `#161210` / `#161210` | ink on filled accent/bad control surfaces (item 3) |
+| `--paper` / `--paper-deep` | `#ffffff` / `#f6f6f6` | `#0b0b0b` / `#080808` | page ground / wells & footer |
+| `--surface` / `--surface-2` | `#ffffff` / `#f2f2f2` | `#131313` / `#1a1a1a` | cards / inset wells |
+| `--ink` / `--ink-soft` / `--ink-faint` | `#111111` / `#4d4d4d` / `#6b6b6b` | `#f5f5f5` / `#c0c0c0` / `#9a9a9a` | text hierarchy |
+| `--line` / `--line-strong` | `#e2e2e2` / `#c9c9c9` | `#2a2a2a` / `#404040` | hairline borders |
+| `--accent` (+ deep / strong / soft) | `#111111` / `#000000` / `#333333` / ink 8% | `#f5f5f5` / `#ffffff` / `#d9d9d9` / white 10% | action, live state, key moment — ink |
+| `--ok` / `--warn` / `--bad` (+ soft) | `#111111` / `#4d4d4d` / `#111111` (+ `#ececec` / `#f4f4f4` / `#ececec`) | `#f5f5f5` / `#c0c0c0` / `#f5f5f5` (+ `#1c1c1c` / `#141414` / `#1c1c1c`) | semantic status — grayscale; meaning via motif §12 + glyphs, never hue |
+| `--ok-deep` / `--warn-deep` / `--bad-deep` | `#111111` / `#4d4d4d` / `#111111` | `#f5f5f5` / `#c0c0c0` / `#f5f5f5` | chip/badge ink on soft washes — AA in both themes (item 3) |
+| `--accent-contrast` / `--bad-contrast` | `#ffffff` / `#ffffff` | `#0b0b0b` / `#0b0b0b` | ink on filled accent/bad control surfaces (item 3) |
+| `--hatch-soft` / `--hatch-fill` / `--hatch-strong` | derived from `--line` / `--surface` (theme-aware) | same, auto | motif fills — texture language (§12) |
+| `--dot` | rgba black 4.5% | rgba white 5% | paper ground dot grid ("tooth") |
 
 ### 4.2 Rules
 
-- Accent is a **reserved color**: primary buttons, active nav/tab, links, highlights. Sparing by
-  design; the brand mark is the sole persistent accent element.
+- Accent is ink, the single **reserved** color: primary buttons, active nav/tab, links, key
+  moments. Sparing by design; the brand mark is the sole persistent accent element.
 - Hierarchy comes from the ink steps (`ink → ink-soft → ink-faint`), not from weight games.
-- Status colors always ride on a **soft wash** (`--ok-soft` etc.) for chips/badges — never raw
-  status color on raw surface.
+- Status is **monochrome + motif**: never hue alone. Badges, banners, and toasts pair ink with
+  shape/texture (§12) and glyphs (`⚠` / `✓`), so meaning survives color-blind viewers,
+  forced-colors overrides, and print.
 - Both themes hold WCAG AA for body text (§10).
 
 ## 5. Spacing & layout grid
@@ -103,13 +107,11 @@ Full definitions live in `web/style.css` §1; roles:
 - Use a step, never an ad-hoc px. Card inset `--space-5` (24), section y-gaps `--grid-gap`
   (24), micro-gaps `--space-2/3` (8/12). Vertical rhythm doubles around section boundaries.
 
-### 5.2 Grid & rails
+### 5.2 Grid
 - Container: `--container: 1080px` (single `.stage-inner`); text is narrowed further by measure.
-- Desk (`.ws-body`) and door (`.ep-grid`) are two-column: main `minmax(0, 1fr)` +
-  `--rail: 340px` sidebar — the same token, both surfaces. Rails collapse to one column < 900px.
-- Card stacks, `.split-cards`, and `.principles` all use the shared `--grid-gap` rhythm.
-- Breakpoints: **900** (collapse rails) · **640** (stack forms, full-width buttons) ·
-  **420** (tighten card padding).
+- Desk (`.ws-main`) and door (`.ep-main`) are single-column stacks — no side rails — gapped
+  with the shared `--grid-gap` rhythm (same as `.split-cards`).
+- Breakpoints: **640** (stack forms, full-width buttons) · **420** (tighten card padding).
 
 ## 6. Elevation & shape
 
@@ -171,29 +173,34 @@ themes* and resolves any drift. Canonical states:
 |---|---|---|
 | Buttons | `.btn` (+`-primary/-secondary/-ghost/-danger`, `-sm`, `-block`) | hover bg/border, `:active` 1px, `:disabled` 0.55 opacity |
 | Cards | `.card`, `.form-card` | resting `shadow-1`, `--line` hairline |
-| Badges / tags | `.badge` (+`-active/-revoked/-warn/-neutral/-ghost`), `.tag` | soft-wash bg + semantic ink, pill |
+| Badges / tags | `.badge` (+`-active/-revoked/-warn/-neutral/-ghost`), `.tag` | motif states: active = solid ink fill, warn = dashed keyline + wash, revoked = hatched + double keyline (§12), neutral/ghost = quiet chips |
 | Items / key rows | `.item`, `.key-detail-row` | hover `border-color` + `shadow-1` |
 | Toasts | `.toast` (+`-ok/-error`) | `--line-strong` + semantic left bar, in/out anim |
 | Modals | `.modal-backdrop`, `.modal` | backdrop dim + blur, `shadow-2`, `modal-in` |
-| Empty / loading / error | `.empty`(+`-title/-sub`), error toasts | dashed `--line-strong`, `--surface-2`, `measure-narrow` |
+| Empty / loading / error | `.empty`(+`-title/-sub`), error toasts | dashed `--line-strong`, `--hatch-fill` "ticket stub" (§12), `measure-narrow` |
 | Focus / disabled | `:focus-visible` ring, `[disabled]` | consistent; focus never removed |
 
 ## 10. Accessibility & responsive baseline
 
-- **Contrast:** WCAG AA in both themes. Spot checks (item 3, 2026-08): accent `#c7421e` on
-  white ≈ **5.0:1**; dark accent `#ff5c37` carries near-black `--accent-contrast` ≈ **6.1:1**;
-  light chips on soft washes — ok `#16663f` ≈ **6.0:1**, warn `#7a530e` ≈ **5.8:1**, bad
-  `#9b2626` ≈ **6.5:1**; dark chips — ok `#44c08a` ≈ **5.2:1**, warn `#d9aa47` ≈ **5.4:1**, bad
-  `#ff7d6b` ≈ **5.1:1** (worst-case `--surface-2`). Body `ink-soft`/`ink-faint` pairs already
-  pass 4.5+ in both themes; re-check when values drift.
-- **Targets:** ≥ 44px for primary controls; dense inline rows may use `btn-sm` with gaps so
-  effective touch zones stay usable.
+- **Contrast:** WCAG AA in both themes; body ink is AAA. Spot checks (Phase 3.5 monochrome,
+  2026-08): light ink `#111111` on white ≈ **18.9:1**; light soft `#4d4d4d` ≈ **8.5:1**;
+  light faint `#6b6b6b` ≈ **5.3:1** (on `--surface-2` `#f2f2f2` ≈ **4.8:1**); dark ink
+  `#f5f5f5` on `#0b0b0b` ≈ **18.0:1**; dark soft `#c0c0c0` ≈ **10.8:1**; dark faint `#9a9a9a`
+  ≈ **7.0:1** (on `#1a1a1a` ≈ **6.2:1**). Chips/badges: light `#111111`/`#4d4d4d` on
+  `#ececec`/`#f4f4f4` ≈ 10–14:1; dark `#f5f5f5`/`#c0c0c0` on `#1c1c1c`/`#141414` ≈ 8–10:1
+  (worst-case `--surface-2`). Filled buttons: `#111111` on white ≈ 18.9:1 and `#f5f5f5` on
+  `#0b0b0b` ≈ 18.0:1. Full audit lives in `docs/qa_matrix.md`; re-check when values drift.
+- **Targets:** ≥ 44px for primary controls (icon-btn 44×44, tabs ≥ 40px tall); dense inline
+  rows may use `btn-sm` with gaps so effective touch zones stay usable.
+- **Non-color signals:** because status is grayscale, meaning is double-coded — badges use
+  motif (§12) and form notes prefix `⚠` / `✓` glyphs. Verify new status UI carries a
+  non-color cue before shipping.
 - **Keyboard:** full tab order, skip link, `Escape` closes modals, `aria-selected` on tabs,
   live-region announcements for toasts.
 - **Reduced motion:** global §17 switch; anything that removes meaning (e.g., theme cross-fade)
   stays ≤ 250ms.
-- **QA matrix** (Phase 3.5 item 6): light × dark × mobile/desktop × owner/attendee, run before
-  shipping 3.5.
+- **QA matrix** (Phase 3.5 item 6): light × dark × mobile/desktop × owner/attendee — see
+  `docs/qa_matrix.md`.
 
 ## 11. Stack & dependencies policy (frontend)
 
@@ -213,7 +220,31 @@ themes* and resolves any drift. Canonical states:
   language is expressible via CSS + WAAPI; `app.js`'s router/`$`/`$$`/`esc()` patterns make a
   future port mechanical.
 
-## 12. Change management
+## 12. Motif set (Phase 3.5 item 5)
+
+With the palette reduced to pure ink, **texture is the second channel**: shape and pattern
+carry status and emphasis that hue used to carry. All motif fills are theme-aware (built from
+`--line` / `--surface` tokens at use time — they re-derive automatically in dark).
+
+| Motif | Definition | Used for |
+|---|---|---|
+| **Hatch, soft** `--hatch-soft` | 45° hairline, 10px period | revoked badges, decommission modal (`voided` composite) |
+| **Hatch, fill** `--hatch-fill` | 45° `surface`/`surface-2` weave | empty states ("ticket stub"), master banner ground |
+| **Hatch, strong** `--hatch-strong` | −45° `line-strong`, 5px period | reserved for the loudest voided moments |
+| **Stamp** | dashed / double keylines (`border-style`) | warn badges (dashed), revoked + decommission (double) |
+| **Dot tooth** `--dot` | 1px grid on the page ground | the paper's texture (body background) |
+
+Rules:
+
+- Texture is meaningful, never decorative: every hatch/stamp instance names a state
+  (well, voided, notice, quiet). If a surface's pattern has no job, remove it.
+- Status must never rely on pattern **or** ink alone — pair motif with glyphs/words
+  (`⚠`/`✓`, "Revoked", "Active") so meaning survives monochrome print and forced-colors.
+- The `.hatch-*` / `.voided` classes are the primitives the Phase 3.6 invite
+  cards build on — reuse the tokens, don't invent new textures.
+- The paper dot grid is capped at ~5% alpha in both themes; it is a tooth, not a pattern.
+
+## 13. Change management
 
 - Tokens live in `web/style.css` §1; this doc is the **intent layer**. A value changes in CSS
   *and* the intent is noted here.

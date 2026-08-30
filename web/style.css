@@ -1,9 +1,11 @@
 /* ============================================================
    gatekeyp — Web UI design system
-   Warm editorial minimalism: the community vermilion of cal.red,
-   the calm, considered grids of Are.na, system type stacks.
-   No webfonts, no trackers — the UI is as privacy-lean as the
-   product. Tokens drive both a paper-light and an ink-dark theme.
+   Monochrome editorial minimalism (Phase 3.5, 2026-08): pure
+   paper & ink, one grayscale ramp, texture instead of color.
+   Status is carried by shape, hatching, weight and glyphs —
+   never hue alone. No webfonts, no trackers — the UI is as
+   privacy-lean as the product. Tokens drive both a light and
+   a dark theme.
    ============================================================ */
 
 /* ------------------------------------------------------------
@@ -18,43 +20,57 @@
     --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas,
                  "Liberation Mono", monospace;
 
-    /* Light palette (warm paper) */
-    --paper: #faf8f4;
-    --paper-deep: #f3efe7;
+    /* Light palette (pure paper & ink) */
+    --paper: #ffffff;
+    --paper-deep: #f6f6f6;
     --surface: #ffffff;
-    --surface-2: #f5f1ea;
-    --ink: #21201c;
-    --ink-soft: #6d675c;
-    --ink-faint: #9b9488;
-    --line: #e6e0d4;
-    --line-strong: #d8d0c2;
+    --surface-2: #f2f2f2;
+    --ink: #111111;
+    --ink-soft: #4d4d4d;
+    --ink-faint: #6b6b6b;
+    --line: #e2e2e2;
+    --line-strong: #c9c9c9;
 
-    /* Vermilion accent — the cal.red nod */
-    --accent: #c7421e;
-    --accent-deep: #a73514;
-    --accent-strong: #e9572f;
-    --accent-soft: rgba(199, 66, 30, 0.09);
+    /* Accent = ink. The "key moment" is black-on-white; in dark
+       it inverts to white-on-black. No hue carries meaning. */
+    --accent: #111111;
+    --accent-deep: #000000;
+    --accent-strong: #333333;
+    --accent-soft: rgba(17, 17, 17, 0.08);
 
-    /* Semantic */
-    --ok: #1e7f4f;
-    --ok-soft: rgba(30, 127, 79, 0.12);
-    --warn: #9a6a12;
-    --warn-soft: rgba(178, 121, 24, 0.14);
-    --bad: #b92f2f;
-    --bad-soft: rgba(185, 47, 47, 0.11);
+    /* Semantic — monochrome. Distinction comes from the motif set
+       (solid / dashed / hatched) and glyphs, never hue alone. */
+    --ok: #111111;
+    --ok-soft: #ececec;
+    --warn: #4d4d4d;
+    --warn-soft: #f4f4f4;
+    --bad: #111111;
+    --bad-soft: #ececec;
 
     /* Ink for filled control surfaces (text/icon on accent & bad) — AA in both themes */
     --accent-contrast: #ffffff;
     --bad-contrast: #ffffff;
 
     /* Deeper status ink for chip/badge text on soft washes — AA on light ground */
-    --ok-deep: #16663f;
-    --warn-deep: #7a530e;
-    --bad-deep: #9b2626;
+    --ok-deep: #111111;
+    --warn-deep: #4d4d4d;
+    --bad-deep: #111111;
+
+    /* Motif fills (Phase 3.5 item 5) — texture does what color used to do.
+       Theme-aware: built from --line / --surface tokens at use time. */
+    --hatch-soft: repeating-linear-gradient(45deg,
+                   transparent 0 9px, var(--line) 9px 10px);
+    --hatch-fill: repeating-linear-gradient(45deg,
+                   var(--surface) 0 9px, var(--surface-2) 9px 10px);
+    --hatch-strong: repeating-linear-gradient(-45deg,
+                   transparent 0 5px, var(--line-strong) 5px 6px);
+
+    /* Faint dot grid on the page ground — the paper's tooth */
+    --dot: rgba(0, 0, 0, 0.045);
 
     /* Elevation + shape */
-    --shadow-1: 0 1px 2px rgba(30, 25, 18, 0.05), 0 2px 8px rgba(30, 25, 18, 0.05);
-    --shadow-2: 0 6px 22px rgba(30, 25, 18, 0.12), 0 2px 6px rgba(30, 25, 18, 0.07);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.06);
+    --shadow-2: 0 6px 22px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08);
     --radius-s: 6px;
     --radius-m: 10px;
     --radius-l: 16px;
@@ -88,8 +104,7 @@
     --measure-display: 56ch;  /* ledes / intros */
     --measure-narrow: 42ch;   /* centered micro-copy */
 
-    /* Layout grid — rails + rhythm primitives */
-    --rail: 340px;            /* desk & door side columns */
+    /* Layout grid — rhythm primitives */
     --grid-gap: var(--space-5);
 
     /* Motion — durations + easings (wired in the Phase 3.5 motion pass) */
@@ -105,36 +120,41 @@
 }
 
 [data-theme="dark"] {
-    --paper: #161412;
-    --paper-deep: #12110e;
-    --surface: #201d19;
-    --surface-2: #27231f;
-    --ink: #f0ece2;
-    --ink-soft: #b9b1a1;
-    --ink-faint: #827a6b;
-    --line: #332e28;
-    --line-strong: #423c34;
+    --paper: #0b0b0b;
+    --paper-deep: #080808;
+    --surface: #131313;
+    --surface-2: #1a1a1a;
+    --ink: #f5f5f5;
+    --ink-soft: #c0c0c0;
+    --ink-faint: #9a9a9a;
+    --line: #2a2a2a;
+    --line-strong: #404040;
 
-    --accent: #ff5c37;
-    --accent-deep: #ff7a52;
-    --accent-strong: #ff8a63;
-    --accent-soft: rgba(255, 92, 55, 0.14);
+    /* Accent = ink — white-on-black in dark */
+    --accent: #f5f5f5;
+    --accent-deep: #ffffff;
+    --accent-strong: #d9d9d9;
+    --accent-soft: rgba(245, 245, 245, 0.10);
 
-    --ok: #3cb876;
-    --ok-soft: rgba(60, 184, 118, 0.16);
-    --warn: #d3a13d;
-    --warn-soft: rgba(211, 161, 61, 0.16);
-    --bad: #ef6355;
-    --bad-soft: rgba(239, 99, 85, 0.15);
+    /* Semantic — monochrome (motif + glyph carry the meaning) */
+    --ok: #f5f5f5;
+    --ok-soft: #1c1c1c;
+    --warn: #c0c0c0;
+    --warn-soft: #141414;
+    --bad: #f5f5f5;
+    --bad-soft: #1c1c1c;
 
-    /* Ink for filled control surfaces — near-black on bright vermilion/semantic red (§10) */
-    --accent-contrast: #161210;
-    --bad-contrast: #161210;
+    /* Ink for filled control surfaces — black on bright white ink */
+    --accent-contrast: #0b0b0b;
+    --bad-contrast: #0b0b0b;
 
     /* Deep variants lifted a touch brighter than vivid — keeps badge/chip text ≥ 5:1 even on surface-2 (§10) */
-    --ok-deep: #44c08a;
-    --warn-deep: #d9aa47;
-    --bad-deep: #ff7d6b;
+    --ok-deep: #f5f5f5;
+    --warn-deep: #c0c0c0;
+    --bad-deep: #f5f5f5;
+
+    /* Dot grid flips to white specks on black paper */
+    --dot: rgba(255, 255, 255, 0.05);
 
     --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.3);
     --shadow-2: 0 6px 22px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
@@ -160,7 +180,9 @@ body {
     font-size: var(--text-base);
     line-height: var(--leading-normal);
     color: var(--ink);
-    background: var(--paper);
+    background:
+        radial-gradient(var(--dot) 1px, transparent 1px) 0 0 / 24px 24px,
+        var(--paper);
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -255,7 +277,7 @@ p {
     gap: var(--space-4);
     padding: var(--space-3) var(--space-5);
     background: color-mix(in srgb, var(--paper) 88%, transparent);
-    backdrop-filter: saturate(140%) blur(10px);
+    backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--line);
 }
 
@@ -322,8 +344,8 @@ p {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
     padding: 0;
     border: 1px solid var(--line);
     border-radius: var(--radius-s);
@@ -377,11 +399,6 @@ p {
     to   { opacity: 1; transform: translateY(0); }
 }
 
-.hero {
-    max-width: 720px;
-    padding: var(--space-6) 0 var(--space-8);
-}
-
 .eyebrow {
     font-size: var(--text-xs);
     font-weight: 700;
@@ -391,24 +408,11 @@ p {
     margin-bottom: var(--space-4);
 }
 
-.hero-title {
-    font-size: clamp(2.5rem, 5.5vw, 4rem);
-    line-height: var(--leading-display);
-    letter-spacing: -0.02em;
-    margin-bottom: var(--space-5);
-}
-
-.hero-lede {
-    font-size: clamp(1rem, 2vw, 1.125rem);
-    color: var(--ink-soft);
-    max-width: var(--measure-display);
-    margin-bottom: var(--space-6);
-}
-
-.hero-actions {
+.home-actions {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);
+    margin-top: var(--space-5);
 }
 
 .home-session {
@@ -436,24 +440,6 @@ p {
     gap: var(--space-2);
 }
 
-.principles {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-    gap: var(--grid-gap);
-    border-top: 1px solid var(--line);
-    padding-top: var(--space-7);
-}
-
-.principle h3 {
-    font-size: var(--text-md);
-    margin-bottom: var(--space-2);
-}
-
-.principle p {
-    color: var(--ink-soft);
-    font-size: var(--text-sm);
-}
-
 /* ------------------------------------------------------------
    6. View headers, buttons, cards, forms
    ------------------------------------------------------------ */
@@ -467,12 +453,6 @@ p {
     line-height: var(--leading-display);
     letter-spacing: -0.015em;
     margin-bottom: var(--space-3);
-}
-
-.view-sub {
-    color: var(--ink-soft);
-    font-size: var(--text-md);
-    max-width: var(--measure);
 }
 
 .split-cards {
@@ -499,12 +479,6 @@ p {
 .card-title {
     font-size: var(--text-lg);
     margin-bottom: var(--space-1);
-}
-
-.card-lead {
-    color: var(--ink-soft);
-    font-size: var(--text-sm);
-    margin-bottom: var(--space-4);
 }
 
 .field {
@@ -583,6 +557,61 @@ p {
     color: var(--ink-faint);
     border-left: 2px solid var(--accent);
     padding-left: var(--space-3);
+}
+
+/* Invite-card drop zone (Phase 3.6) — the door's "ticket stub": dashed
+   keyline + hatch fill, matching the empty-state motif (§12). */
+.key-drop {
+    display: block;
+    border: 1.5px dashed var(--line-strong);
+    border-radius: var(--radius-m);
+    background: var(--hatch-fill);
+    padding: var(--space-5);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+
+.key-drop:hover,
+.key-drop:focus-visible {
+    border-color: var(--accent);
+    outline: none;
+}
+
+.key-drop.is-drag {
+    border-color: var(--accent);
+    border-style: solid;
+    background: var(--surface-2);
+}
+
+.key-drop.is-busy .key-drop-title {
+    font-weight: 700;
+}
+
+.key-drop.is-done {
+    border-style: solid;
+    border-color: var(--accent);
+    background: var(--ok-soft);
+}
+
+.key-drop-icon {
+    display: block;
+    font-size: 1.6rem;
+    line-height: 1;
+    color: var(--ink);
+    margin-bottom: var(--space-2);
+}
+
+.key-drop-title {
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.key-drop-sub {
+    font-size: var(--text-sm);
+    color: var(--ink-faint);
+    margin-top: var(--space-1);
 }
 
 .btn {
@@ -721,7 +750,7 @@ p {
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-3) var(--space-4);
     cursor: pointer;
     white-space: nowrap;
     margin-bottom: -1px;
@@ -737,61 +766,25 @@ p {
     border-bottom-color: var(--accent);
 }
 
-.ws-body {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) var(--rail);
-    gap: var(--grid-gap);
-    align-items: start;
-}
-
-.ws-main,
-.ws-side {
+.ws-main {
     display: grid;
     gap: var(--grid-gap);
     align-content: start;
     min-width: 0;
 }
 
-.ws-section .card-title {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    margin-bottom: var(--space-2);
-}
-
-.ws-section .section-sub {
-    color: var(--ink-soft);
-    font-size: var(--text-sm);
-    margin-bottom: var(--space-4);
-}
-
-.section-divider {
-    border: none;
-    border-top: 1px solid var(--line);
-    margin: var(--space-4) 0;
-}
-
-/* Master-key banner */
+/* Master-key banner — a stamped notice: hairline hatch ground,
+   bold keyline edge. Texture replaces the old amber wash. */
 .master-banner {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);
     align-items: center;
-    background: var(--warn-soft);
-    border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+    background: var(--hatch-fill);
+    border: 1px solid var(--line-strong);
+    border-left: 4px solid var(--ink);
     border-radius: var(--radius-m);
     padding: var(--space-4) var(--space-5);
-}
-
-.master-banner .mb-copy {
-    margin-right: auto;
-    color: var(--ink);
-    font-size: var(--text-sm);
-}
-
-.master-banner .mb-copy strong {
-    color: var(--warn-deep);
 }
 
 /* Key value display (master key, access key) */
@@ -840,19 +833,29 @@ p {
     background: currentColor;
 }
 
+/* State badges — monochrome status by motif, not hue.
+   active   = solid ink fill (the strongest signal)
+   warn     = dashed keyline + soft wash (stamp in progress)
+   revoked  = hatched + double keyline (voided/stamped-over)
+   neutral  = plain chip (the quiet default) */
 .badge-active {
-    color: var(--ok-deep);
-    background: var(--ok-soft);
+    color: var(--accent-contrast);
+    background: var(--accent);
+    border-color: var(--accent);
 }
 
 .badge-revoked {
     color: var(--bad-deep);
-    background: var(--bad-soft);
+    background: var(--hatch-soft);
+    border: 1px solid var(--line-strong);
+    border-style: double;
 }
 
 .badge-warn {
     color: var(--warn-deep);
     background: var(--warn-soft);
+    border-color: var(--line-strong);
+    border-style: dashed;
 }
 
 .badge-neutral {
@@ -1000,12 +1003,12 @@ p {
     gap: var(--space-2);
 }
 
-/* Empty states */
+/* Empty states — a quiet "ticket stub": hatched fill + dashed keyline */
 .empty {
     text-align: center;
     border: 1px dashed var(--line-strong);
     border-radius: var(--radius-m);
-    background: var(--surface-2);
+    background: var(--hatch-fill);
     padding: var(--space-6) var(--space-5);
 }
 
@@ -1239,25 +1242,7 @@ p {
 }
 
 /* ------------------------------------------------------------
-   11. Danger zone
-   ------------------------------------------------------------ */
-.danger-zone {
-    border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
-    background: var(--bad-soft);
-}
-
-.danger-zone .section-sub {
-    color: var(--bad);
-}
-
-.verify-prompt {
-    font-size: var(--text-sm);
-    color: var(--ink-soft);
-    margin-top: var(--space-1);
-}
-
-/* ------------------------------------------------------------
-   12. Attendee event page
+   11. Attendee event page
    ------------------------------------------------------------ */
 .ep-head {
     margin-bottom: var(--space-6);
@@ -1298,15 +1283,7 @@ p {
     gap: var(--space-2);
 }
 
-.ep-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) var(--rail);
-    gap: var(--grid-gap);
-    align-items: start;
-}
-
-.ep-main,
-.ep-side {
+.ep-main {
     display: grid;
     gap: var(--grid-gap);
     align-content: start;
@@ -1345,23 +1322,7 @@ p {
 }
 
 /* ------------------------------------------------------------
-   13. Footer
-   ------------------------------------------------------------ */
-.footer {
-    border-top: 1px solid var(--line);
-    background: var(--paper-deep);
-    padding: var(--space-6) var(--space-5) var(--space-7);
-}
-
-.footer p {
-    max-width: var(--container);
-    margin: 0 auto;
-    color: var(--ink-faint);
-    font-size: var(--text-sm);
-}
-
-/* ------------------------------------------------------------
-   14. Toasts
+   12. Toasts
    ------------------------------------------------------------ */
 .toast-region {
     position: fixed;
@@ -1399,6 +1360,7 @@ p {
 
 .toast.toast-error {
     border-left-color: var(--bad);
+    background: var(--bad-soft);
 }
 
 .toast .toast-icon {
@@ -1441,13 +1403,13 @@ p {
 }
 
 /* ------------------------------------------------------------
-   15. Modals
+   13. Modals
    ------------------------------------------------------------ */
 .modal-backdrop {
     position: fixed;
     inset: 0;
     z-index: 80;
-    background: rgba(20, 16, 10, 0.45);
+    background: rgba(0, 0, 0, 0.45);
     backdrop-filter: blur(2px);
     display: flex;
     align-items: center;
@@ -1529,21 +1491,8 @@ p {
 }
 
 /* ------------------------------------------------------------
-   16. Responsive
+   14. Responsive
    ------------------------------------------------------------ */
-@media (max-width: 900px) {
-    .ws-body,
-    .ep-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .ws-side,
-    .ep-side {
-        border-top: 1px solid var(--line);
-        padding-top: var(--space-5);
-    }
-}
-
 @media (max-width: 640px) {
     .stage-inner {
         padding-top: var(--space-5);
@@ -1560,10 +1509,6 @@ p {
         width: 100%;
         border-top: 1px solid var(--line);
         padding-top: var(--space-2);
-    }
-
-    .hero {
-        padding: var(--space-5) 0 var(--space-7);
     }
 
     .inline-form {
@@ -1626,7 +1571,7 @@ p {
 }
 
 /* ------------------------------------------------------------
-   17. Reduced motion + print
+   15. Reduced motion + print
    ------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
     *,
@@ -1641,7 +1586,6 @@ p {
 
 @media print {
     .topbar,
-    .footer,
     .toast-region,
     .modal-backdrop {
         display: none !important;
@@ -1662,7 +1606,7 @@ p {
 }
 
 /* ------------------------------------------------------------
-   18. JS-rendered components (driven by app.js)
+   16. JS-rendered components (driven by app.js)
    ------------------------------------------------------------ */
 
 /* Ghost badge — subdued metadata chips */
@@ -1673,12 +1617,6 @@ p {
 }
 
 /* Section support text, used inside cards on the tab panels */
-.section-sub {
-    color: var(--ink-soft);
-    font-size: var(--text-sm);
-    margin: 0 0 var(--space-3);
-}
-
 .section-text {
     color: var(--ink-soft);
     font-size: var(--text-base);
@@ -1689,4 +1627,34 @@ p {
 /* Bulletin body text node (nested in the already-styled .bulletin-body) */
 .b-body-text {
     margin: 0 0 var(--space-3);
+}
+
+/* ------------------------------------------------------------
+   17. Motif set (Phase 3.5 item 5)
+   The in-house texture language that replaced hue as the carrier
+   of meaning: hatches (wells, voided surfaces) and stamps (dashed /
+   double keylines). These primitives are the vocabulary the Phase 3.6
+   invite cards build on.
+   ------------------------------------------------------------ */
+
+/* Hatch utilities — apply to any surface for a "printed" texture.
+   Theme-aware via --line / --surface tokens at use time. */
+.hatch-soft {
+    background: var(--hatch-soft);
+}
+
+.hatch-fill {
+    background: var(--hatch-fill);
+}
+
+.hatch-strong {
+    background: var(--hatch-strong);
+}
+
+/* "Voided" composite — hatched ground + double keyline. Reserved
+   for revoked / destructive surfaces (badges, danger zone). */
+.voided {
+    background: var(--hatch-soft);
+    border-style: double;
+    border-color: var(--line-strong);
 }
