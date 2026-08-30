@@ -133,9 +133,112 @@ window.gkpInviteCard = (function () {
         return id.length > 34 ? `${id.slice(0, 15)}…${id.slice(-14)}` : id;
     }
 
+    /**
+     * object-fit:cover crop rectangle for drawing a `srcW x srcH` source into a
+     * `dstW x dstH` box (center-crop, preserve aspect, never stretch). Pure and
+     * deterministic — pinned against the Python oracle in the JXA check.
+     */
+    function coverFit(srcW, srcH, dstW, dstH) {
+        if (!(srcW > 0) || !(srcH > 0) || !(dstW > 0) || !(dstH > 0)) {
+            return { sx: 0, sy: 0, sw: srcW, sh: srcH };
+        }
+        const scale = Math.max(dstW / srcW, dstH / srcH);
+        const sw = dstW / scale;
+        const sh = dstH / scale;
+        return { sx: (srcW - sw) / 2, sy: (srcH - sh) / 2, sw, sh };
+    }
+
+    /** Monochrome cover presets (Phase 3.7) — texture-only, from the motif set. */
+    function drawPreset(ctx, id, x, y, w, h) {
+        if (id === "hatch") {
+            drawHatch(ctx, x + 6, y + 6, w - 12, h - 12, 12, 1);
+        } else if (id === "keyline") {
+            const maxInset = Math.min(w, h) / 2 - 6;
+            ctx.save();
+            ctx.strokeStyle = LINE;
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 4; i++) {
+                const inset = Math.min(14 + i * 26, maxInset);
+                if (inset > 0) ctx.strokeRect(x + inset, y + inset, w - inset * 2, h - inset * 2);
+            }
+            ctx.restore();
+        } else if (id === "dots") {
+            drawDots(ctx, x, y, w, h, 22);
+        } else if (id === "keyhole") {
+            const step = 56;
+            for (let yy = y + 28; yy < y + h; yy += step) {
+                const offset = (Math.floor((yy - y) / step) % 2) ? step / 2 : 0;
+                for (let xx = x + offset + 28; xx < x + w; xx += step) {
+                    drawKeyhole(ctx, xx, yy, 11);
+                }
+            }
+        }
+    }
+
+    /**
+     * Draw the cover band (x, y, w, h). `cover` is absent / {type:"none"} (classic
+     * paper — nothing drawn), {type:"preset", id}, or {type:"image"} whose loaded
+     * `image` element is drawn cover-fit. The frame keyline always sits on top.
+     */
+    function drawCoverBand(ctx, x, y, w, h, cover, image) {
+        const c = cover && cover.type ? cover : { type: "none" };
+        if (c.type === "none") return;
+        ctx.save();
+        ctx.fillStyle = PAPER_DEEP;
+        ctx.fillRect(x, y, w, h);
+        if (c.type === "image" && image) {
+            const srcW = image.naturalWidth || image.width || 0;
+            const srcH = image.naturalHeight || image.height || 0;
+            const r = coverFit(srcW, srcH, w, h);
+            ctx.drawImage(image, r.sx, r.sy, r.sw, r.sh, x, y, w, h);
+        } else if (c.type === "preset") {
+            drawPreset(ctx, c.id, x, y, w, h);
+        }
+        ctx.strokeStyle = LINE_STRONG;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, w, h);
+        ctx.restore();
+    }
+
+    /** Render just the cover band at w x h (used for picker swatches). */
+    function renderCover(canvas, w, h, cover, image) {
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        // Always frame the swatch (paper ground + keyline) so "None" reads as
+        // paper rather than a blank block.
+        ctx.fillStyle = PAPER_DEEP;
+        ctx.fillRect(0, 0, w, h);
+        drawCoverBand(ctx, 0, 0, w, h, cover, image);
+        if (!cover || cover.type === "none") {
+            ctx.strokeStyle = LINE_STRONG;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(0, 0, w, h);
+        }
+        return canvas;
+    }
+
+    /** Resolve a {type:"image"} cover to a loaded Image (async). */
+    function loadCoverImage(cover) {
+        return new Promise((resolve, reject) => {
+            if (!cover || cover.type !== "image") return resolve(null);
+            if (cover.image) return resolve(cover.image);
+            const src = cover.url || cover.src;
+            if (!src) return reject(new Error("No cover image."));
+            const img = new Image();
+            img.onload = () => {
+                cover.image = img;
+                resolve(img);
+            };
+            img.onerror = () => reject(new Error("Could not load that cover image."));
+            img.src = src;
+        });
+    }
+
     /** Draw the card onto `canvas`. Pure and deterministic (testable). */
     function render(canvas, opts) {
         const o = opts || {};
+        const scale = o.scale > 0 ? o.scale : 1;
         const title = String(o.title || "Untitled event");
         const organizer = String(o.organizerId || "an organizer");
         const location = String(o.location || "");
@@ -143,8 +246,9 @@ window.gkpInviteCard = (function () {
         const accessKey = String(o.accessKey || "");
 
         const ctx = canvas.getContext("2d");
-        canvas.width = CARD_W;
-        canvas.height = CARD_H;
+        canvas.width = Math.round(CARD_W * scale);
+        canvas.height = Math.round(CARD_H * scale);
+        ctx.scale(scale, scale);
 
         // Paper ground + dotted tooth.
         ctx.fillStyle = PAPER;
@@ -171,28 +275,32 @@ window.gkpInviteCard = (function () {
         ctx.fillText("PRINTED KEY · INK ON PAPER", 52, 94);
         drawKeyhole(ctx, CARD_W - 78, 62, 20);
 
+        // Optional custom cover band (Phase 3.7): preset pattern or uploaded
+        // photo drawn cover-fit. Absent / "none" keeps the classic paper look.
+        drawCoverBand(ctx, 48, 150, CARD_W - 96, 240, o.cover, o.coverImage || null);
+
         // Serif display title.
         ctx.fillStyle = INK;
         ctx.font = `600 78px ${FONT_SERIF}`;
         ctx.textBaseline = "alphabetic";
-        wrapText(ctx, title, 48, 320, CARD_W - 96, 96, 3);
+        wrapText(ctx, title, 48, 430, CARD_W - 96, 96, 3);
 
         // Rule under the title.
         ctx.strokeStyle = LINE_STRONG;
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(48, 486);
-        ctx.lineTo(CARD_W - 48, 486);
+        ctx.moveTo(48, 560);
+        ctx.lineTo(CARD_W - 48, 560);
         ctx.stroke();
 
         // Meta block.
         ctx.fillStyle = INK_SOFT;
         ctx.font = `500 30px ${FONT_SANS}`;
-        ctx.fillText(`by ${organizer}`, 48, 552);
+        ctx.fillText(`by ${organizer}`, 48, 596);
         if (location) {
             ctx.font = `500 26px ${FONT_SANS}`;
             ctx.fillStyle = INK_FAINT;
-            wrapText(ctx, location, 48, 606, CARD_W - 96, 38, 2);
+            wrapText(ctx, location, 48, 650, CARD_W - 96, 38, 2);
         }
 
         // QR fallback (survives re-encoding by photo apps).
@@ -227,9 +335,11 @@ window.gkpInviteCard = (function () {
      * Returns the Blob (for tests / preview) after downloading.
      */
     async function download(opts) {
-        const payload = window.gkpStego.makePayload(opts.eventId, opts.accessKey);
+        const o = opts || {};
+        const coverImage = o.cover && o.cover.type === "image" ? await loadCoverImage(o.cover) : null;
+        const payload = window.gkpStego.makePayload(o.eventId, o.accessKey);
         const canvas = document.createElement("canvas");
-        render(canvas, opts);
+        render(canvas, { ...o, coverImage });
         const png = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
         const stegoBlob = await window.gkpStego.embed(png, payload);
         const url = URL.createObjectURL(stegoBlob);
@@ -243,5 +353,5 @@ window.gkpInviteCard = (function () {
         return stegoBlob;
     }
 
-    return { render, download, safeFileName };
+    return { render, download, safeFileName, renderCover, coverFit, loadCoverImage };
 })();

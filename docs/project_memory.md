@@ -329,3 +329,40 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
   JPEG* to exercise the QR fallback and the honest rejection), then commit C
   (resilience batch) and D (custom covers).
 - Manual visual pass on the card art and the door drop zone (light/dark, mobile).
+
+### 2026-08-30 — Commit C (door QR resilience) + Commit D (custom covers)
+
+**Commit C — resilience batch** (landed `447b26a`):
+- `web/vendor/jsqr.js` (+ Apache-2.0 LICENSE), `web/door_qr.js` local QR decode
+  at the door, `classifyInvite`/`inviteRejectReason` honest rejection + share
+  guidance; JXA pins for the door helpers + a QR encoder→jsQR round-trip.
+
+**Commit D — custom covers** (this commit):
+- `web/invite_card.js` — cover engine: `coverFit` (object-fit:cover crop
+  math), `drawPreset` (hatch / keyline / dots / keyhole), `drawCoverBand`,
+  `renderCover` (picker swatches), async `loadCoverImage`; `render()` gained a
+  `scale` option (live 200×300 preview) and draws the cover band (704×240)
+  above the title — title/rule/meta shifted down, QR + bottom rail untouched.
+- `web/app.js` — `openCardCoverModal` (preset chips with live swatches +
+  "Own image…" upload + live preview); both the one-shot card button and the
+  per-row "Card" action route through it (purely client-side; keys never leave
+  the tab). Also fixed a pre-existing `$(" #key-card-key")` leading-space
+  selector bug in the same function.
+- `web/style.css` §18 — cover picker + preview styles (token-driven,
+  monochrome, dark-safe).
+- `tests/card_ref.py` — oracle mirror (`cover_fit` + canonical preset ids);
+  `tests/test_invite_card_cover.py` — golden vectors, Hypothesis
+  object-fit:cover properties, JS↔oracle preset-id lock-step; the JXA harness
+  now also loads `invite_card.js` and pins `coverFit` vs Python; E2E static
+  needle for `coverFit`.
+- No tests pin the card geometry, so shifting the title/rule/meta down was
+  safe; the stego E2E loop is geometry-agnostic (still green).
+
+**Verified:** `arch -x86_64 python -m pytest -q` green; ruff clean; JXA-OK
+(incl. the new `coverFit` pins); door-QR smoke green; card renders with
+presets and an uploaded image in the manual browser pass.
+
+**Next steps:**
+- Phase 4 — Map & Navigation.
+- Optional cover polish: more presets / per-preset density variants; per-event
+  cover persistence would need server surface and is deliberately out of scope.

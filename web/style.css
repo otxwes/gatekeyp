@@ -1663,3 +1663,78 @@ p {
     border-style: double;
     border-color: var(--line-strong);
 }
+
+/* ------------------------------------------------------------
+   18. Invite card cover picker (Phase 3.7)
+   The make-card modal's cover chooser: preset swatches + own
+   image upload + a live card preview. Monochrome, token-driven.
+   ------------------------------------------------------------ */
+
+.cover-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: var(--space-2) 0 var(--space-2);
+}
+
+.cover-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 96px;
+    padding: var(--space-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-m);
+    background: var(--paper);
+    color: var(--ink-soft);
+    font-size: var(--text-sm);
+    font-family: var(--font-sans);
+    cursor: pointer;
+    transition:
+        border-color var(--dur-fast) var(--ease-out),
+        box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.cover-chip canvas {
+    width: 88px;
+    height: 30px;
+    display: block;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-s);
+    background: var(--paper-deep);
+}
+
+.cover-chip:hover {
+    border-color: var(--line-strong);
+}
+
+.cover-chip.is-selected {
+    border-color: var(--ink);
+    box-shadow: 0 0 0 1px var(--ink);
+}
+
+.cover-upload {
+    justify-content: center;
+    min-height: 78px;
+}
+
+.cover-upload-icon {
+    font-size: var(--text-lg);
+    line-height: 1;
+    color: var(--ink-soft);
+}
+
+.card-preview-wrap {
+    margin-top: var(--space-3);
+    text-align: center;
+}
+
+#card-preview {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-m);
+    box-shadow: var(--shadow-1);
+    width: 200px;
+    height: 300px;
+    background: var(--paper-deep);
+}

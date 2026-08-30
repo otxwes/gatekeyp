@@ -48,6 +48,9 @@ TextDecoder.prototype.decode = function (bytes) {
 var window = {};
 __STEGO_MODULE_SOURCE__
 
+// --- The shipped invite-card module, hooked to expose coverFit via __test ---
+__CARD_MODULE_SOURCE__
+
 // --- Vendored encoder + decoder for the QR fallback round-trip ---
 var self = {};
 __QR_ENCODER_SOURCE__
@@ -140,6 +143,23 @@ Object.keys(exp.rejectReasons).forEach(function (kind) {
     var got = T.inviteRejectReason(kind);
     if (got !== exp.rejectReasons[kind]) failures.push("inviteRejectReason mismatch for " + kind);
 });
+
+// invite-card coverFit vs Python oracle (object-fit:cover crop rectangle).
+// The card module must also have loaded and exposed its internals.
+var C = window.gkpInviteCard && window.gkpInviteCard.__test;
+if (!C) {
+    failures.push("invite_card.js did not load / expose __test.coverFit");
+} else {
+    exp.coverFit.forEach(function (c) {
+        var got = C.coverFit(c.src[0], c.src[1], c.dst[0], c.dst[1]);
+        var want = c.want;
+        if (Math.abs(got.sx - want[0]) > 1e-9 || Math.abs(got.sy - want[1]) > 1e-9 ||
+            Math.abs(got.sw - want[2]) > 1e-9 || Math.abs(got.sh - want[3]) > 1e-9) {
+            failures.push("coverFit mismatch for " + c.src + " -> " + c.dst +
+                ": got " + JSON.stringify(got) + " want " + JSON.stringify(want));
+        }
+    });
+}
 
 // QR fallback round-trip: vendored encoder -> RGBA pixel buffer -> vendored jsQR.
 // This is exactly what web/door_qr.js does in the browser, minus the canvas.

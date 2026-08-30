@@ -110,13 +110,15 @@ decodes any valid PNG an attendee brings.
 | File | Role |
 |---|---|
 | `web/stego.js` | zero-dependency codec: `embed` / `extract` / `makePayload` / `parsePayload` / `qrPayload` / `parseQrPayload` |
-| `web/invite_card.js` | canvas card renderer (`render`) + embed-and-download (`download`) |
+| `web/invite_card.js` | canvas card renderer (`render`, optional custom cover band) + embed-and-download (`download`) + cover engine (`coverFit`, `drawPreset`, `drawCoverBand`, `renderCover`, `loadCoverImage`) |
 | `web/vendor/qrcode-generator.js` | MIT `kazuhikoarase` QR encoder (single file, unmodified) |
 | `web/vendor/qrcode-generator-LICENSE.txt` | its MIT license |
 | `tests/stego_ref.py` | stdlib-only Python mirror (the oracle) + `--write-fixture` / `--decode` CLI |
 | `tests/test_stego_invites.py` | Hypothesis round-trips, golden vectors, filter/CRC coverage, corruption recovery, fixture decode |
+| `tests/card_ref.py` | stdlib-only mirror of the cover math (`cover_fit`) + canonical preset ids |
+| `tests/test_invite_card_cover.py` | cover-fit golden vectors + Hypothesis object-fit:cover properties + JS↔oracle preset-id lock-step |
 | `tests/fixtures/invite_fixture.png` | committed card whose payload is pinned in the tests |
-| `tests/jxa_stego_check.py` + `.js` | parses the *shipped* JS in JavaScriptCore and pins its internals to Python golden values (no Node needed) |
+| `tests/jxa_stego_check.py` + `.js` | parses the *shipped* JS in JavaScriptCore and pins its internals (incl. the invite-card `coverFit`) to Python golden values (no Node needed) |
 | `tests/door_unlock.py` | live-server door check: decode a card PNG and POST its values to `/api/access` (prints `LIVE-E2E-OK`) |
 | `tests/test_stego_e2e.py` | full loop against the FastAPI app via TestClient (create → key → card → decode → unlock → revoke-parity) + static-file serving |
 
@@ -135,9 +137,10 @@ decodes any valid PNG an attendee brings.
    containers, the door `classifyInvite`/`inviteRejectReason` against Python —
    and round-trips the vendored QR encoder → jsQR decoder (the exact door
    fallback path) — catching e.g. the float64-seed trap and a missing IIFE
-   invocation that pure review missed. JXA's BigInt `%` is broken, so
-   positions are re-derived with bitwise long division; the real `%` path is
-   covered by the browser E2E.
+   invocation that pure review missed. Since Phase 3.7 it also loads
+   `web/invite_card.js` and pins its `coverFit` crop math against
+   `tests/card_ref.py`. JXA's BigInt `%` is broken, so positions are re-derived
+   with bitwise long division; the real `%` path is covered by the browser E2E.
 6. **Fixture** `tests/fixtures/invite_fixture.png` regenerates with
    `python -m tests.stego_ref --write-fixture`.
 
@@ -162,6 +165,11 @@ arch -x86_64 python -m pytest -q               # full suite (Apple Silicon)
   more (keys are shown only at generation and never stored), then downloads
   the card. This covers the "organizer still has it in their chat history"
   case.
+- **Custom covers** (Phase 3.7). Both card paths open a cover picker first:
+  preset monochrome patterns (hatch / keyline / dots / keyhole) or the
+  organizer's own image, drawn *cover-fit* on a 704×240 band at the top of the
+  card, with a live 200×300 preview before download. Purely client-side — the
+  cover never leaves the tab, and the hidden key + printed QR are untouched.
 - The card embeds the event id and current event metadata (title, organizer,
   location) from the workspace session.
 
@@ -223,3 +231,6 @@ arch -x86_64 python -m pytest -q               # full suite (Apple Silicon)
 - The stego placement is deterministic (fixed seed); this is deliberate — the
   key is the secret, not the placement — and keeps the format auditable and
   the two implementations in lock-step.
+- Covers are chosen per-download and not persisted (no server surface, and
+  cover files are never uploaded); a remembered per-event cover would need
+  storage and is deliberately out of scope.

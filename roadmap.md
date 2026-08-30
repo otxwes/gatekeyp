@@ -127,6 +127,13 @@ repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
 - [x] Docs — `docs/steganography_invites.md` + threat-model note (PNG-only / no-re-encode warning; opsec value vs. QR; payload = event id + access key; parity with expiry + revocation; no new server surface). — **Done 2026-08-30.**
 - [x] Tests — Hypothesis encode<->decode round-trips, decode of a known fixture, E2E via the demo server. — **Done 2026-08-30.** 21 new tests (`tests/test_stego_invites.py`), committed fixture, JXA cross-check; live-server browser E2E is the final pass of this phase.
 
+## Phase 3.7: Custom Card Covers (Client-Side)
+*Goal: Let organizers personalize the invite card's top band — preset monochrome patterns by default, or their own image drawn cover-fit. Purely client-side (consistent with the keys-never-leave-tab design); the hidden key and the printed QR are untouched.*
+
+- [x] Cover engine in `web/invite_card.js` — `coverFit` (object-fit:cover crop math), `drawPreset` (hatch / keyline / dots / keyhole motifs), `drawCoverBand`, `renderCover` (picker swatches), async image-cover loading; `render()` gained a `scale` option and draws the cover band (704×240) above the title. — **Done 2026-08-30.** Title/rule/meta shifted down; QR + bottom rail untouched (no tests pin the card geometry, so the shift was safe).
+- [x] Cover picker in `web/app.js` — shared `openCardCoverModal` (preset chips with live canvas swatches + "Own image…" upload + live 200×300 card preview), routed from both the one-shot card button and the per-row "Card" action. — **Done 2026-08-30.**
+- [x] Tests — `tests/card_ref.py` oracle + `tests/test_invite_card_cover.py` (golden vectors, Hypothesis object-fit:cover properties, JS↔oracle preset-id lock-step); the JXA cross-check now also loads `invite_card.js` and pins `coverFit` vs Python; E2E static needle. — **Done 2026-08-30.**
+
 ## Phase 4: Map & Navigation (Privacy-Preserving)
 *Goal: Integrate open-source maps without third-party tracking.*
 - [ ] Select open-source map tiles (e.g., OpenStreetMap, self-hosted).
@@ -175,7 +182,7 @@ repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
 
 ## Context for Future Sessions
 *This section is updated as we progress to maintain continuity.*
-- Current focus: Phase 3 - Frontend & UX/UI Design is **complete** (full SPA in `web/app.js`; redesign in `web/style.css`; markup repaired in `web/index.html`). Phase 3.5 - UX & Visual Design Iteration is **complete** (Monochrome Edition: B&W palette + motif set §19, a11y + QA matrix). Phase 3.6 - Steganographic Invite Keys is **complete** (codec + card + QR encode/fallback + organizer/attendee UX + door QR decode + honest rejection + share guidance + docs + tests).
+- Current focus: Phase 3 - Frontend & UX/UI Design is **complete** (full SPA in `web/app.js`; redesign in `web/style.css`; markup repaired in `web/index.html`). Phase 3.5 - UX & Visual Design Iteration is **complete** (Monochrome Edition: B&W palette + motif set §19, a11y + QA matrix). Phase 3.6 - Steganographic Invite Keys is **complete** (codec + card + QR encode/fallback + organizer/attendee UX + door QR decode + honest rejection + share guidance + docs + tests). Phase 3.7 - Custom Card Covers is **complete** (preset monochrome covers + own-image upload drawn cover-fit; client-side only).
 - Next: Phase 4 - Map & Navigation. Invite-card art reuses the Phase-3.5 motif primitives (`--hatch-*`, `.voided`) — design-system §12.
 - Test suite: 166 tests passing (`arch -x86_64 python -m pytest -q`; the venv's `cryptography` wheel is x86_64 on Apple Silicon). Plus `python -m tests.jxa_stego_check` for the JS↔Python codec agreement, and `python -m tests.stego_ref --write-fixture` to regenerate the invite-card fixture.
 - Environment uses `python3` (not `python`).
