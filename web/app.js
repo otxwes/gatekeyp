@@ -221,13 +221,17 @@ function openKeyModal(label, keyValue, cardOpts = null) {
     const cardButton = cardOpts
         ? `<button class="btn btn-secondary btn-block" type="button" id="key-card-btn">Also make an invite card</button>`
         : "";
+    const cardHint = cardOpts
+        ? `<p class="field-hint">Send the card as a file or attachment, not a photo — re-encoding it in a chat destroys the hidden key. Its printed QR is the fallback.</p>`
+        : "";
     openModal({
         title: label,
         body:
             `<p>Copy this key now — it is shown only once and cannot be recovered later.</p>` +
             `<div class="keycode-full"><code class="keycode kc-value">${esc(keyValue)}</code>` +
             `<button class="btn btn-secondary" type="button" id="key-copy-btn">Copy</button></div>` +
-            cardButton,
+            cardButton +
+            cardHint,
         confirmText: "Done",
         cancelText: "Close",
         onConfirm: async () => {},
@@ -1009,7 +1013,8 @@ function openKeyCardModal(owner) {
             `<p>The raw access key is shown only once at generation and is not stored again. ` +
             `Enter the <strong>${esc(owner || "key")}</strong> value you were given to embed it in a card.</p>` +
             `<div class="field"><label for="key-card-key">Access key</label>` +
-            `<input type="password" id="key-card-key" spellcheck="false" autocomplete="off" placeholder="local:…"></div>`,
+            `<input type="password" id="key-card-key" spellcheck="false" autocomplete="off" placeholder="local:…"></div>` +
+            `<p class="field-hint">Send the finished card as a file or attachment — re-encoding it destroys the hidden key (its printed QR is the fallback).</p>`,
         confirmText: "Make card",
         cancelText: "Cancel",
         onConfirm: async () => {
@@ -1190,16 +1195,38 @@ async function handleInvitePng(file) {
     if (noteEl) note(noteEl, "");
     setDropBusy(drop, true, "Reading the key…");
     try {
-        const payload = await window.gkpStego.extract(file);
-        const parsed = payload !== null ? window.gkpStego.parsePayload(payload) : null;
-        if (!parsed) throw new Error("No gatekeyp key found in that image.");
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const kind = window.gkpStego.classifyInvite(bytes);
+
+        // 1) Hidden-key path — PNG cards drop the key straight out of the pixels.
+        let parsed = null;
+        if (kind === "png") {
+            const payload = await window.gkpStego.extract(bytes);
+            parsed = payload !== null ? window.gkpStego.parsePayload(payload) : null;
+        }
+        // 2) QR fallback — any raster image (re-encoded / photographed cards).
+        //    The hidden key dies on re-encode, but the printed QR survives.
+        if (!parsed) {
+            const qrText = await window.gkpDoorQr.decode(file);
+            const qp = qrText ? window.gkpStego.parseQrPayload(qrText.trim()) : null;
+            if (qp) parsed = { eventId: qp.eventId, accessKey: qp.accessKey, viaQr: true };
+        }
+        // 3) Honest, specific rejection instead of a generic failure.
+        if (!parsed) throw new Error(window.gkpStego.inviteRejectReason(kind));
+
         const form = $("#join-form");
         if (form) {
             form.elements.event_id.value = parsed.eventId;
             form.elements.access_key.value = parsed.accessKey;
         }
         if (drop) drop.classList.add("is-done");
-        toast("Key read from your card — unlock when ready.", "ok", "Invite found");
+        toast(
+            parsed.viaQr
+                ? "QR fallback read from your card — unlock when ready."
+                : "Key read from your card — unlock when ready.",
+            "ok",
+            parsed.viaQr ? "Invite found (QR)" : "Invite found"
+        );
         const btn = $("#join-btn");
         if (btn) btn.focus();
     } catch (err) {

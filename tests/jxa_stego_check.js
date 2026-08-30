@@ -48,6 +48,11 @@ TextDecoder.prototype.decode = function (bytes) {
 var window = {};
 __STEGO_MODULE_SOURCE__
 
+// --- Vendored encoder + decoder for the QR fallback round-trip ---
+var self = {};
+__QR_ENCODER_SOURCE__
+__JSQR_SOURCE__
+
 var T = window.gkpStego.__test;
 var exp = JSON.parse(readFile("__EXPECTED_JSON__"));
 var failures = [];
@@ -123,6 +128,56 @@ exp.badContainers.forEach(function (hex) {
     var bytes = Uint8Array.from(hex.match(/.{2}/g).map(function (h) { return parseInt(h, 16); }));
     if (T.parseContainer(bytes) !== null) failures.push("parseContainer accepted corrupted bytes: " + hex);
 });
+
+// door classifyInvite vs Python oracle (magic-byte sniffing)
+exp.classify.forEach(function (c) {
+    var got = T.classifyInvite(Uint8Array.from(c.bytes));
+    if (got !== c.hex) failures.push("classifyInvite mismatch: got " + got + " want " + c.hex);
+});
+
+// inviteRejectReason vs Python oracle (unknown kinds fall back to "other")
+Object.keys(exp.rejectReasons).forEach(function (kind) {
+    var got = T.inviteRejectReason(kind);
+    if (got !== exp.rejectReasons[kind]) failures.push("inviteRejectReason mismatch for " + kind);
+});
+
+// QR fallback round-trip: vendored encoder -> RGBA pixel buffer -> vendored jsQR.
+// This is exactly what web/door_qr.js does in the browser, minus the canvas.
+function qrPixelBuffer(text) {
+    var qr = qrcode(0, "M");
+    qr.addData(text);
+    qr.make();
+    var n = qr.getModuleCount();
+    var scale = 6, margin = 4;
+    var size = (n + margin * 2) * scale;
+    var data = new Uint8Array(size * size * 4);
+    for (var y = 0; y < size; y++) {
+        for (var x = 0; x < size; x++) {
+            var mRow = Math.floor(y / scale) - margin;
+            var mCol = Math.floor(x / scale) - margin;
+            var dark = mRow >= 0 && mRow < n && mCol >= 0 && mCol < n && qr.isDark(mRow, mCol);
+            var i = (y * size + x) * 4;
+            var v = dark ? 0 : 255;
+            data[i] = v; data[i + 1] = v; data[i + 2] = v; data[i + 3] = 255;
+        }
+    }
+    return { data: data, width: size, height: size };
+}
+exp.qrRoundTrip.forEach(function (text) {
+    var c = qrPixelBuffer(text);
+    var res = self.jsQR(c.data, c.width, c.height, { inversionAttempts: "attemptBoth" });
+    if (!res || res.data !== text) {
+        failures.push("QR round-trip failed for " + text + " (got " + (res ? res.data : "null") + ")");
+    }
+});
+// Decoding pure noise must not crash and must yield null (guarded in door_qr.js).
+(function () {
+    var noise = new Uint8Array(96 * 96 * 4);
+    for (var i = 0; i < noise.length; i++) noise[i] = (i * 7 + 3) & 255;
+    var res = null;
+    try { res = self.jsQR(noise, 96, 96); } catch (e) {}
+    if (res !== null) failures.push("jsQR decoded noise (expected null)");
+})();
 
 if (failures.length) {
     console.log("JXA-FAIL:\n" + failures.join("\n"));

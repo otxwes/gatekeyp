@@ -105,6 +105,32 @@ def test_qr_payload_roundtrip() -> None:
     assert stego_ref.parse_qr_payload("gkp:event_x") is None  # no colon separator
 
 
+def test_classify_invite_magic_bytes() -> None:
+    png = _random_png(1, 8, 8)
+    assert stego_ref.classify_invite(png) == "png"
+    assert stego_ref.classify_invite(b"\xff\xd8\xff\xe0" + b"\x00" * 20) == "jpeg"
+    assert stego_ref.classify_invite(b"RIFF\x00\x00\x00\x00WEBP" + b"\x00" * 20) == "webp"
+    assert stego_ref.classify_invite(b"GIF89a" + b"\x00" * 20) == "gif"
+    assert stego_ref.classify_invite(b"GIF87a" + b"\x00" * 20) == "gif"
+    assert stego_ref.classify_invite(b"BM\x00\x00\x00\x00" + b"\x00" * 20) == "bmp"
+    assert stego_ref.classify_invite(b"not an image, just text") == "other"
+    assert stego_ref.classify_invite(b"\x89PNG") == "other"  # too short to trust
+    assert stego_ref.classify_invite(b"") == "other"
+
+
+def test_invite_reject_reason_messages() -> None:
+    # The exact strings are pinned JS<->Python by the JXA cross-check; here we
+    # only guard intent (specific, honest guidance per image kind).
+    assert "gatekeyp card" in stego_ref.invite_reject_reason("png")
+    assert "re-encoded" in stego_ref.invite_reject_reason("jpeg")
+    assert stego_ref.invite_reject_reason("webp") == stego_ref.invite_reject_reason("jpeg")
+    assert "PNGs" in stego_ref.invite_reject_reason("gif")
+    assert "PNGs" in stego_ref.invite_reject_reason("bmp")
+    assert "Drop the card PNG" in stego_ref.invite_reject_reason("other")
+    # Unknown kinds fall back to the generic "other" message.
+    assert stego_ref.invite_reject_reason("unknown") == stego_ref.invite_reject_reason("other")
+
+
 # ----------------------------------------------------------------------
 # PNG codec self-consistency
 # ----------------------------------------------------------------------

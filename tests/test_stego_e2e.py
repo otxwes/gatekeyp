@@ -156,8 +156,11 @@ def test_revoked_card_key_no_longer_unlocks(client) -> None:
 def test_new_static_files_are_served_without_server_change(client) -> None:
     for path, needle in [
         ("/stego.js", "window.gkpStego"),
+        ("/door_qr.js", "window.gkpDoorQr"),
         ("/invite_card.js", "window.gkpInviteCard"),
         ("/vendor/qrcode-generator.js", "QR Code Generator"),
+        ("/vendor/jsqr.js", "jsQR"),
+        ("/vendor/jsqr-LICENSE.txt", "Apache License"),
         ("/index.html", "key-drop"),
     ]:
         response = client.get(path)

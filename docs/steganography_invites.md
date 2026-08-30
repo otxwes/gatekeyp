@@ -131,11 +131,13 @@ decodes any valid PNG an attendee brings.
 4. **Corruption recovery**: one channel fully inverted still decodes via the
    majority vote.
 5. **The JXA cross-check** runs the actual `web/stego.js` in JavaScriptCore
-   (macOS) and compares crc32, the PRNG stream, payload/QR helpers and
-   containers against Python — catching e.g. the float64-seed trap and a
-   missing IIFE invocation that pure review missed. JXA's BigInt `%` is
-   broken, so positions are re-derived with bitwise long division; the real
-   `%` path is covered by the browser E2E.
+   (macOS) and compares crc32, the PRNG stream, payload/QR helpers,
+   containers, the door `classifyInvite`/`inviteRejectReason` against Python —
+   and round-trips the vendored QR encoder → jsQR decoder (the exact door
+   fallback path) — catching e.g. the float64-seed trap and a missing IIFE
+   invocation that pure review missed. JXA's BigInt `%` is broken, so
+   positions are re-derived with bitwise long division; the real `%` path is
+   covered by the browser E2E.
 6. **Fixture** `tests/fixtures/invite_fixture.png` regenerates with
    `python -m tests.stego_ref --write-fixture`.
 
@@ -173,14 +175,28 @@ arch -x86_64 python -m pytest -q               # full suite (Apple Silicon)
 - On success the event id + access key are **auto-filled** into the existing
   form; the attendee still presses *Unlock event* and the normal gateway flow
   (validation, expiry, revocation) applies. Manual entry always remains.
+- **QR fallback at the door.** The zone also accepts *photos / re-encoded
+  copies* of a card (JPEG, WebP, screenshots): the hidden key is gone, but the
+  vendored jsQR decoder reads the printed QR straight off the image, so the
+  attendee is never stuck with "bring the original file". Decode is local and
+  the canvas is capped (1600 px longest edge) so a 12 MP photo doesn't thrash
+  memory.
+- **Honest rejection.** When nothing decodes, the door names the problem and
+  the fix instead of a generic error: a re-encoded photo → "scan it or share
+  the original PNG"; a GIF/BMP → "invite cards are PNGs"; an unrecognised file
+  → "drop the card PNG or paste the gkp: text".
+- **Share guidance.** The card modals say it once, up front: *send the card as
+  a file or attachment, not a photo* — re-encoding destroys the hidden key, and
+  the printed QR is the fallback if it happens anyway.
 
 ---
 
 ## 6. Threat-model notes
 
 - **PNG-only, no re-encode.** LSB stego is destroyed by JPEG/webp re-encode or
-  resizing; the QR is the documented fallback. The door validates the file is a
-  PNG before decoding.
+  resizing; the QR is the documented fallback. The door now *decodes that QR
+  in-browser* (vendored jsQR, canvas-capped) so a photographed/re-saved card
+  still unlocks, and rejects other files with a specific, honest message.
 - **Detectability.** LSB replacement perturbs the LSB histogram slightly; a
   motivated analyst with the *suspicion* of steganography can detect it with a
   statistical pass. The value here is casual-opacity and shoulder-surfing
@@ -191,15 +207,18 @@ arch -x86_64 python -m pytest -q               # full suite (Apple Silicon)
   still fails at the gateway even though the card looks fine.
 - **No new server surface.** `stego.js`/`invite_card.js` are static files
   served by the existing `web/` mount; no new endpoints, no key storage.
-- **Third-party audit.** The only vendored dependency is `qrcode-generator`
-  (MIT, single file, no network calls); everything else is first-party.
+- **Third-party audit.** Vendored dependencies are `qrcode-generator` (MIT,
+  single file, no network calls) and `jsQR` (Apache-2.0, single UMD file, no
+  network calls); everything else is first-party. Both LICENSE files ship in
+  `web/vendor/`.
 
 ---
 
 ## 7. Known limitations / future work
 
-- No QR *decoder* at the door this phase (paste of `gkp:` text is supported,
-  camera scanning is not) — see roadmap.
+- No camera scanning on the door (a phone photo is handled by the *drop the
+  image* path instead); a badly blurred photo can still defeat jsQR — pasting
+  the `gkp:` text always works as the last resort.
 - Only 8-bit, non-interlaced PNGs are accepted as carriers.
 - The stego placement is deterministic (fixed seed); this is deliberate — the
   key is the secret, not the placement — and keeps the format auditable and
