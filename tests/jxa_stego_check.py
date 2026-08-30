@@ -16,11 +16,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tests import stego_ref
+from tests import card_ref, stego_ref
 
 _HERE = Path(__file__).resolve().parent
 _HARNESS = _HERE / "jxa_stego_check.js"
 _STEGO_JS = _HERE.parent / "web" / "stego.js"
+_CARD_JS = _HERE.parent / "web" / "invite_card.js"
 _QR_ENCODER_JS = _HERE.parent / "web" / "vendor" / "qrcode-generator.js"
 _JSQR_JS = _HERE.parent / "web" / "vendor" / "jsqr.js"
 _EXPECTED_JSON = _HERE / ".jxa_expected.json"
@@ -90,6 +91,38 @@ def _build_expected() -> dict:
             for kind in ("png", "jpeg", "webp", "gif", "bmp", "other", "unknown")
         },
         "qrRoundTrip": [stego_ref.make_qr_payload(e, k) for e, k in payloads],
+        "coverFit": [
+            {
+                "src": [800, 600],
+                "dst": [704, 240],
+                "want": list(card_ref.cover_fit(800, 600, 704, 240)),
+            },
+            {
+                "src": [400, 800],
+                "dst": [704, 240],
+                "want": list(card_ref.cover_fit(400, 800, 704, 240)),
+            },
+            {
+                "src": [200, 100],
+                "dst": [100, 100],
+                "want": list(card_ref.cover_fit(200, 100, 100, 100)),
+            },
+            {
+                "src": [100, 200],
+                "dst": [100, 100],
+                "want": list(card_ref.cover_fit(100, 200, 100, 100)),
+            },
+            {
+                "src": [200, 300],
+                "dst": [400, 600],
+                "want": list(card_ref.cover_fit(200, 300, 400, 600)),
+            },
+            {
+                "src": [0, 100],
+                "dst": [704, 240],
+                "want": list(card_ref.cover_fit(0, 100, 704, 240)),
+            },
+        ],
     }
 
 
@@ -115,9 +148,25 @@ def main() -> int:
         sys.stderr.write("could not hook web/stego.js (return line changed?) — check the codec\n")
         return 1
     module_src = module_src.replace(target, hooked)
+    # Hook the shipped invite-card module: expose coverFit for the pin.
+    card_target = (
+        "    return { render, download, safeFileName, renderCover, coverFit, loadCoverImage };"
+    )
+    card_hooked = (
+        "    return { render, download, safeFileName, renderCover, coverFit, loadCoverImage, "
+        "__test: { coverFit } };"
+    )
+    card_src = _CARD_JS.read_text(encoding="utf-8")
+    if card_target not in card_src:
+        sys.stderr.write(
+            "could not hook web/invite_card.js (return line changed?) — check the card\n"
+        )
+        return 1
+    card_src = card_src.replace(card_target, card_hooked)
     harness = _HARNESS.read_text(encoding="utf-8")
     script = (
         harness.replace("__STEGO_MODULE_SOURCE__", module_src)
+        .replace("__CARD_MODULE_SOURCE__", card_src)
         .replace("__EXPECTED_JSON__", str(_EXPECTED_JSON))
         .replace("__QR_ENCODER_SOURCE__", _QR_ENCODER_JS.read_text(encoding="utf-8"))
         .replace("__JSQR_SOURCE__", _JSQR_JS.read_text(encoding="utf-8"))

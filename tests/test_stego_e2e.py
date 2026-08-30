@@ -158,6 +158,7 @@ def test_new_static_files_are_served_without_server_change(client) -> None:
         ("/stego.js", "window.gkpStego"),
         ("/door_qr.js", "window.gkpDoorQr"),
         ("/invite_card.js", "window.gkpInviteCard"),
+        ("/invite_card.js", "coverFit"),
         ("/vendor/qrcode-generator.js", "QR Code Generator"),
         ("/vendor/jsqr.js", "jsQR"),
         ("/vendor/jsqr-LICENSE.txt", "Apache License"),

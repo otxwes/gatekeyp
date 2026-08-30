@@ -245,20 +245,12 @@ function openKeyModal(label, keyValue, cardOpts = null) {
     }
     const cardBtn = $("#key-card-btn");
     if (cardBtn) {
-        cardBtn.addEventListener("click", async () => {
-            cardBtn.disabled = true;
-            try {
-                await window.gkpInviteCard.download({
-                    ...cardOpts,
-                    accessKey: keyValue,
-                    qrText: window.gkpStego.qrPayload(cardOpts.eventId, keyValue),
-                });
-                toast("Invite card downloaded — the key is hidden in its pixels.", "ok", "Card ready");
-            } catch (err) {
-                toast(err.message, "error", "Could not make the card");
-            } finally {
-                cardBtn.disabled = false;
-            }
+        cardBtn.addEventListener("click", () => {
+            openCardCoverModal({
+                ...cardOpts,
+                accessKey: keyValue,
+                qrText: window.gkpStego.qrPayload(cardOpts.eventId, keyValue),
+            });
         });
     }
 }
@@ -1018,23 +1010,137 @@ function openKeyCardModal(owner) {
         confirmText: "Make card",
         cancelText: "Cancel",
         onConfirm: async () => {
-            const input = $(" #key-card-key");
+            const input = $("#key-card-key");
             const accessKey = input ? input.value.trim() : "";
             if (!/^local:[0-9a-f]{64}$/i.test(accessKey)) {
                 throw new Error("Enter the full access key — it starts with local: followed by 64 hex digits.");
             }
-            await window.gkpInviteCard.download({
+            openCardCoverModal({
                 ...inviteCardOpts(),
                 accessKey,
                 qrText: window.gkpStego.qrPayload((org && org.eventId) || "", accessKey),
             });
-            toast("Invite card downloaded.", "ok", "Card ready");
         },
     });
     window.setTimeout(() => {
-        const input = $(" #key-card-key");
+        const input = $("#key-card-key");
         if (input) input.focus();
     }, 0);
+}
+
+/* ------------------------------------------------------------------
+ * Invite card cover picker (Phase 3.7)
+ * ------------------------------------------------------------------ */
+const COVER_PRESETS = [
+    { id: "none", label: "None" },
+    { id: "hatch", label: "Hatch" },
+    { id: "keyline", label: "Keyline" },
+    { id: "dots", label: "Dots" },
+    { id: "keyhole", label: "Keyhole" },
+];
+
+/** Modal: pick a cover (preset pattern or own image, drawn cover-fit) then
+ *  download the invite card. Shared by the one-shot card button and the
+ *  per-row "Card" action — purely client-side, the key never leaves the tab. */
+function openCardCoverModal(card) {
+    let cover = { type: "none" };
+    const chips = COVER_PRESETS.map((p) => {
+        const selected = p.id === "none" ? " is-selected" : "";
+        const pressed = p.id === "none" ? "true" : "false";
+        return (
+            `<button class="cover-chip${selected}" type="button" data-cover="${esc(p.id)}" aria-pressed="${pressed}">` +
+            `<canvas width="176" height="60" data-swatch="${esc(p.id)}"></canvas>` +
+            `<span>${esc(p.label)}</span>` +
+            `</button>`
+        );
+    }).join("");
+    const body =
+        `<p class="field-hint">Pick a cover for the top of the card — a monochrome pattern or your own image (drawn cover-fit). ` +
+        `The hidden key and the printed QR are untouched.</p>` +
+        `<div class="field"><label>Cover</label>` +
+        `<div class="cover-picker">${chips}` +
+        `<label class="cover-chip cover-upload" id="cover-upload-chip" for="cover-file" role="button" tabindex="0">` +
+        `<span class="cover-upload-icon" aria-hidden="true">＋</span>` +
+        `<span>Own image…</span>` +
+        `</label>` +
+        `<input type="file" id="cover-file" accept="image/*" hidden>` +
+        `</div>` +
+        `<p class="field-hint" id="cover-file-hint">No image chosen — presets only.</p>` +
+        `</div>` +
+        `<div class="card-preview-wrap"><canvas id="card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>`;
+
+    openModal({
+        title: "Make an invite card",
+        body,
+        confirmText: "Download card",
+        cancelText: "Cancel",
+        onConfirm: async () => {
+            await window.gkpInviteCard.download({
+                ...card,
+                cover,
+                coverImage: cover.image || null,
+            });
+            toast("Invite card downloaded — the key is hidden in its pixels.", "ok", "Card ready");
+        },
+    });
+
+    const backdrop = $("#modal-root .modal-backdrop");
+    const preview = $("#card-preview");
+
+    const refreshPreview = () => {
+        window.gkpInviteCard.render(preview, {
+            ...card,
+            cover,
+            coverImage: cover.image || null,
+            scale: 0.25,
+        });
+    };
+
+    // Paint a live swatch of each preset onto its chip.
+    $$("[data-swatch]", backdrop).forEach((swatch) => {
+        window.gkpInviteCard.renderCover(swatch, swatch.width, swatch.height, { type: "preset", id: swatch.dataset.swatch });
+    });
+
+    const selectCover = (next) => {
+        cover = next;
+        const isPreset = next.type === "preset";
+        const isNone = next.type === "none";
+        const isImage = next.type === "image";
+        $$(".cover-chip[data-cover]", backdrop).forEach((chip) => {
+            const sel = (isNone && chip.dataset.cover === "none") || (isPreset && chip.dataset.cover === next.id);
+            chip.classList.toggle("is-selected", sel);
+            chip.setAttribute("aria-pressed", String(sel));
+        });
+        const upload = $("#cover-upload-chip");
+        if (upload) upload.classList.toggle("is-selected", isImage);
+        refreshPreview();
+    };
+
+    $$(".cover-chip[data-cover]", backdrop).forEach((chip) => {
+        chip.addEventListener("click", () => {
+            const id = chip.dataset.cover;
+            selectCover(id === "none" ? { type: "none" } : { type: "preset", id });
+        });
+    });
+
+    const fileInput = $("#cover-file");
+    if (fileInput) {
+        fileInput.addEventListener("change", () => {
+            const file = fileInput.files && fileInput.files[0];
+            if (!file) return;
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+            img.onload = () => {
+                const hint = $("#cover-file-hint");
+                if (hint) hint.textContent = `Own image: ${file.name}`;
+                selectCover({ type: "image", image: img, url, name: file.name });
+            };
+            img.onerror = () => toast("Could not read that image file.", "error", "Cover");
+            img.src = url;
+        });
+    }
+
+    refreshPreview();
 }
 
 function keyRowHTML(key) {
