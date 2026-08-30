@@ -21,6 +21,8 @@ from tests import stego_ref
 _HERE = Path(__file__).resolve().parent
 _HARNESS = _HERE / "jxa_stego_check.js"
 _STEGO_JS = _HERE.parent / "web" / "stego.js"
+_QR_ENCODER_JS = _HERE.parent / "web" / "vendor" / "qrcode-generator.js"
+_JSQR_JS = _HERE.parent / "web" / "vendor" / "jsqr.js"
 _EXPECTED_JSON = _HERE / ".jxa_expected.json"
 _SCRIPT_PATH = _HERE / ".jxa_script.js"
 
@@ -73,6 +75,21 @@ def _build_expected() -> dict:
         ],
         "containers": containers,
         "badContainers": bad_containers,
+        "classify": [
+            {"hex": "png", "bytes": list(b"\x89PNG\r\n\x1a\n" + b"\x00" * 20)},
+            {"hex": "jpeg", "bytes": list(b"\xff\xd8\xff\xe0" + b"\x00" * 20)},
+            {"hex": "webp", "bytes": list(b"RIFF\x00\x00\x00\x00WEBP" + b"\x00" * 20)},
+            {"hex": "gif", "bytes": list(b"GIF89a" + b"\x00" * 20)},
+            {"hex": "bmp", "bytes": list(b"BM\x00\x00\x00\x00" + b"\x00" * 20)},
+            {"hex": "other", "bytes": list(b"hello world, not an image at all")},
+            {"hex": "other", "bytes": list(b"\x89PNG")},  # too short to trust
+            {"hex": "other", "bytes": []},
+        ],
+        "rejectReasons": {
+            kind: stego_ref.invite_reject_reason(kind)
+            for kind in ("png", "jpeg", "webp", "gif", "bmp", "other", "unknown")
+        },
+        "qrRoundTrip": [stego_ref.make_qr_payload(e, k) for e, k in payloads],
     }
 
 
@@ -83,11 +100,15 @@ def main() -> int:
     expected = _build_expected()
     # Hook the shipped codec: expose its internals as a __test member of the
     # returned module so the harness can pin them against the Python oracle.
-    target = "    return { embed, extract, makePayload, parsePayload, qrPayload, parseQrPayload };"
+    target = (
+        "    return { embed, extract, makePayload, parsePayload, qrPayload, parseQrPayload, "
+        "classifyInvite, inviteRejectReason };"
+    )
     hooked = (
         "    return { embed, extract, makePayload, parsePayload, qrPayload, parseQrPayload, "
+        "classifyInvite, inviteRejectReason, "
         "__test: { crc32, makeRng, makePositionIter, makePayload, parsePayload, qrPayload, "
-        "parseQrPayload, buildContainer, parseContainer } };"
+        "parseQrPayload, buildContainer, parseContainer, classifyInvite, inviteRejectReason } };"
     )
     module_src = _STEGO_JS.read_text(encoding="utf-8")
     if target not in module_src:
@@ -95,8 +116,11 @@ def main() -> int:
         return 1
     module_src = module_src.replace(target, hooked)
     harness = _HARNESS.read_text(encoding="utf-8")
-    script = harness.replace("__STEGO_MODULE_SOURCE__", module_src).replace(
-        "__EXPECTED_JSON__", str(_EXPECTED_JSON)
+    script = (
+        harness.replace("__STEGO_MODULE_SOURCE__", module_src)
+        .replace("__EXPECTED_JSON__", str(_EXPECTED_JSON))
+        .replace("__QR_ENCODER_SOURCE__", _QR_ENCODER_JS.read_text(encoding="utf-8"))
+        .replace("__JSQR_SOURCE__", _JSQR_JS.read_text(encoding="utf-8"))
     )
     _EXPECTED_JSON.write_text(json.dumps(expected), encoding="utf-8")
     _SCRIPT_PATH.write_text(script, encoding="utf-8")

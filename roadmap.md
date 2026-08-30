@@ -123,6 +123,7 @@ repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
 - [x] Vendor MIT `qrcode-generator` (single-file, ~10 KB) as the "still scannable after social re-encode" fallback printed on the card. — **Done 2026-08-30.** `web/vendor/qrcode-generator.js` + LICENSE.
 - [x] Organizer UX — "Download invite card" beside the existing copy-key flow in the Access-keys tab. — **Done 2026-08-30.** "Also make an invite card" in the one-shot key modal + per-row "Card" action (re-enters the raw key — keys are shown once by design and never stored).
 - [x] Attendee UX — "drop or paste your invite" zone above the unlock form on the door; decode locally, auto-fill event id + access key (manual entry always works). — **Done 2026-08-30.** Drop / paste image / paste `gkp:` text / choose file; auto-fills the existing form.
+- [x] Resilience batch — QR *decode* at the door (photos / re-encodes), honest per-kind rejection, share guidance. — **Done 2026-08-30.** Vendored `jsQR` (Apache-2.0, 256 KB UMD) + LICENSE; `web/door_qr.js` (canvas-capped, capped 1600 px, local decode); `classifyInvite`/`inviteRejectReason` in `stego.js` mirrored in `stego_ref.py` and pinned by the JXA cross-check; the door rejects with the fix ("scan it or share the original PNG") instead of a generic error; card modals say "send as a file, not a photo". +2 tests (166 total).
 - [x] Docs — `docs/steganography_invites.md` + threat-model note (PNG-only / no-re-encode warning; opsec value vs. QR; payload = event id + access key; parity with expiry + revocation; no new server surface). — **Done 2026-08-30.**
 - [x] Tests — Hypothesis encode<->decode round-trips, decode of a known fixture, E2E via the demo server. — **Done 2026-08-30.** 21 new tests (`tests/test_stego_invites.py`), committed fixture, JXA cross-check; live-server browser E2E is the final pass of this phase.
 
@@ -174,9 +175,9 @@ repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
 
 ## Context for Future Sessions
 *This section is updated as we progress to maintain continuity.*
-- Current focus: Phase 3 - Frontend & UX/UI Design is **complete** (full SPA in `web/app.js`; redesign in `web/style.css`; markup repaired in `web/index.html`). Phase 3.5 - UX & Visual Design Iteration is **complete** (Monochrome Edition: B&W palette + motif set §19, a11y + QA matrix). Phase 3.6 - Steganographic Invite Keys is **complete** (codec + card + QR fallback + organizer/attendee UX + docs + tests).
+- Current focus: Phase 3 - Frontend & UX/UI Design is **complete** (full SPA in `web/app.js`; redesign in `web/style.css`; markup repaired in `web/index.html`). Phase 3.5 - UX & Visual Design Iteration is **complete** (Monochrome Edition: B&W palette + motif set §19, a11y + QA matrix). Phase 3.6 - Steganographic Invite Keys is **complete** (codec + card + QR encode/fallback + organizer/attendee UX + door QR decode + honest rejection + share guidance + docs + tests).
 - Next: Phase 4 - Map & Navigation. Invite-card art reuses the Phase-3.5 motif primitives (`--hatch-*`, `.voided`) — design-system §12.
-- Test suite: 164 tests passing (`arch -x86_64 python -m pytest -q`; the venv's `cryptography` wheel is x86_64 on Apple Silicon). Plus `python -m tests.jxa_stego_check` for the JS↔Python codec agreement, and `python -m tests.stego_ref --write-fixture` to regenerate the invite-card fixture.
+- Test suite: 166 tests passing (`arch -x86_64 python -m pytest -q`; the venv's `cryptography` wheel is x86_64 on Apple Silicon). Plus `python -m tests.jxa_stego_check` for the JS↔Python codec agreement, and `python -m tests.stego_ref --write-fixture` to regenerate the invite-card fixture.
 - Environment uses `python3` (not `python`).
 - `KeyManager` accepts an optional shared `DatabaseHandler`; `Gateway` passes its own `db` to `KeyManager`.
 - `ContentManager` requires shared `DatabaseHandler` and `KeyManager` instances.

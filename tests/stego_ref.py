@@ -304,6 +304,50 @@ def parse_qr_payload(text: str) -> tuple[str, str] | None:
     return event_id, access_key
 
 
+REJECT_RE_ENCODE = (
+    "This looks like a re-encoded copy of a card — the hidden key was lost to "
+    "compression, but the QR printed on the card still works. Scan it and paste "
+    "the gkp: text, or share the original PNG as a file."
+)
+REJECT = {
+    "png": (
+        "This looks like a gatekeyp card, but no key could be read from it — "
+        "the card may have been altered or re-encoded. Share the original PNG as "
+        "a file, or paste the gkp: text with ⌘V."
+    ),
+    "jpeg": REJECT_RE_ENCODE,
+    "webp": REJECT_RE_ENCODE,
+    "gif": "That's a GIF — invite cards are PNGs. Share the original PNG as a "
+    "file, or paste the gkp: text with ⌘V.",
+    "bmp": "That's a BMP — invite cards are PNGs. Share the original PNG as a "
+    "file, or paste the gkp: text with ⌘V.",
+    "other": "That doesn't look like an invite card. Drop the card PNG here, or "
+    "paste the gkp: text with ⌘V.",
+}
+
+
+def classify_invite(data: bytes) -> str:
+    """Magic-byte sniffing for the door — mirrors ``web/stego.js`` classifyInvite."""
+    if not isinstance(data, (bytes, bytearray)) or len(data) < 12:
+        return "other"
+    if data[:8] == PNG_SIG:
+        return "png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "jpeg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    if data[:4] == b"GIF8" and data[4] in (0x37, 0x39):
+        return "gif"
+    if data[:2] == b"BM":
+        return "bmp"
+    return "other"
+
+
+def invite_reject_reason(kind: str) -> str:
+    """User-facing rejection message — mirrors ``web/stego.js`` inviteRejectReason."""
+    return REJECT.get(kind, REJECT["other"])
+
+
 def build_container(payload: str) -> bytes:
     payload_bytes = payload.encode("utf-8")
     if len(payload_bytes) > MAX_PAYLOAD_LEN:

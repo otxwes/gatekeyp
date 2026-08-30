@@ -528,9 +528,14 @@ p {
     outline: none;
 }
 
-.field .field-hint {
+.field .field-hint,
+.field-hint {
     font-size: var(--text-sm);
     color: var(--ink-faint);
+}
+
+.field-hint {
+    margin-top: var(--space-2);
 }
 
 .note,

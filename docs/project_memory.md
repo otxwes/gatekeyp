@@ -291,6 +291,13 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
   Python golden values without a Node runtime.
 - `web/vendor/qrcode-generator.js` (+ LICENSE) — MIT `kazuhikoarase` QR encoder for
   the survives-re-encode fallback on the card.
+- `web/vendor/jsqr.js` (+ `jsqr-LICENSE.txt`) — **Apache-2.0** (not MIT as first
+  assumed — LICENSE file satisfies attribution) `cozmo/jsQR` UMD decoder, 256 KB;
+  used by the door QR fallback and the JXA QR round-trip pin.
+- `web/door_qr.js` — `window.gkpDoorQr.decode(file)`: draws the dropped image to
+  a capped (1600 px) offscreen canvas and runs the vendored jsQR on the RGBA
+  buffer; `stego.js` `classifyInvite`/`inviteRejectReason` (magic-byte sniffing
+  + honest per-kind rejection) mirrored in `stego_ref.py`.
 - `web/invite_card.js` — portrait 800×1200 paper-and-ink card renderer + stego
   download; `web/app.js` — "Also make an invite card" in the one-shot key modal,
   per-row "Card" action (re-enters the raw key), `org.meta` event metadata; door
@@ -310,11 +317,15 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
   assembled scripts as files.
 
 **Verified:**
-- `arch -x86_64 python -m pytest -q` → 164 passed; `python -m tests.jxa_stego_check`
-  → JXA-OK; ruff clean on the new Python files; all four web JS files parse under
-  JavaScriptCore. Fixture regenerates deterministically.
+- `arch -x86_64 python -m pytest -q` → 166 passed; `python -m tests.jxa_stego_check`
+  → JXA-OK (now incl. door `classifyInvite`/`inviteRejectReason` pins + a QR
+  encoder→jsQR round-trip + a noise-decode-must-null guard); ruff clean on the
+  new Python files; all web JS files parse under JavaScriptCore. Fixture
+  regenerates deterministically.
 
 **Next steps:**
 - Live-server browser E2E (create → generate key → make card → download →
-  Python `--decode` → door drop → unlock), then commit the phase.
+  Python `--decode` → door drop → unlock; plus door drop of a *re-encoded
+  JPEG* to exercise the QR fallback and the honest rejection), then commit C
+  (resilience batch) and D (custom covers).
 - Manual visual pass on the card art and the door drop zone (light/dark, mobile).

@@ -379,6 +379,50 @@ window.gkpStego = (function () {
     }
 
     /* ----------------------------------------------------------
+     * Door: image-kind sniffing + honest rejection messages
+     * ---------------------------------------------------------- */
+    // Magic-byte sniffing for the kinds of file an attendee is likely to drop
+    // at the door. `kind` drives both the QR fallback (any raster image) and
+    // the specific, honest rejection message when nothing decodes.
+    function classifyInvite(input) {
+        const b = input instanceof Uint8Array ? input
+            : input instanceof ArrayBuffer ? new Uint8Array(input)
+            : null;
+        if (!b || b.length < 12) return "other";
+        if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 &&
+            b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a) return "png";
+        if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "jpeg";
+        if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+            b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return "webp";
+        if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38 &&
+            (b[4] === 0x37 || b[4] === 0x39)) return "gif";
+        if (b[0] === 0x42 && b[1] === 0x4d) return "bmp";
+        return "other";
+    }
+
+    const REJECT_RE_ENCODE =
+        "This looks like a re-encoded copy of a card — the hidden key was lost to " +
+        "compression, but the QR printed on the card still works. Scan it and paste " +
+        "the gkp: text, or share the original PNG as a file.";
+    const REJECT = {
+        png: "This looks like a gatekeyp card, but no key could be read from it — " +
+            "the card may have been altered or re-encoded. Share the original PNG as " +
+            "a file, or paste the gkp: text with ⌘V.",
+        jpeg: REJECT_RE_ENCODE,
+        webp: REJECT_RE_ENCODE,
+        gif: "That's a GIF — invite cards are PNGs. Share the original PNG as a " +
+            "file, or paste the gkp: text with ⌘V.",
+        bmp: "That's a BMP — invite cards are PNGs. Share the original PNG as a " +
+            "file, or paste the gkp: text with ⌘V.",
+        other: "That doesn't look like an invite card. Drop the card PNG here, or " +
+            "paste the gkp: text with ⌘V.",
+    };
+
+    function inviteRejectReason(kind) {
+        return REJECT[kind] || REJECT.other;
+    }
+
+    /* ----------------------------------------------------------
      * Public embed / extract
      * ---------------------------------------------------------- */
     async function embed(pngInput, payload) {
@@ -431,5 +475,5 @@ window.gkpStego = (function () {
         return null;
     }
 
-    return { embed, extract, makePayload, parsePayload, qrPayload, parseQrPayload };
+    return { embed, extract, makePayload, parsePayload, qrPayload, parseQrPayload, classifyInvite, inviteRejectReason };
 })();
