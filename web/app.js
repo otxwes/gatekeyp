@@ -35,14 +35,6 @@ function fmtDate(iso) {
     });
 }
 
-/** Short date for badges / fact rows. */
-function fmtDay(iso) {
-    if (!iso) return "—";
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return String(iso);
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
 function fmtBytes(n) {
     const v = Number(n || 0);
     if (v < 1024) return `${v} B`;
@@ -222,14 +214,20 @@ function openModal({ title, body = "", confirmText = "Confirm", cancelText = "Ca
     confirmBtn.focus();
 }
 
-/** Modal that shows a freshly generated key exactly once, with a copy button. */
-function openKeyModal(label, keyValue) {
+/** Modal that shows a freshly generated key exactly once, with a copy button.
+ *  When `cardOpts` (event metadata for the invite card) is given, also offers
+ *  "Also make an invite card" for the fresh key. */
+function openKeyModal(label, keyValue, cardOpts = null) {
+    const cardButton = cardOpts
+        ? `<button class="btn btn-secondary btn-block" type="button" id="key-card-btn">Also make an invite card</button>`
+        : "";
     openModal({
         title: label,
         body:
             `<p>Copy this key now — it is shown only once and cannot be recovered later.</p>` +
             `<div class="keycode-full"><code class="keycode kc-value">${esc(keyValue)}</code>` +
-            `<button class="btn btn-secondary" type="button" id="key-copy-btn">Copy</button></div>`,
+            `<button class="btn btn-secondary" type="button" id="key-copy-btn">Copy</button></div>` +
+            cardButton,
         confirmText: "Done",
         cancelText: "Close",
         onConfirm: async () => {},
@@ -239,6 +237,24 @@ function openKeyModal(label, keyValue) {
         copyBtn.addEventListener("click", async () => {
             const ok = await copyText(keyValue);
             toast(ok ? "Key copied to clipboard." : "Copy blocked — select the key manually.", ok ? "ok" : "error", "Copy");
+        });
+    }
+    const cardBtn = $("#key-card-btn");
+    if (cardBtn) {
+        cardBtn.addEventListener("click", async () => {
+            cardBtn.disabled = true;
+            try {
+                await window.gkpInviteCard.download({
+                    ...cardOpts,
+                    accessKey: keyValue,
+                    qrText: window.gkpStego.qrPayload(cardOpts.eventId, keyValue),
+                });
+                toast("Invite card downloaded — the key is hidden in its pixels.", "ok", "Card ready");
+            } catch (err) {
+                toast(err.message, "error", "Could not make the card");
+            } finally {
+                cardBtn.disabled = false;
+            }
         });
     }
 }
@@ -296,7 +312,17 @@ function btnBusy(btn, busy, busyText) {
 }
 
 function note(elNode, message, kind) {
-    elNode.textContent = message || "";
+    // Monochrome UI: status is reinforced with glyphs, not hue.
+    // Error / ok carries a leading mark so meaning survives color-blind
+    // viewers, high-contrast overrides, and print.
+    const text = message || "";
+    if (kind === "error" && text) {
+        elNode.textContent = `⚠ ${text}`;
+    } else if (kind === "ok" && text) {
+        elNode.textContent = `✓ ${text}`;
+    } else {
+        elNode.textContent = text;
+    }
     elNode.classList.remove("is-error", "is-ok");
     if (kind === "error") elNode.classList.add("is-error");
     else if (kind === "ok") elNode.classList.add("is-ok");
@@ -435,6 +461,7 @@ function bindOrganizeEntry() {
                 eventId: created.event_id,
                 masterKey: created.master_key,
                 title: created.title || title,
+                meta: { description, organizerId: organizer_id, locationData: location_data },
             };
             createForm.reset();
             saveSession();
@@ -462,10 +489,17 @@ function bindOrganizeEntry() {
         btnBusy(btn, true, "Opening…");
         try {
             const details = await api(`/api/events/${encodeURIComponent(eventId)}${qs({ master_key: masterKey })}`);
+            const eventInfo = details.event || {};
             org = {
                 eventId,
                 masterKey,
-                title: (details.event && details.event.title) || "Untitled event",
+                title: eventInfo.title || "Untitled event",
+                meta: {
+                    description: eventInfo.description || "",
+                    organizerId: eventInfo.organizer_id || "",
+                    locationData: eventInfo.location_data || "",
+                    createdAt: eventInfo.created_at || "",
+                },
             };
             openForm.reset();
             saveSession();
@@ -505,24 +539,20 @@ function renderOrganize() {
 /* ------------------------------------------------------------------
  * Workspace shell
  * ------------------------------------------------------------------ */
-let wsTab = "overview";
+let wsTab = "content";
 
 const WS_TABS = [
-    ["overview", "Overview"],
     ["content", "Content"],
     ["bulletins", "Bulletin board"],
     ["media", "Media"],
     ["keys", "Access keys"],
-    ["decommission", "Decommission"],
 ];
 
 const WS_LOADERS = {
-    overview: wsOverview,
     content: wsContent,
     bulletins: wsBulletins,
     media: wsMedia,
     keys: wsKeys,
-    decommission: wsDecommission,
 };
 
 async function fetchEventDetails() {
@@ -539,14 +569,12 @@ function renderWorkspace() {
         `<p class="ws-meta">${esc(org.eventId)}</p>` +
         `</div>` +
         `<div class="ws-actions">` +
-        `<span class="badge badge-neutral">${esc(wsTabLabel(wsTab))}</span>` +
         `<button class="btn btn-ghost" type="button" id="ws-end">Close workspace</button>` +
+        `<button class="btn btn-danger" type="button" id="ws-decommission">Decommission</button>` +
         `</div>` +
         `</header>` +
         `<div class="master-banner" role="note">` +
         `<span class="badge badge-warn">Master</span>` +
-        `<p class="mb-copy">Master key held in this tab: <strong>never share it.</strong>` +
-        ` Hand out access keys instead, from the Access keys tab.</p>` +
         `<button class="btn btn-secondary btn-sm" type="button" id="ws-copy-key">Copy master key</button>` +
         `</div>` +
         `<nav class="tabs" role="tablist" aria-label="Workspace sections">` +
@@ -556,10 +584,6 @@ function renderWorkspace() {
         `</nav>` +
         `<div class="ws-body">` +
         `<main class="ws-main" role="tabpanel" id="ws-main"></main>` +
-        `<aside class="ws-side">` +
-        `<section class="card"><h3 class="card-title">Event facts</h3>` +
-        `<div class="fact-list" id="ws-facts">Loading…</div></section>` +
-        `</aside>` +
         `</div>`;
 
     $("#ws-end").addEventListener("click", () => {
@@ -581,20 +605,15 @@ function renderWorkspace() {
             }
         });
     });
+    $("#ws-decommission").addEventListener("click", openDecommissionModal);
     loadWsTab();
-    loadWsFacts();
-}
-
-function wsTabLabel(id) {
-    const found = WS_TABS.find(([tabId]) => tabId === id);
-    return found ? found[1] : id;
 }
 
 async function loadWsTab() {
     const main = $("#ws-main");
     if (!main) return;
     main.innerHTML = `<div class="empty"><div class="empty-title">Loading…</div></div>`;
-    const loader = WS_LOADERS[wsTab] || wsOverview;
+    const loader = WS_LOADERS[wsTab] || wsContent;
     try {
         await loader(main);
     } catch (err) {
@@ -602,26 +621,10 @@ async function loadWsTab() {
     }
 }
 
-async function loadWsFacts() {
-    const box = $("#ws-facts");
-    if (!box || !org) return;
-    let details;
-    try {
-        details = await fetchEventDetails();
-    } catch {
-        box.innerHTML = `<span class="badge badge-neutral">Could not load facts</span>`;
-        return;
-    }
-    const event = details.event || {};
-    const blocks = details.content_blocks || [];
-    box.innerHTML =
-        factRow("Event", fmtId(event.id)) +
-        factRow("Created", fmtDay(event.created_at)) +
-        factRow("Blocks", String(blocks.length)) +
-        (event.location_data ? factRow("Location", event.location_data) : "");
-}
-
-async function wsOverview(main) {
+/* ------------------------------------------------------------------
+ * Workspace: Content tab
+ * ------------------------------------------------------------------ */
+async function wsContent(main) {
     const details = await fetchEventDetails();
     const event = details.event || {};
     const blocks = details.content_blocks || [];
@@ -639,27 +642,10 @@ async function wsOverview(main) {
         `</section>` +
         `<section class="card">` +
         `<h3 class="card-title">Content blocks</h3>` +
-        (blocks.length
-            ? `<div class="item-list">${blocks.map(blockItem).join("")}</div>`
-            : emptyState("No content blocks yet",
-                "Add a description, schedule, or logistics note from the Content tab.")) +
-        `</section>`;
-}
-
-/* ------------------------------------------------------------------
- * Workspace: Content tab
- * ------------------------------------------------------------------ */
-async function wsContent(main) {
-    const details = await fetchEventDetails();
-    const blocks = details.content_blocks || [];
-    main.innerHTML =
-        `<section class="card">` +
-        `<h3 class="card-title">Content blocks</h3>` +
-        `<p class="section-sub">Detail shared with attendees on the event page — description, schedule, logistics.</p>` +
         `<div class="item-list">` +
         (blocks.length
             ? blocks.map(blockItem).join("")
-            : emptyState("No content blocks yet", "Add one below. Blocks are encrypted at rest and unlocked by keys.")) +
+            : emptyState("No content blocks yet")) +
         `</div>` +
         `</section>` +
         `<section class="card">` +
@@ -848,11 +834,10 @@ async function wsBulletins(main) {
     main.innerHTML =
         `<section class="card">` +
         `<h3 class="card-title">Bulletin board</h3>` +
-        `<p class="section-sub">Post updates for attendees. Anyone holding a key can read and reply.</p>` +
         `<div class="bulletin-list">` +
         (bulletins.length
             ? bulletins.map((b) => bulletinCardHTML(b, true)).join("")
-            : emptyState("The board is quiet", "Post the first bulletin below.")) +
+            : emptyState("The board is quiet")) +
         `</div>` +
         `</section>` +
         `<section class="card">` +
@@ -954,10 +939,9 @@ async function wsMedia(main) {
     main.innerHTML =
         `<section class="card">` +
         `<h3 class="card-title">Media library</h3>` +
-        `<p class="section-sub">Flyers, photos, and documents. Files are encrypted at rest.</p>` +
         (assets.length
             ? `<div class="media-grid">${assets.map((asset) => mediaTile(asset)).join("")}</div>`
-            : emptyState("No media yet", "Add a flyer, photo, or document below.")) +
+            : emptyState("No media yet")) +
         `</section>` +
         `<section class="card">` +
         `<h3 class="card-title">Upload a file</h3>` +
@@ -1006,18 +990,66 @@ async function wsMedia(main) {
 /* ------------------------------------------------------------------
  * Workspace: Access keys tab
  * ------------------------------------------------------------------ */
+/** Build the invite-card metadata for the current workspace event. */
+function inviteCardOpts() {
+    const meta = (org && org.meta) || {};
+    return {
+        eventId: (org && org.eventId) || "",
+        title: (org && org.title) || "Untitled event",
+        organizerId: meta.organizerId || "",
+        location: meta.locationData || "",
+    };
+}
+
+/** Modal: make an invite card for an existing key by entering its value. */
+function openKeyCardModal(owner) {
+    openModal({
+        title: "Make an invite card",
+        body:
+            `<p>The raw access key is shown only once at generation and is not stored again. ` +
+            `Enter the <strong>${esc(owner || "key")}</strong> value you were given to embed it in a card.</p>` +
+            `<div class="field"><label for="key-card-key">Access key</label>` +
+            `<input type="password" id="key-card-key" spellcheck="false" autocomplete="off" placeholder="local:…"></div>`,
+        confirmText: "Make card",
+        cancelText: "Cancel",
+        onConfirm: async () => {
+            const input = $(" #key-card-key");
+            const accessKey = input ? input.value.trim() : "";
+            if (!/^local:[0-9a-f]{64}$/i.test(accessKey)) {
+                throw new Error("Enter the full access key — it starts with local: followed by 64 hex digits.");
+            }
+            await window.gkpInviteCard.download({
+                ...inviteCardOpts(),
+                accessKey,
+                qrText: window.gkpStego.qrPayload((org && org.eventId) || "", accessKey),
+            });
+            toast("Invite card downloaded.", "ok", "Card ready");
+        },
+    });
+    window.setTimeout(() => {
+        const input = $(" #key-card-key");
+        if (input) input.focus();
+    }, 0);
+}
+
 function keyRowHTML(key) {
     const expires = key.expires_at ? new Date(key.expires_at) : null;
     const expired = Boolean(expires) && expires.getTime() < Date.now();
     const label = key.revoked ? "Revoked" : expired ? "Expired" : "Active";
     const badgeClass = key.revoked ? "badge-revoked" : expired ? "badge-warn" : "badge-active";
     const owner = key.owner_id ? key.owner_id : "unnamed key";
+    const cardAction = (key.revoked || expired)
+        ? ""
+        : `<div class="kd-actions">` +
+            `<button class="btn btn-ghost btn-sm" type="button" data-act="card" data-owner="${esc(owner)}">Card</button>` +
+            `</div>`;
     return `<div class="key-detail-row" data-key-id="${esc(key.id || key.hash_key)}">` +
         `<span class="badge ${badgeClass}">${esc(label)}</span>` +
         `<div class="kd-info">` +
         `<div class="kd-name">${esc(owner)}</div>` +
         `<div class="kd-sub">created ${esc(fmtDate(key.created_at))} · expires ${esc(fmtDate(key.expires_at))}</div>` +
         `</div>` +
+        cardAction +
         `</div>`;
 }
 
@@ -1026,11 +1058,10 @@ async function wsKeys(main) {
     main.innerHTML =
         `<section class="card">` +
         `<h3 class="card-title">Access keys</h3>` +
-        `<p class="section-sub">Hand these keys to attendees. Each unlocks the event's content for its lifetime.</p>` +
         `<div class="key-list">` +
         (keys.length
             ? keys.map(keyRowHTML).join("")
-            : emptyState("No access keys yet", "Generate the first key below and share it privately.")) +
+            : emptyState("No access keys yet")) +
         `</div>` +
         `</section>` +
         `<section class="card">` +
@@ -1045,13 +1076,18 @@ async function wsKeys(main) {
         `</section>` +
         `<section class="card">` +
         `<h3 class="card-title">Revoke a key</h3>` +
-        `<p class="section-sub">Enter the exact access key you handed out to cut it off.</p>` +
         `<form id="revoke-key-form" class="inline-form" autocomplete="off">` +
         `<div class="field"><label for="revoke-key">Access key</label>` +
         `<input id="revoke-key" name="access_key" type="password" maxlength="2048" placeholder="local:…" required spellcheck="false" autocomplete="off"></div>` +
         `<button class="btn btn-danger" type="submit" id="revoke-key-btn">Revoke</button>` +
         `</form>` +
         `</section>`;
+
+    // "Card" action per key row — the raw key value is entered once more
+    // (it is shown only at generation and never stored again).
+    $$('[data-act="card"]', main).forEach((btn) => {
+        btn.addEventListener("click", () => openKeyCardModal(btn.dataset.owner || "key"));
+    });
 
     $("#gen-key-form").addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -1065,7 +1101,7 @@ async function wsKeys(main) {
                 method: "POST",
                 body: { master_key: org.masterKey, event_id: org.eventId, days, owner_id },
             });
-            openKeyModal("Access key — share it", key.access_key);
+            openKeyModal("Access key — share it", key.access_key, inviteCardOpts());
             toast("Access key generated.", "ok", "New key");
             await wsKeys(main);
         } catch (err) {
@@ -1096,46 +1132,146 @@ async function wsKeys(main) {
 }
 
 /* ------------------------------------------------------------------
- * Workspace: Decommission tab
+ * Workspace: Decommission (header action)
  * ------------------------------------------------------------------ */
-async function wsDecommission(main) {
-    main.innerHTML =
-        `<section class="card danger-zone">` +
-        `<h3 class="card-title">Decommission event</h3>` +
-        `<p class="section-sub">End-of-life: revokes every access key and cuts content access.</p>` +
-        `<p class="section-text">Type the event ID below, then decommission. This cannot be undone.</p>` +
-        `<form id="decom-form" class="inline-form" autocomplete="off">` +
-        `<div class="field"><label for="decom-confirm">Event ID</label>` +
-        `<input id="decom-confirm" name="event_id" type="text" required spellcheck="false" autocomplete="off" placeholder="${esc(org.eventId)}"></div>` +
-        `<button class="btn btn-danger" type="submit" id="decom-btn">Decommission</button>` +
-        `</form>` +
-        `</section>`;
+function openDecommissionModal() {
+    openModal({
+        title: "Decommission event?",
+        body:
+            `<p>This permanently revokes every access key for <strong>${esc(org.eventId)}</strong>, and ` +
+            `content access ends. No attendee will be able to unlock this event again. ` +
+            `This cannot be undone.</p>` +
+            `<div class="field"><label for="decom-confirm">Type the event ID to confirm</label>` +
+            `<input id="decom-confirm" type="text" required spellcheck="false" autocomplete="off"></div>`,
+        confirmText: "Decommission",
+        danger: true,
+        onConfirm: async () => {
+            const input = $("#decom-confirm");
+            const typed = input ? input.value.trim() : "";
+            if (typed !== org.eventId) {
+                throw new Error("Type the event ID exactly as shown to confirm.");
+            }
+            await api(`/api/events/${encodeURIComponent(org.eventId)}/decommission`, {
+                method: "POST",
+                body: { master_key: org.masterKey, event_id: org.eventId },
+            });
+            org = null;
+            saveSession();
+            location.hash = "#/organize";
+            renderOrganize();
+            toast("Event decommissioned. All keys revoked.", "ok", "Archived");
+        },
+    });
+    const input = $("#decom-confirm");
+    if (input) window.setTimeout(() => input.focus(), 0);
+}
 
-    $("#decom-form").addEventListener("submit", (event) => {
-        event.preventDefault();
-        const typed = getField(event.currentTarget, "event_id");
-        if (typed !== org.eventId) {
-            toast("The event ID doesn't match. Copy it from the workspace header.", "error", "Check the ID");
-            return;
+/* ------------------------------------------------------------------
+ * Door: invite-card drop / paste / choose (Phase 3.6)
+ * ------------------------------------------------------------------ */
+function setDropBusy(drop, busy, label) {
+    if (!drop) return;
+    const title = drop.querySelector(".key-drop-title");
+    const sub = drop.querySelector(".key-drop-sub");
+    if (busy) {
+        drop.classList.add("is-busy");
+        if (title) title.textContent = label || "Reading…";
+    } else {
+        drop.classList.remove("is-busy");
+        if (title) title.textContent = "Drop your invite card here";
+        if (sub) sub.textContent = "or paste it with ⌘V — the key lives in its pixels";
+    }
+}
+
+async function handleInvitePng(file) {
+    if (!file) return;
+    const drop = $("#key-drop");
+    const noteEl = $("#join-note");
+    if (noteEl) note(noteEl, "");
+    setDropBusy(drop, true, "Reading the key…");
+    try {
+        const payload = await window.gkpStego.extract(file);
+        const parsed = payload !== null ? window.gkpStego.parsePayload(payload) : null;
+        if (!parsed) throw new Error("No gatekeyp key found in that image.");
+        const form = $("#join-form");
+        if (form) {
+            form.elements.event_id.value = parsed.eventId;
+            form.elements.access_key.value = parsed.accessKey;
         }
-        openModal({
-            title: "Decommission event?",
-            body: `This permanently revokes every access key for ${org.eventId}, and content access ends. ` +
-                  `No attendee will be able to unlock this event again. Continue?`,
-            confirmText: "Decommission",
-            danger: true,
-            onConfirm: async () => {
-                await api(`/api/events/${encodeURIComponent(org.eventId)}/decommission`, {
-                    method: "POST",
-                    body: { master_key: org.masterKey, event_id: org.eventId },
-                });
-                org = null;
-                saveSession();
-                location.hash = "#/organize";
-                renderOrganize();
-                toast("Event decommissioned. All keys revoked.", "ok", "Archived");
-            },
+        if (drop) drop.classList.add("is-done");
+        toast("Key read from your card — unlock when ready.", "ok", "Invite found");
+        const btn = $("#join-btn");
+        if (btn) btn.focus();
+    } catch (err) {
+        toast(err.message, "error", "Could not read the card");
+    } finally {
+        setDropBusy(drop, false);
+    }
+}
+
+function bindJoinDrop() {
+    const drop = $("#key-drop");
+    const fileInput = $("#key-drop-file");
+    if (!drop) return;
+    drop.addEventListener("click", () => {
+        if (fileInput) fileInput.click();
+    });
+    drop.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            if (fileInput) fileInput.click();
+        }
+    });
+    ["dragenter", "dragover"].forEach((type) => {
+        drop.addEventListener(type, (event) => {
+            event.preventDefault();
+            drop.classList.add("is-drag");
         });
+    });
+    ["dragleave", "drop"].forEach((type) => {
+        drop.addEventListener(type, (event) => {
+            event.preventDefault();
+            drop.classList.remove("is-drag");
+        });
+    });
+    drop.addEventListener("drop", (event) => {
+        const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+        handleInvitePng(file);
+    });
+    if (fileInput) {
+        fileInput.addEventListener("change", () => {
+            handleInvitePng(fileInput.files && fileInput.files[0]);
+            fileInput.value = "";
+        });
+    }
+    // Paste anywhere while the join entry is visible: an image card or gkp: text.
+    document.addEventListener("paste", (event) => {
+        const entry = $("#join-entry");
+        if (!entry || entry.hidden) return;
+        const items = event.clipboardData && event.clipboardData.items;
+        if (items) {
+            for (const item of items) {
+                if (item.type && item.type.startsWith("image/")) {
+                    const file = item.getAsFile && item.getAsFile();
+                    if (file) {
+                        event.preventDefault();
+                        handleInvitePng(file);
+                        return;
+                    }
+                }
+            }
+        }
+        const text = event.clipboardData && event.clipboardData.getData("text");
+        const parsed = text ? window.gkpStego.parseQrPayload(text.trim()) : null;
+        if (parsed) {
+            const form = $("#join-form");
+            if (form) {
+                event.preventDefault();
+                form.elements.event_id.value = parsed.eventId;
+                form.elements.access_key.value = parsed.accessKey;
+                toast("Invite pasted — unlock when ready.", "ok", "Invite found");
+            }
+        }
     });
 }
 
@@ -1213,26 +1349,11 @@ function renderEventPage() {
         `<button class="btn btn-ghost btn-sm" type="button" id="attendee-end">Leave (drop key)</button>` +
         `</div>` +
         `</header>` +
-        `<div class="ep-grid">` +
         `<div class="ep-main">` +
         `<section class="card"><h3 class="card-title">Bulletin board</h3>` +
         `<div id="ep-bulletins" class="bulletin-list">Loading…</div></section>` +
         `<section class="card"><h3 class="card-title">Media</h3>` +
         `<div id="ep-media">Loading…</div></section>` +
-        `</div>` +
-        `<aside class="ep-side">` +
-        `<section class="card"><h3 class="card-title">About</h3><div class="fact-list">` +
-        factRow("Event", fmtId(event.id)) +
-        factRow("Host", event.organizer_id) +
-        factRow("Created", fmtDay(event.created_at)) +
-        (event.location_data ? factRow("Where", event.location_data) : "") +
-        `</div></section>` +
-        `<section class="card"><h3 class="card-title">Your key</h3>` +
-        `<p class="section-text">Held in this tab only. Close it and it's gone.</p>` +
-        `<div class="keycode"><code class="kc-value">${esc(attendee.accessKey)}</code></div>` +
-        `<p class="section-text" style="margin-top:var(--space-3);font-size:0.82rem">Event ID: ${esc(attendee.eventId)}</p>` +
-        `</section>` +
-        `</aside>` +
         `</div>`;
 
     $("#attendee-end").addEventListener("click", () => {
@@ -1256,7 +1377,7 @@ async function loadAttendeeBulletins() {
             box.innerHTML = bulletins.map((b) => bulletinCardHTML(b, false)).join("");
             $$(".bulletin-card", box).forEach((card) => bindBulletinCard(card, false));
         } else {
-            box.innerHTML = emptyState("Nothing posted yet", "Check back soon — the organizer hasn't pinned anything.");
+            box.innerHTML = emptyState("Nothing posted yet");
         }
     } catch (err) {
         box.innerHTML = emptyState("Could not load the board", err.message);
@@ -1295,7 +1416,7 @@ async function loadAttendeeMedia() {
                 });
             });
         } else {
-            box.innerHTML = emptyState("No media yet", "Flyers and photos will show up here.");
+            box.innerHTML = emptyState("No media yet");
         }
     } catch (err) {
         box.innerHTML = emptyState("Could not load media", err.message);
@@ -1309,6 +1430,7 @@ function init() {
     loadSession();
     initTheme();
     bindOrganizeEntry();
+    bindJoinDrop();
     bindJoinEntry();
     window.addEventListener("hashchange", route);
     route();

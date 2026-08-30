@@ -94,3 +94,12 @@ This document identifies the primary adversaries, trust boundaries, and data flo
 - [x] Web UI served from same process (no external CDN dependencies)
 - [x] Event lifecycle management enforces key expiration and revocation
 - [x] Threat model reviewed and updated each phase
+
+### Phase 3.6 Status (Steganographic Invite Keys)
+- [x] Invite-card distribution is **PNG-only by design**: LSB stego is destroyed by lossy re-encode — documented in `docs/steganography_invites.md` §6, with the QR (`gkp:`) printed on the card as the survives-re-encode fallback.
+- [x] The card embeds only the same bearer credential the attendee would type (`event_id` + `access_key`); expiry, revocation, rate limiting and server-side HMAC verification are unchanged — no new server surface, no key storage.
+- [x] Keys remain 128-bit random, shown once, never persisted; the per-row card action re-asks for the raw key rather than retrieving it.
+- [x] Decode happens entirely client-side; a non-PNG or keyless image is rejected locally with no server round-trip.
+- [x] Detectability is documented as casual-opacity, not cryptographic secrecy: LSB replacement is statistically detectable by a motivated analyst who already suspects steganography; the key itself remains the secret.
+- [x] Only vendored dependency is MIT `qrcode-generator` (single file, no network calls); no third-party tracking/analytics.
+- [x] Threat model reviewed and updated each phase

@@ -6,7 +6,7 @@
     <meta name="description" content="gatekeyp — a privacy-preserving, federated event-organizing toolkit. Organize gatherings and share keyed invitations without adtech or tracking.">
     <meta name="color-scheme" content="light dark">
     <title>gatekeyp — events worth attending, gated by keys</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23c9421e' d='M7.5 11a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2.4a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2Z'/%3E%3Cpath fill='none' stroke='%23c9421e' stroke-linecap='round' stroke-width='2' d='M11 11 20 2M16 6l3 3M13 9l2.5-2.5'/%3E%3C/svg%3E">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23111111' d='M7.5 11a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2.4a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2Z'/%3E%3Cpath fill='none' stroke='%23111111' stroke-linecap='round' stroke-width='2' d='M11 11 20 2M16 6l3 3M13 9l2.5-2.5'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -41,15 +41,10 @@
 
                 <!-- ================= Landing ================= -->
                 <section id="view-home" class="view">
-                    <div class="hero">
-                        <p class="eyebrow">a keyed, community tool</p>
-                        <h1 class="hero-title">Gatherings that<br>stay where you put them.</h1>
-                        <p class="hero-lede">
-                            gatekeyp is a privacy-preserving toolkit for organizing events and
-                            sharing them with a small circle. No accounts, no adtech, no tracking —
-                            just an event and a key.
-                        </p>
-                        <div class="hero-actions">
+                    <div class="view-head">
+                        <p class="eyebrow">gatekeyp</p>
+                        <h2 class="view-title">An event and a key.</h2>
+                        <div class="home-actions">
                             <a class="btn btn-primary" href="#/organize">Make an event</a>
                             <a class="btn btn-ghost" href="#/join">Unlock an invite</a>
                         </div>
@@ -65,10 +60,6 @@
                         <header class="view-head">
                             <p class="eyebrow">Organizer desk</p>
                             <h2 class="view-title">Make an event</h2>
-                            <p class="view-sub">
-                                Create a gathering, then keep its key private. When the event is ready,
-                                hand out access keys to the people you trust.
-                            </p>
                         </header>
 
                         <div class="split-cards">
@@ -102,8 +93,6 @@
 
                             <form id="open-event-form" class="card form-card" autocomplete="off">
                                 <h3 class="card-title">Open an existing event</h3>
-                                <p class="card-lead">Returning organizer? Enter the event ID and the master key
-                                   you saved when it was created.</p>
                                 <div class="field">
                                     <label for="open-event-id">Event ID</label>
                                     <input type="text" id="open-event-id" name="event_id" required
@@ -135,11 +124,17 @@
                         <header class="view-head">
                             <p class="eyebrow">Attendee door</p>
                             <h2 class="view-title">Unlock an invite</h2>
-                            <p class="view-sub">
-                                A key unlocks a gathering — nothing more. Enter the event ID from your
-                                invitation plus the access key you received.
-                            </p>
                         </header>
+
+                        <div id="key-drop" class="key-drop" tabindex="0" role="button"
+                             aria-label="Drop, paste or choose an invite card image">
+                            <div class="key-drop-inner">
+                                <span class="key-drop-icon" aria-hidden="true">⤓</span>
+                                <div class="key-drop-title">Drop your invite card here</div>
+                                <div class="key-drop-sub">or paste it with ⌘V — the key lives in its pixels</div>
+                            </div>
+                            <input type="file" id="key-drop-file" accept="image/png,image/*" hidden>
+                        </div>
 
                         <form id="join-form" class="card form-card join-card" autocomplete="off">
                             <h3 class="card-title">Your event key</h3>
@@ -171,15 +166,14 @@
             </div>
         </main>
 
-        <footer class="footer">
-            <p>Privacy by default: no analytics, no trackers, no accounts. Content is encrypted at rest and
-               keys are held by you.</p>
-        </footer>
     </div>
 
     <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="false"></div>
     <div id="modal-root"></div>
 
+    <script src="vendor/qrcode-generator.js"></script>
+    <script src="stego.js"></script>
+    <script src="invite_card.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

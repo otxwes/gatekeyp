@@ -110,6 +110,26 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
 - **Use property-based testing for** serialization, crypto operations, and data validation.
 - **Test both happy paths and edge cases** — empty inputs, invalid inputs, boundary values.
 
+### 3.4 Browser JavaScript (no Node on this machine)
+
+- **JXA (`osascript -l JavaScript`) is a real JavaScriptCore runtime** — use it for
+  syntax checks (`new Function(src)`) and for running pure JS functions against
+  Python-computed golden values (`tests/jxa_stego_check.py`). It parses modern
+  syntax (BigInt literals, template literals, arrow functions) but **its BigInt
+  `%` and `/` are broken** (return garbage) — verify positions with bitwise long
+  division instead. `console.log` goes to **stderr**, not stdout.
+- **64-bit constants must be BigInt literals in JS**: `0x9e3779b97f4a7c15` is an
+  imprecise float64 (loses bits above 2^53), so `BigInt(0x9e3779b97f4a7c15)`
+  silently produces a different seed than Python's exact integer — write
+  `0x9e3779b97f4a7c15n` and keep the Python mirror's `int` exact. A drift here
+  breaks every cross-language test without an error.
+- **Classic-script modules need their factory invoked**: `window.X = (function () {...});`
+  assigns the function itself; the trailing invocation `})();` is required. The
+  JXA parse check caught this after plain review missed it.
+- **Keep `new Function(...)` only for parsing**: JXA `eval` of a whole file has
+  scope surprises — assemble a temp script (hooked source + assertions) and run
+  it as a file instead.
+
 ---
 
 ## 4. Project-Specific Knowledge
@@ -197,8 +217,8 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
 - Repaired `web/index.html` structure (balanced sections, forms, containers; added toast/modal roots).
 - Rewrote `web/style.css` as a complete editorial/minimalist design (~1620 lines: design tokens, dark/light themes, responsive breakpoints, reduced-motion, print).
 - Implemented `web/app.js` as a hash-routed, dependency-free SPA (~1330 lines):
-  - Organizer desk: create / open events; six-tab workspace (Overview, Content,
-    Bulletin board, Media, Access keys, Decommission); one-time master-key modal.
+  - Organizer desk: create / open events; four-tab workspace (Content, Bulletin
+    board, Media, Access keys) + header Decommission action; one-time master-key modal.
   - Attendee door: key-based unlock, content/bulletins/media with commenting.
   - Session keys in `sessionStorage`; raw keys shown once; toasts, confirm
     modals, loading/empty states, theme toggle, keyboard + reduced-motion support.
@@ -214,10 +234,87 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
    the attendee unlock flow must branch on `status`, not HTTP status.
 5. Matching the SPA markup to pre-existing CSS hooks (badges, bulletin tiles,
    toasts, media tiles) meant most component classes were already styled;
-   only a small CSS addendum (`.badge-ghost`, standalone `.section-sub/.section-text`,
+   only a small CSS addendum (`.badge-ghost`, standalone `.section-text`,
    flex `.inline-form`) was needed.
 
 **Next steps:**
 - Phase 4: Map & Navigation (OpenStreetMap, geofencing) — begin.
 - Run the SPA against a live server for a manual end-to-end pass.
 - Add CI/CD pipeline (GitHub Actions) including a JS syntax-check job.
+
+### 2026-08-30 — Phase 3.5: UI simplification (de-chrome pass)
+
+**What was done** (uncommitted, on top of the Monochrome Edition work):
+- `web/index.html` — replaced the hero with a minimal `.view-head`; removed the
+  footer and ornament dividers.
+- `web/app.js` — collapsed the six-tab workspace to four (Content, Bulletin board,
+  Media, Access keys); folded Overview into Content (About card + fact list); moved
+  Decommission into a header button opening a type-the-ID confirm modal; removed the
+  workspace "Event facts" sidebar and attendee About/Your-key side panels; dropped
+  the `fmtDay` helper and `loadWsFacts`/`wsOverview`/`wsDecommission` functions.
+- Removed the helper prose / captions everywhere: the three view-header paragraphs
+  (landing / organize / join), the five card `section-sub` captions, the "Open an
+  existing event" lead, the decorative empty-state second lines, and the
+  master-banner copy (banner now shows the Master badge + Copy button only).
+  Media captions, the event description, and metadata were kept.
+- `web/style.css` — removed the orphaned chrome: `.hero*` (hero → `.home-actions`),
+  `.principles`, `.ornament*`, `.footer`, the `.ws-body`/`.ws-side` and `.ep-grid`/`.ep-side`
+  rail grids, `.danger-zone`/`.verify-prompt`, `.section-divider`, and the `--rail`
+  token; dropped the 900px rail-collapse breakpoint; renumbered sections 13–17.
+
+**Verified:**
+- No Node runtime on this machine — used a delimiter-balance check on `app.js`
+  (504 template-literal backticks; braces/parens/brackets all even) plus a live-server
+  end-to-end smoke test (create event → content/bulletin/access-key → attendee unlock →
+  decommission, with the post-decommission key correctly rejected).
+- Served `app.js`/`index.html`/`style.css` are byte-identical to disk and contain none
+  of the removed classes/ids.
+
+**Next steps:**
+- Manual hard-refresh visual pass (light/dark, mobile) on the new 4-tab layout.
+- Commit the Phase 3.5 work (design system, QA matrix, simplification).
+
+### 2026-08-30 — Phase 3.6: Steganographic Invite Keys
+
+**What was done** (uncommitted):
+- `web/stego.js` — zero-dependency PNG low-bit codec (`embed`/`extract` +
+  payload/QR helpers): manual PNG parse (all five filters, CRC-verified chunks,
+  colour types 0/2/3/4/6), zlib via `CompressionStream`/`DecompressionStream`,
+  `GKP1` container with CRC32, xorshift64-scrambled LSB ±1 embedding with
+  three-channel replication + majority vote + per-channel fallback.
+- `tests/stego_ref.py` — stdlib-only byte-for-byte Python mirror + `--write-fixture` /
+  `--decode` CLI; `tests/test_stego_invites.py` (21 tests: Hypothesis round-trips,
+  golden vectors, five-filter/colour-type coverage, one-channel corruption
+  recovery, capacity edges, committed fixture); `tests/fixtures/invite_fixture.png`.
+- `tests/jxa_stego_check.py` + `.js` — parses the shipped JS in JavaScriptCore and
+  pins its internals (crc32, PRNG stream, positions, payload/QR/container) to
+  Python golden values without a Node runtime.
+- `web/vendor/qrcode-generator.js` (+ LICENSE) — MIT `kazuhikoarase` QR encoder for
+  the survives-re-encode fallback on the card.
+- `web/invite_card.js` — portrait 800×1200 paper-and-ink card renderer + stego
+  download; `web/app.js` — "Also make an invite card" in the one-shot key modal,
+  per-row "Card" action (re-enters the raw key), `org.meta` event metadata; door
+  drop/paste/choose zone with local decode + auto-fill; `web/index.html` +
+  `web/style.css` — drop-zone markup and `.key-drop` ticket-stub styling.
+- `docs/steganography_invites.md`, threat-model Phase 3.6 status, roadmap
+  checkboxes + context.
+
+**Bugs the cross-check caught** (worth remembering):
+- `window.gkpStego = (function () {...});` was missing the trailing `())()` — the
+  module object was the factory function itself; would have broken every caller.
+- `SEED = 0x9e3779b97f4a7c15` (Number) rounds above 2^53, so `BigInt(SEED)` gave a
+  different seed than Python's exact int — JS and Python would never agree in a
+  real browser. Fixed with a BigInt literal.
+- JXA's BigInt `%`/`/` are broken (return garbage); harness uses bitwise long
+  division. Also: `osascript` logs to stderr, and JXA `eval` scope differs — run
+  assembled scripts as files.
+
+**Verified:**
+- `arch -x86_64 python -m pytest -q` → 164 passed; `python -m tests.jxa_stego_check`
+  → JXA-OK; ruff clean on the new Python files; all four web JS files parse under
+  JavaScriptCore. Fixture regenerates deterministically.
+
+**Next steps:**
+- Live-server browser E2E (create → generate key → make card → download →
+  Python `--decode` → door drop → unlock), then commit the phase.
+- Manual visual pass on the card art and the door drop zone (light/dark, mobile).
