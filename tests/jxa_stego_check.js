@@ -144,11 +144,13 @@ Object.keys(exp.rejectReasons).forEach(function (kind) {
     if (got !== exp.rejectReasons[kind]) failures.push("inviteRejectReason mismatch for " + kind);
 });
 
-// invite-card coverFit vs Python oracle (object-fit:cover crop rectangle).
+// invite-card coverFit / containFit / backdropCrop vs the Python oracle
+// (object-fit:cover crop rectangle, object-fit:contain destination rectangle,
+// and the blurred letterbox backdrop's cover-crop window against the card).
 // The card module must also have loaded and exposed its internals.
 var C = window.gkpInviteCard && window.gkpInviteCard.__test;
 if (!C) {
-    failures.push("invite_card.js did not load / expose __test.coverFit");
+    failures.push("invite_card.js did not load / expose __test.coverFit/containFit/backdropCrop");
 } else {
     exp.coverFit.forEach(function (c) {
         var got = C.coverFit(c.src[0], c.src[1], c.dst[0], c.dst[1]);
@@ -156,6 +158,24 @@ if (!C) {
         if (Math.abs(got.sx - want[0]) > 1e-9 || Math.abs(got.sy - want[1]) > 1e-9 ||
             Math.abs(got.sw - want[2]) > 1e-9 || Math.abs(got.sh - want[3]) > 1e-9) {
             failures.push("coverFit mismatch for " + c.src + " -> " + c.dst +
+                ": got " + JSON.stringify(got) + " want " + JSON.stringify(want));
+        }
+    });
+    exp.containFit.forEach(function (c) {
+        var got = C.containFit(c.src[0], c.src[1], c.dst[0], c.dst[1]);
+        var want = c.want;
+        if (Math.abs(got.dx - want[0]) > 1e-9 || Math.abs(got.dy - want[1]) > 1e-9 ||
+            Math.abs(got.dw - want[2]) > 1e-9 || Math.abs(got.dh - want[3]) > 1e-9) {
+            failures.push("containFit mismatch for " + c.src + " -> " + c.dst +
+                ": got " + JSON.stringify(got) + " want " + JSON.stringify(want));
+        }
+    });
+    exp.backdropCrop.forEach(function (c) {
+        var got = C.backdropCrop(c.src[0], c.src[1]);
+        var want = c.want;
+        if (Math.abs(got.sx - want[0]) > 1e-9 || Math.abs(got.sy - want[1]) > 1e-9 ||
+            Math.abs(got.sw - want[2]) > 1e-9 || Math.abs(got.sh - want[3]) > 1e-9) {
+            failures.push("backdropCrop mismatch for " + c.src +
                 ": got " + JSON.stringify(got) + " want " + JSON.stringify(want));
         }
     });

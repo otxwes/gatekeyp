@@ -123,6 +123,43 @@ def _build_expected() -> dict:
                 "want": list(card_ref.cover_fit(0, 100, 704, 240)),
             },
         ],
+        "containFit": [
+            {
+                "src": [1600, 900],
+                "dst": [800, 1200],
+                "want": list(card_ref.contain_fit(1600, 900, 800, 1200)),
+            },
+            {
+                "src": [900, 1600],
+                "dst": [800, 1200],
+                "want": list(card_ref.contain_fit(900, 1600, 800, 1200)),
+            },
+            {
+                "src": [600, 600],
+                "dst": [800, 1200],
+                "want": list(card_ref.contain_fit(600, 600, 800, 1200)),
+            },
+            {
+                "src": [1600, 2400],
+                "dst": [800, 1200],
+                "want": list(card_ref.contain_fit(1600, 2400, 800, 1200)),
+            },
+            {
+                "src": [0, 100],
+                "dst": [800, 1200],
+                "want": list(card_ref.contain_fit(0, 100, 800, 1200)),
+            },
+        ],
+        "backdropCrop": [
+            # The blurred letterbox fill behind the contain-fitted art crops
+            # the source cover-fit against the card (800x1200).
+            {"src": [1600, 900], "want": list(card_ref.backdrop_crop(1600, 900))},
+            {"src": [1200, 1500], "want": list(card_ref.backdrop_crop(1200, 1500))},
+            {"src": [900, 1600], "want": list(card_ref.backdrop_crop(900, 1600))},
+            {"src": [1600, 2400], "want": list(card_ref.backdrop_crop(1600, 2400))},
+            {"src": [600, 600], "want": list(card_ref.backdrop_crop(600, 600))},
+            {"src": [123, 47], "want": list(card_ref.backdrop_crop(123, 47))},
+        ],
     }
 
 
@@ -148,13 +185,15 @@ def main() -> int:
         sys.stderr.write("could not hook web/stego.js (return line changed?) — check the codec\n")
         return 1
     module_src = module_src.replace(target, hooked)
-    # Hook the shipped invite-card module: expose coverFit for the pin.
+    # Hook the shipped invite-card module: expose coverFit, containFit and the
+    # full-card backdropCrop for the pin.
     card_target = (
-        "    return { render, download, safeFileName, renderCover, coverFit, loadCoverImage };"
+        "    return { render, download, safeFileName, renderCover, coverFit, "
+        "containFit, loadCoverImage };"
     )
     card_hooked = (
-        "    return { render, download, safeFileName, renderCover, coverFit, loadCoverImage, "
-        "__test: { coverFit } };"
+        "    return { render, download, safeFileName, renderCover, coverFit, containFit, "
+        "loadCoverImage, __test: { coverFit, containFit, backdropCrop } };"
     )
     card_src = _CARD_JS.read_text(encoding="utf-8")
     if card_target not in card_src:

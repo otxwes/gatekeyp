@@ -110,7 +110,7 @@ decodes any valid PNG an attendee brings.
 | File | Role |
 |---|---|
 | `web/stego.js` | zero-dependency codec: `embed` / `extract` / `makePayload` / `parsePayload` / `qrPayload` / `parseQrPayload` |
-| `web/invite_card.js` | canvas card renderer (`render`, optional custom cover band) + embed-and-download (`download`) + cover engine (`coverFit`, `drawPreset`, `drawCoverBand`, `renderCover`, `loadCoverImage`) |
+| `web/invite_card.js` | canvas card renderer (`render`) + embed-and-download (`download`) + cover engine (`coverFit`, `containFit`, `backdropCrop`, `drawImageFullCard`, `drawPreset`, `drawCoverBand`, `renderCover`, `loadCoverImage`) |
 | `web/vendor/qrcode-generator.js` | MIT `kazuhikoarase` QR encoder (single file, unmodified) |
 | `web/vendor/qrcode-generator-LICENSE.txt` | its MIT license |
 | `tests/stego_ref.py` | stdlib-only Python mirror (the oracle) + `--write-fixture` / `--decode` CLI |
@@ -166,14 +166,19 @@ arch -x86_64 python -m pytest -q               # full suite (Apple Silicon)
   the card. This covers the "organizer still has it in their chat history"
   case.
 - **Custom covers** (Phase 3.7). Both card paths open a cover picker first:
-  preset monochrome patterns (hatch / keyline / dots / keyhole) or the
-  organizer's own image, drawn *cover-fit* on a 704×600 hero band under the
-  top keyhole, with a live 200×300 preview before download. Purely client-side
-  — the cover never leaves the tab, and the hidden key + printed QR are
-  untouched.
-- The card is **text-free** (minimalist pass): keyhole ornament top and bottom,
-  the hero cover band (or plain dotted paper when no cover), and a centered,
-  uncaptioned QR — nothing else. It embeds the
+  preset monochrome patterns (hatch / keyline / dots / keyhole) drawn on the
+  704×600 hero band, or the organizer's own image spread across the **entire
+  card surface** (*contain-fit* — the whole picture is on the card, never
+  cropped; the letterbox around it is a blurred extension of the picture, so
+  no paper bands or outlines show at the edges), with a live 200×300 preview
+  before download. Purely client-side — the cover never leaves the tab, and
+  the hidden key + printed QR are untouched.
+- The card is **text-free** (minimalist pass): preset/paper cards carry the
+  keyhole ornaments, dotted paper and keyline frame with a hero cover band
+  (or plain dotted paper when no cover); a full-card photo owns the whole
+  surface (no paper chrome) and keeps only an uncaptioned QR — a centered
+  240px plate on preset/paper cards, a compact 192px corner plate
+  (bottom-right) over a full-card photo. It embeds the
   `gkp:event_id:access_key` payload in its pixels and QR; the event title only
   names the downloaded file (`<title>-invite.png`). No organizer, location, or
   caption text is printed on the card.
