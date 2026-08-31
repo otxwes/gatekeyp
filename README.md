@@ -46,6 +46,14 @@ gatekeyp is designed to help communities organize events while prioritizing:
     board, Media, Access keys) with a header Decommission action + one-time master-key modal
   - Attendee door: unlock an invite with an access key, then read content,
     post on the bulletin board, comment, and view media — no account required
+  - Invite cards: the access key is hidden in the card's pixels by a
+    steganographic codec (`web/stego.js`), with a printed QR fallback
+    (`web/invite_card.js`); a client-side cover picker adds a preset
+    monochrome pattern (hatch / keyline / dots / keyhole) or an uploaded
+    image drawn cover-fit — the key never leaves the tab
+  - Door QR decode: drop a card image at the door; the QR is decoded locally
+    (vendored jsQR, `web/door_qr.js`) with honest rejection + share guidance
+    when a card can't be read
   - Keys held only in the session tab (sessionStorage); no third-party tracking or analytics
 
 ## Project Structure
@@ -60,7 +68,12 @@ gatekeyp is designed to help communities organize events while prioritizing:
 │   ├── core/        # Key management, content management, event lifecycle
 │   └── db/          # Database handler
 ├── tests/           # Unit, integration, property-based, and security tests
-├── web/             # Static web UI (HTML, CSS, JS)
+├── web/             # Static web UI (hash-routed SPA, no build step)
+│   ├── app.js       # SPA: organizer desk + attendee door + cover picker
+│   ├── invite_card.js  # Invite-card renderer + cover engine + key embed
+│   ├── stego.js     # Steganographic codec (hide / reveal the key in pixels)
+│   ├── door_qr.js   # Local QR decode at the door (vendored jsQR)
+│   └── vendor/      # Third-party libs (qrcode-generator, jsQR + LICENSE)
 ├── pyproject.toml   # Modern dependency management (uv)
 ├── uv.lock          # Locked dependency versions (commit this!)
 ├── Dockerfile       # Containerization
@@ -116,6 +129,11 @@ The test suite includes:
 - **Integration tests** for the full request flow (Gateway → KeyManager → DatabaseHandler)
 - **Property-based tests** (Hypothesis) for key hashing, generation, federation parsing, and encryption roundtrips
 - **Security audit tests** validating the threat model checklist
+- **JS↔Python codec cross-check** (`python -m tests.jxa_stego_check`) — runs the
+  in-browser `stego.js` / `invite_card.js` / `door_qr.js` under JavaScriptCore
+  (JXA) and pins their behavior against the Python oracle
+- **Invite-card cover tests** — golden vectors + Hypothesis object-fit:cover
+  properties, oracle-pinned preset ids (`tests/test_invite_card_cover.py`)
 
 ### Code Quality
 
@@ -180,6 +198,7 @@ See [roadmap.md](roadmap.md) for the full development roadmap, including:
 - Phase 1: Core Architecture (Security-Hardened) ✅
 - Phase 2: Content & Communication Layer ✅
 - Phase 3: Frontend & UX/UI Design ✅
+- Phase 3.5–3.7: Monochrome design-system pass, steganographic invite keys, custom card covers ✅
 - Phase 4: Map & Navigation (Privacy-Preserving)
 - Phase 5: Payment & Ticketing System
 

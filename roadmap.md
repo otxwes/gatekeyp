@@ -184,7 +184,8 @@ repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
 *This section is updated as we progress to maintain continuity.*
 - Current focus: Phase 3 - Frontend & UX/UI Design is **complete** (full SPA in `web/app.js`; redesign in `web/style.css`; markup repaired in `web/index.html`). Phase 3.5 - UX & Visual Design Iteration is **complete** (Monochrome Edition: B&W palette + motif set §19, a11y + QA matrix). Phase 3.6 - Steganographic Invite Keys is **complete** (codec + card + QR encode/fallback + organizer/attendee UX + door QR decode + honest rejection + share guidance + docs + tests). Phase 3.7 - Custom Card Covers is **complete** (preset monochrome covers + own-image upload drawn cover-fit; client-side only).
 - Next: Phase 4 - Map & Navigation. Invite-card art reuses the Phase-3.5 motif primitives (`--hatch-*`, `.voided`) — design-system §12.
-- Test suite: 166 tests passing (`arch -x86_64 python -m pytest -q`; the venv's `cryptography` wheel is x86_64 on Apple Silicon). Plus `python -m tests.jxa_stego_check` for the JS↔Python codec agreement, and `python -m tests.stego_ref --write-fixture` to regenerate the invite-card fixture.
+- Test suite: 170 tests passing (`arch -x86_64 python -m pytest -q`; the venv's `cryptography` wheel is x86_64 on Apple Silicon). Plus `python -m tests.jxa_stego_check` for the JS↔Python codec agreement (now incl. `coverFit` pins), and `python -m tests.stego_ref --write-fixture` to regenerate the invite-card fixture.
+- Commit D landed (`5c57b4b`) — custom card covers complete and pushed; the local dev server (`src.api.server`) is live on `127.0.0.1:8000` and serves `web/` from disk (web/* edits go live per-request, no restart; `src/*` changes need a restart).
 - Environment uses `python3` (not `python`).
 - `KeyManager` accepts an optional shared `DatabaseHandler`; `Gateway` passes its own `db` to `KeyManager`.
 - `ContentManager` requires shared `DatabaseHandler` and `KeyManager` instances.
