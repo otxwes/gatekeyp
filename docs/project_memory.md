@@ -54,6 +54,12 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
 - **GitHub MCP server** requires a `GITHUB_PERSONAL_ACCESS_TOKEN` environment variable.
 - **Filesystem MCP server** provides file read/write/search capabilities.
 - **Fetch MCP server** provides web content fetching.
+- **Cline user-level MCP config lives at `~/.cline/data/settings/cline_mcp_settings.json`** (not the legacy `globalStorage/saoudrizwan.claude-dev` path). Format: `{"mcpServers": {"<name>": {"transport": {"type": "stdio", "command", "args", "env"}}}}`. Remote servers use `"type": "streamableHttp"` + `"url"`.
+- **`spawn -- ENOENT` means the config literally sets `"command": "--"`** — Cline tried to execute a program named `--`. The real executable had been misplaced in `args`. `command` must be the executable, `args` the arguments.
+- **GUI-launched VS Code / Cline have a minimal `PATH`** (Homebrew dirs like `/usr/local/opt/*/bin` and `/usr/local/bin` are missing). Fix: use absolute paths for `command` **and** set `"env": {"PATH": "/usr/local/opt/node/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"}` on the transport.
+- **npx still needs `node` on PATH** even when invoked via an absolute node + npx-cli path — npm resolves the package's `#!/usr/bin/env node` bin through PATH. Add the node bin dir to the transport `env.PATH`, and pass `-y` so npx never blocks on an install prompt. Working pattern: `command: "/usr/local/opt/node/bin/node"`, `args: ["/usr/local/opt/node/libexec/lib/node_modules/npm/bin/npx-cli.js", "-y", "<pkg>"]`.
+- **Homebrew `node` was installed but never linked** (no `node`/`npm`/`npx` in `/usr/local/bin`); the keg path `/usr/local/opt/node/bin/*` and `npx-cli.js` are stable regardless of symlinks.
+- **Semgrep MCP**: the OSS `semgrep` binary's `semgrep mcp` and `semgrep-mcp`'s `semgrep --pro --version` both require the Pro engine — `semgrep login` + `install-semgrep-pro`, or `SEMGREP_APP_TOKEN` set. `uvx semgrep-mcp` additionally shells out to a `semgrep` CLI that must be on PATH. Validate a server by piping an `initialize` JSON-RPC request and grepping `"serverInfo"` from the response.
 
 ### 1.7 Sub-Agents
 
@@ -406,3 +412,44 @@ six scripts in order.
 3. Manual visual pass on the card art, cover picker, and door drop zone
    (light/dark, mobile).
 4. Then Phase 4 — Map & Navigation.
+
+---
+
+### 2026-08-31 — Session end: invite card stripped to a text-free minimalist layout
+
+**What changed:**
+- `web/invite_card.js` — the card is now **text-free**: the "PRINTED KEY ·
+  INK ON PAPER" stamp band, the event name, the organizer/location line, and
+  the platform captions under the QR are all gone. New composition: double
+  keyline frame → keyhole ornament (top, centered) → **704×600 hero cover
+  band** (at 48,120 → y=120..720; preset pattern or uploaded photo drawn
+  cover-fit; "none"/absent keeps dotted paper) → centered 240px uncaptioned
+  QR (tray ≈ y=774..1046) → keyhole ornament (bottom, centered, y=1130). No
+  overlaps; the cover art is the sole focus.
+- Dead code removed: `wrapText`, `fmtEventId`, and the unused constants
+  (`INK_SOFT`, `INK_FAINT`, all `FONT_*`). `PAPER_DEEP` stays (QR tray fill).
+- `web/app.js` — `inviteCardOpts()` no longer passes organizerId/location;
+  `title` survives only to name the download (`<title>-invite.png`).
+- `docs/steganography_invites.md` §5 — cover band corrected to a 704×600 hero
+  band under the top keyhole (was "704×240 at the top"); added the text-free
+  card description (payload lives only in pixels + QR; no organizer,
+  location, or caption text printed).
+
+**Validation recap (all green at end of session):**
+- `arch -x86_64 python -m pytest -q` → **170 passed**.
+- `python -m tests.jxa_stego_check` → JXA-OK (JS↔Python oracle agreement).
+- All web JS parses under JavaScriptCore (checked mid-session).
+- Visual pass via Playwright on the browser canvas: 3 cover variants
+  (paper / keyhole / hatch) — no text artifacts, QR centered, keyholes
+  top/bottom only, hero band prominent, QR clears the bottom keyhole.
+
+**Also in this working tree (uncommitted until now):** Cline MCP env notes
+added earlier to this file (user-level config path, `spawn -- ENOENT`
+diagnosis) — committed together with this entry.
+
+**Next session:**
+1. Browser E2E on `http://127.0.0.1:8000` with the new card art: generate →
+   card (each preset + image upload) → download → `tests.stego_ref --decode`
+   → door drop → unlock; plus a re-encoded JPEG card for the jsQR fallback.
+2. Print one card at actual size to sanity-check the hero band on paper.
+3. Then Phase 4 — Map & Navigation.
