@@ -366,3 +366,43 @@ presets and an uploaded image in the manual browser pass.
 - Phase 4 — Map & Navigation.
 - Optional cover polish: more presets / per-preset density variants; per-event
   cover persistence would need server surface and is deliberately out of scope.
+
+### 2026-08-30 — Session end: Commit D landed, localhost is live for review
+
+**State at session end:**
+- Commit D landed as `5c57b4b` ("feat: custom covers for the invite card —
+  preset patterns + own-image upload"); 11 files, +581/−35, working tree
+  clean, origin/main in sync (pushed).
+- Local dev server (`src.api.server`, PID 9180) live on `127.0.0.1:8000`,
+  serving `web/` from disk via `StaticFiles` — web/* edits go live per-request
+  with no restart; only `src/*` backend changes need a server restart.
+
+**Validation recap (all green at end of session):**
+- `arch -x86_64 python -m pytest -q` → **170 passed** (166 + 4 new cover tests).
+- ruff check + format clean; pre-commit hook fully green on the commit.
+- JXA cross-check (`python -m tests.jxa_stego_check`) → JXA-OK, now incl.
+  `coverFit` pins vs the Python oracle.
+- COVER-SMOKE-OK via JXA stub-context — 30,575 drawing ops across every
+  render path (classic, scaled, 4 presets, none/absent, image, renderCover
+  variants, coverFit degenerates).
+- All web JS parses under JavaScriptCore (JS-PARSE-OK).
+
+**Small last-minute polish (after the first smoke, before commit):**
+- `renderCover` now also frames the "None" swatch (paper ground + keyline), so
+  every chip in the cover picker reads consistently.
+
+**Verified live via curl against the running server** (not just the tree):
+`invite_card.js` (11 cover-engine markers), `app.js` (10 cover-modal markers),
+`stego.js` / `door_qr.js` / `vendor/jsqr.js` all 200, `index.html` wires all
+six scripts in order.
+
+**Next session — review + test checklist:**
+1. Browser E2E on `http://127.0.0.1:8000`: create → open event → Access keys →
+   "Make an invite card" (top button) **and** per-row "Card" action → select
+   each preset + an own-image upload (cover-fit) → Download card → Python
+   `--decode` → door drop → unlock.
+2. Door drop of a *re-encoded JPEG* card to exercise the jsQR fallback +
+   honest rejection + share guidance.
+3. Manual visual pass on the card art, cover picker, and door drop zone
+   (light/dark, mobile).
+4. Then Phase 4 — Map & Navigation.
