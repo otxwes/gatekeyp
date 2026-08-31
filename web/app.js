@@ -1038,9 +1038,10 @@ const COVER_PRESETS = [
     { id: "keyhole", label: "Keyhole" },
 ];
 
-/** Modal: pick a cover (preset pattern or own image, drawn cover-fit) then
- *  download the invite card. Shared by the one-shot card button and the
- *  per-row "Card" action — purely client-side, the key never leaves the tab. */
+/** Modal: pick a cover (preset pattern for the hero band, or an own image
+ *  spread across the whole card) then download the invite card. Shared by the
+ *  one-shot card button and the per-row "Card" action — purely client-side,
+ *  the key never leaves the tab. */
 function openCardCoverModal(card) {
     let cover = { type: "none" };
     const chips = COVER_PRESETS.map((p) => {
@@ -1054,7 +1055,7 @@ function openCardCoverModal(card) {
         );
     }).join("");
     const body =
-        `<p class="field-hint">Pick a cover for the top of the card — a monochrome pattern or your own image (drawn cover-fit). ` +
+        `<p class="field-hint">Pick a cover — a monochrome pattern for the hero band, or your own image spread across the whole card (nothing cropped; the QR tucks into a corner). ` +
         `The hidden key and the printed QR are untouched.</p>` +
         `<div class="field"><label>Cover</label>` +
         `<div class="cover-picker">${chips}` +

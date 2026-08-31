@@ -68,15 +68,16 @@ window.gkpInviteCard = (function () {
         ctx.restore();
     }
 
-    function drawQr(ctx, qr, x, y, size) {
+    function drawQr(ctx, qr, x, y, size, pad) {
+        const p = pad === undefined ? 16 : pad;
         const n = qr.getModuleCount();
         const cell = size / n;
         ctx.save();
         ctx.fillStyle = PAPER_DEEP;
-        ctx.fillRect(x - 16, y - 16, size + 32, size + 32);
+        ctx.fillRect(x - p, y - p, size + p * 2, size + p * 2);
         ctx.strokeStyle = LINE_STRONG;
         ctx.lineWidth = 2;
-        ctx.strokeRect(x - 16, y - 16, size + 32, size + 32);
+        ctx.strokeRect(x - p, y - p, size + p * 2, size + p * 2);
         ctx.fillStyle = INK;
         for (let row = 0; row < n; row++) {
             for (let col = 0; col < n; col++) {
@@ -113,6 +114,22 @@ window.gkpInviteCard = (function () {
         const sw = dstW / scale;
         const sh = dstH / scale;
         return { sx: (srcW - sw) / 2, sy: (srcH - sh) / 2, sw, sh };
+    }
+
+    /**
+     * object-fit:contain destination rectangle for fitting a `srcW x srcH`
+     * source wholly inside a `dstW x dstH` box (largest centered rect, aspect
+     * preserved, never cropped — letterbox instead). Pure and deterministic —
+     * pinned against the Python oracle in the JXA check alongside coverFit.
+     */
+    function containFit(srcW, srcH, dstW, dstH) {
+        if (!(srcW > 0) || !(srcH > 0) || !(dstW > 0) || !(dstH > 0)) {
+            return { dx: 0, dy: 0, dw: srcW, dh: srcH };
+        }
+        const scale = Math.min(dstW / srcW, dstH / srcH);
+        const dw = srcW * scale;
+        const dh = srcH * scale;
+        return { dx: (dstW - dw) / 2, dy: (dstH - dh) / 2, dw, dh };
     }
 
     /** Monochrome cover presets (Phase 3.7) — texture-only, from the motif set. */
@@ -167,6 +184,62 @@ window.gkpInviteCard = (function () {
         ctx.restore();
     }
 
+    /**
+     * Cover-crop window for the full-card backdrop: object-fit:cover against
+     * the card. Pure and deterministic — pinned against the Python oracle in
+     * the JXA check alongside coverFit / containFit.
+     */
+    function backdropCrop(srcW, srcH) {
+        return coverFit(srcW, srcH, CARD_W, CARD_H);
+    }
+
+    /**
+     * Cover-extend the picture across the WHOLE card: a twice-downscaled
+     * cover-crop of the same image upscaled back to card size — a smooth,
+     * engine-independent blur (no ctx.filter dependency) painted behind the
+     * contain-fitted art, so the letterbox reads as a continuation of the
+     * picture instead of paper. Returns the crop used, or null if the image
+     * has no pixels.
+     */
+    function drawBlurBackdrop(ctx, image) {
+        const srcW = image.naturalWidth || image.width || 0;
+        const srcH = image.naturalHeight || image.height || 0;
+        if (!(srcW > 0) || !(srcH > 0)) return null;
+        const crop = backdropCrop(srcW, srcH);
+        const mid = document.createElement("canvas");
+        mid.width = 96;
+        mid.height = Math.max(1, Math.round((mid.width * CARD_H) / CARD_W));
+        mid.getContext("2d").drawImage(image, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, mid.width, mid.height);
+        const tiny = document.createElement("canvas");
+        tiny.width = 24;
+        tiny.height = Math.max(1, Math.round((tiny.width * CARD_H) / CARD_W));
+        tiny.getContext("2d").drawImage(mid, 0, 0, mid.width, mid.height, 0, 0, tiny.width, tiny.height);
+        ctx.save();
+        ctx.imageSmoothingEnabled = true;
+        if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(tiny, 0, 0, tiny.width, tiny.height, 0, 0, CARD_W, CARD_H);
+        ctx.restore();
+        return crop;
+    }
+
+    /**
+     * Spread an uploaded image across the WHOLE card surface (object-fit:
+     * contain — the entire picture is always on the card, never cropped). The
+     * letterbox around the art is filled with a blurred cover-extend of the
+     * same picture, so the edges read as a natural continuation of the image
+     * — no paper bands, no drawn outline. Returns the drawn rect.
+     */
+    function drawImageFullCard(ctx, image) {
+        const srcW = image.naturalWidth || image.width || 0;
+        const srcH = image.naturalHeight || image.height || 0;
+        const r = containFit(srcW, srcH, CARD_W, CARD_H);
+        drawBlurBackdrop(ctx, image);
+        if (srcW > 0 && srcH > 0) {
+            ctx.drawImage(image, 0, 0, srcW, srcH, r.dx, r.dy, r.dw, r.dh);
+        }
+        return r;
+    }
+
     /** Render just the cover band at w x h (used for picker swatches). */
     function renderCover(canvas, w, h, cover, image) {
         canvas.width = w;
@@ -212,36 +285,58 @@ window.gkpInviteCard = (function () {
         canvas.height = Math.round(CARD_H * scale);
         ctx.scale(scale, scale);
 
-        // Paper ground + dotted tooth.
+        const fullBleed = Boolean(o.coverImage && o.cover && o.cover.type === "image");
+
+        // Paper ground. Full-card photos skip the paper texture (dotted
+        // tooth, keyline frame, top keyhole): the art owns the entire surface.
         ctx.fillStyle = PAPER;
         ctx.fillRect(0, 0, CARD_W, CARD_H);
-        drawDots(ctx, 0, 0, CARD_W, CARD_H, 28);
+        if (!fullBleed) {
+            drawDots(ctx, 0, 0, CARD_W, CARD_H, 28);
 
-        // Slim keyline frame — the card's edge. No words, no stamp band.
-        ctx.strokeStyle = LINE_STRONG;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(24, 24, CARD_W - 48, CARD_H - 48);
-        ctx.strokeStyle = LINE;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(32, 32, CARD_W - 64, CARD_H - 64);
+            // Slim keyline frame — the card's edge. No words, no stamp band.
+            ctx.strokeStyle = LINE_STRONG;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(24, 24, CARD_W - 48, CARD_H - 48);
+            ctx.strokeStyle = LINE;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(32, 32, CARD_W - 64, CARD_H - 64);
 
-        // Top ornament: a single keyhole, centered.
-        drawKeyhole(ctx, CARD_W / 2, 78, 18);
-
-        // Hero cover band — the stego image is the whole focus. Preset pattern
-        // or uploaded photo drawn cover-fit; absent / "none" keeps paper.
-        drawCoverBand(ctx, 48, 120, CARD_W - 96, 600, o.cover, o.coverImage || null);
-
-        // QR fallback (survives re-encoding by photo apps), centered, uncaptioned.
-        const qr = buildQr(String(o.qrText || ""));
-        if (qr) {
-            const qrSize = 240;
-            const qrX = (CARD_W - (qrSize + 32)) / 2;
-            drawQr(ctx, qr, qrX, 790, qrSize);
+            // Top ornament: a single keyhole, centered.
+            drawKeyhole(ctx, CARD_W / 2, 78, 18);
         }
 
-        // Bottom ornament: a single keyhole, centered.
-        drawKeyhole(ctx, CARD_W / 2, CARD_H - 70, 12);
+        // Cover. An uploaded image is spread across the WHOLE card surface
+        // (object-fit:contain — the entire picture is on the card, nothing
+        // cropped; the letterbox is a blurred extension of the picture, so no
+        // paper bands or outlines show at the edges); presets pattern the
+        // 704×600 hero band; absent / "none" keeps paper.
+        if (fullBleed) {
+            drawImageFullCard(ctx, o.coverImage);
+        } else {
+            drawCoverBand(ctx, 48, 120, CARD_W - 96, 600, o.cover, o.coverImage || null);
+        }
+
+        // QR fallback (survives re-encoding by photo apps), uncaptioned. Over
+        // a full-card photo it tucks into the bottom-right corner as a compact
+        // plate with a 24px quiet zone (≈ 5 modules), 40px off the card edges;
+        // preset / paper cards keep the centered fallback.
+        const qr = buildQr(String(o.qrText || ""));
+        if (qr) {
+            if (fullBleed) {
+                const qrSize = 192;
+                const qrPad = 24;
+                drawQr(ctx, qr, CARD_W - 40 - qrSize - qrPad, CARD_H - 40 - qrSize - qrPad, qrSize, qrPad);
+            } else {
+                const qrSize = 240;
+                const qrX = (CARD_W - (qrSize + 32)) / 2;
+                drawQr(ctx, qr, qrX, 790, qrSize);
+            }
+        }
+
+        // Bottom ornament: a single keyhole, centered. Photo cards skip it —
+        // the corner QR plate anchors the bottom edge instead.
+        if (!fullBleed) drawKeyhole(ctx, CARD_W / 2, CARD_H - 70, 12);
     }
 
     function safeFileName(title) {
@@ -274,5 +369,5 @@ window.gkpInviteCard = (function () {
         return stegoBlob;
     }
 
-    return { render, download, safeFileName, renderCover, coverFit, loadCoverImage };
+    return { render, download, safeFileName, renderCover, coverFit, containFit, loadCoverImage };
 })();

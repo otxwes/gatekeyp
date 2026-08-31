@@ -50,7 +50,7 @@ gatekeyp is designed to help communities organize events while prioritizing:
     steganographic codec (`web/stego.js`), with a printed QR fallback
     (`web/invite_card.js`); a client-side cover picker adds a preset
     monochrome pattern (hatch / keyline / dots / keyhole) or an uploaded
-    image drawn cover-fit — the key never leaves the tab
+    image spread across the whole card, uncropped — the key never leaves the tab
   - Door QR decode: drop a card image at the door; the QR is decoded locally
     (vendored jsQR, `web/door_qr.js`) with honest rejection + share guidance
     when a card can't be read
