@@ -61,7 +61,14 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
 - **Homebrew `node` was installed but never linked** (no `node`/`npm`/`npx` in `/usr/local/bin`); the keg path `/usr/local/opt/node/bin/*` and `npx-cli.js` are stable regardless of symlinks.
 - **Semgrep MCP**: the OSS `semgrep` binary's `semgrep mcp` and `semgrep-mcp`'s `semgrep --pro --version` both require the Pro engine — `semgrep login` + `install-semgrep-pro`, or `SEMGREP_APP_TOKEN` set. `uvx semgrep-mcp` additionally shells out to a `semgrep` CLI that must be on PATH. Validate a server by piping an `initialize` JSON-RPC request and grepping `"serverInfo"` from the response.
 
-### 1.7 Sub-Agents
+### 1.7 Playwright MCP (browser automation)
+
+- **Playwright MCP intercepts the native file chooser** (`setInterceptFileChooserDialog`): in the managed browser, clicking a file input / `<label for>` chip does **not** show the OS dialog — the chooser is queued as "Modal state: [File chooser]" and must be answered with `browser_file_upload`. From the user's seat this reads as "the upload button does nothing", so **never diagnose file-picker UI bugs from the Playwright session alone** — verify in a real browser first.
+- **Queued file choosers persist across navigations** in a persistent profile — dozens of "[File chooser]" entries on a fresh page load are stale intercepts from earlier clicks, not a runaway loop in the app. Close the page (`browser_close`) to clear them; canceling one at a time is slow.
+- **Drive upload flows end-to-end via tools**: click the chip → `browser_file_upload` with an absolute path → assert canvas pixels via `browser_evaluate` (e.g. upload a synthetic solid-color PNG and count matching pixels in the target region) → for downloads, read the saved artifact from the MCP output dir and re-decode it (pure-Python zlib PNG decode works when PIL is unavailable).
+- **`browser_file_upload` rejects paths outside its allowed roots** even when the root list looks permissive — copy fixtures into the MCP output dir (`/tmp/.playwright-mcp/`) first.
+
+### 1.8 Sub-Agents
 
 - **Sub-agents are configured in `.agents/workflows.json`** — each workflow defines a prompt template and expected output.
 - **Use sub-agents for parallel research** — they can explore different parts of the codebase simultaneously.
@@ -453,3 +460,160 @@ diagnosis) — committed together with this entry.
    → door drop → unlock; plus a re-encoded JPEG card for the jsQR fallback.
 2. Print one card at actual size to sanity-check the hero band on paper.
 3. Then Phase 4 — Map & Navigation.
+
+---
+
+### 2026-08-31 — Session end: invite card shows the whole uploaded image (contain-fit) with a corner QR plate
+
+**What changed:**
+- `web/invite_card.js` — an uploaded cover photo now fills the **whole card
+  surface** (object-fit:contain) instead of being cropped into the hero band:
+  new `containFit()` helper (contain math: scale = min(W/w, H/h), centered)
+  and `drawImageFullCard()` render the entire picture letterboxed on the
+  dotted paper; nothing is cropped. `fullBleed = cover.type === "image" &&
+  coverImage loaded` switches between the new full-card render and the old
+  `drawCoverBand` (presets keep the 704×600 hero band; "none"/absent keeps
+  paper). Over a full-card photo the fallback QR becomes a compact
+  **192px plate with a 24px quiet zone in the bottom-right corner**
+  (tray at 520,920 → x=520..736, y=920..1112 — inside both keylines, clear
+  of the bottom keyhole); preset/paper cards keep the centered 240px QR.
+- `web/app.js` — cover-modal copy updated for the new behavior (hero band
+  vs. whole-card wording); no API/flow changes.
+- Oracle + tests: `tests/card_ref.py` gained `contain_fit()` (mirror of the
+  JS pin, incl. degenerate inputs) and golden vectors;
+  `tests/test_invite_card_cover.py` gained
+  `test_contain_fit_is_object_fit_contain` + vector-driven renderer asserts;
+  `tests/jxa_stego_check.js/.py` hook the shipped module and pin the live
+  `containFit` against the Python oracle; `tests/test_stego_e2e.py` static
+  needles updated for the corner-plate geometry.
+- Docs: `docs/steganography_invites.md` §5 and `README.md` describe the
+  whole-image card + corner QR.
+
+**Validation recap (all green at end of session):**
+- `uv run pytest tests/ -q` → **173 passed** (3 new).
+- `python -m tests.jxa_stego_check` → JXA-OK (incl. the new containFit pin).
+- `ruff check` + `ruff format --check` clean.
+- Live E2E (Playwright on 127.0.0.1:8000): synthetic 1600×900 quadrant
+  fixture → card canvas shows the **entire** image (all four borders
+  visible, correct letterbox); in-page jsQR decodes the corner plate;
+  downloaded PNG re-verified with the pure-Python decoder (pixel asserts +
+  stego extract) and the **post-stego** artifact still scans with jsQR
+  (same-origin fetch + decode).
+- Door flow: dropped the downloaded card → fields auto-filled → event
+  unlocked ("Welcome, Event unlocked"). QR and stego payloads confirmed to
+  carry the same event id + key.
+
+**Notes:** transient 500 on `GET /api/events/{id}/media` for a fresh event
+on first fetch (retry → 200); unrelated to the card change, worth a look.
+
+**Next session:**
+1. Decommission the test event `event_54f55b3332c3ddc9968e4bc8f4abec24`
+   (master key was shown once in-session) or keep it for visual iteration.
+2. Print one card at actual size: corner QR plate scannability on paper.
+3. Re-check the re-encoded-JPEG card (jsQR fallback path) on the new layout.
+4. Investigate the media-endpoint 500; clean `/tmp/.playwright-mcp/` artifacts.
+5. Then Phase 4 — Map & Navigation.
+
+---
+
+### 2026-08-31 — Session 2: seamless full-bleed edges (blurred backdrop, no outline, no paper chrome)
+
+**Feedback fixed:** the contain-fit card showed "awkward outline/backgrounds
+at the edges" — white dotted-paper letterbox bands, a 2px `LINE_STRONG`
+hairline stroked around the art, keyline frames peeking in the bands, and
+the bottom keyhole ⊙ stamped on top of the photo.
+
+**What changed:**
+- `web/invite_card.js`:
+  - New `backdropCrop()` — object-fit:cover crop of the source against the
+    card (pure, deterministic) — and `drawBlurBackdrop()`: that crop is
+    downscaled twice (96px → 24px) and upscaled back to 800×1200, a smooth
+    engine-independent blur (no `ctx.filter` dependency) painted behind the
+    contain-fitted art. The letterbox now reads as a continuation of the
+    picture; no paper bands, no seam.
+  - `drawImageFullCard()` paints the backdrop first and **no longer strokes
+    the hairline outline** around the art.
+  - `render()` hoists `fullBleed` and photo cards skip the paper chrome:
+    dotted tooth, both keyline frames, top keyhole, **and the bottom keyhole**
+    (the corner QR plate anchors the bottom edge instead). The PAPER base
+    fill stays so transparent-PNG covers still composite over paper.
+- Oracle + tests: `tests/card_ref.py` gains `CARD_W/CARD_H` + `backdrop_crop`
+  mirror; `tests/jxa_stego_check.js/.py` pin live `backdropCrop` vs the
+  oracle (6 golden cases); `tests/test_invite_card_cover.py` +4 tests
+  (backdrop golden vectors, Hypothesis cover-window properties, a
+  no-outline needle on the `drawImageFullCard` body, a photo-cards-skip-
+  paper-chrome needle); `tests/test_stego_e2e.py` +2 static needles
+  (`backdropCrop`, `drawBlurBackdrop`).
+- Docs: `docs/steganography_invites.md` §5 rewritten for the blurred
+  letterbox + ornament-free photo cards; module table lists the new engine
+  pieces.
+
+**Validation recap (all green at end of session):**
+- `uv run pytest tests/ -q` → **177 passed** (4 new).
+- `ruff check .` clean; `ruff format --check tests/ web/` clean.
+- `python -m tests.jxa_stego_check` → JXA-OK (incl. the new backdropCrop pin).
+- Live E2E (Playwright on 127.0.0.1:8000):
+  - 1200×1500 magenta collage (user-like, 100px bands): **0** band
+    violations across both bands and the art seam; card corners sample the
+    fixture's exact `(236,0,140)`; no keyhole on the photo; jsQR decodes the
+    corner plate.
+  - 1600×900 quadrant fixture (375px bands): **0** violations; backdrop
+    corners are the blurred continuations of each quadrant (red/green/blue
+    sampled at the card corners); jsQR decodes.
+  - Preset "dots" card unchanged: keyhole ink + dot texture present,
+    centered 240px QR decodes.
+- Screenshots: `/tmp/.playwright-mcp/e2e-all-three-cards.png` (+ per-card).
+
+**Notes:**
+- The app server on :8000 had died before this session; it was restarted
+  from a throwaway cwd (`/tmp/gkp-e2e/keys.db`, random Fernet master key +
+  HMAC secret, `PYTHONPATH=<repo>`) for the E2E — the repo's `keys.db` was
+  **not** touched. Restart recipe is in this entry's git history.
+- `ruff format --check .` flags pre-existing `skills/property_based_testing.md`
+  (untouched, committed state); the code tree (`tests/`, `web/`) is clean.
+- Stale `/tmp/.playwright-mcp/` outputs from the previous session (old page
+  snapshots, console logs, old card PNGs) removed this session.
+
+**Next session:**
+1. Re-check the re-encoded-JPEG card (jsQR fallback path) on the new layout.
+2. Print one card at actual size: corner QR plate scannability on paper.
+3. Investigate the transient media-endpoint 500 (still open).
+4. Phase 4 — Map & Navigation.
+
+---
+
+### 2026-08-31 — Follow-up: "Key does not exist" everywhere → dev DB reset + canonical `make serve`
+
+**What happened:** the pre-session server that wrote the repo `keys.db` (last
+write 15:56) had been launched with an **ephemerally generated** Fernet master
+key (inline `$(…Fernet.generate_key()…)` in the shell command) that died with
+that process; this session's E2E server then ran against an empty throwaway
+DB, so every key lookup returned "Key does not exist"
+(`src/core/key_manager.py:216`). Content/location/media columns are
+Fernet-encrypted with the lost key, so the old test event's payloads
+(`event_54f55b3332c3ddc9968e4bc8f4abec24`) are unreadable regardless — its
+access-key HMACs would have re-validated under the old
+`GATEKEYP_HMAC_SECRET=dev-hmac-20260830`, but every payload decrypt would
+have failed InvalidToken.
+
+**What changed:**
+- Repo `keys.db` preserved as `keys.db.bak-20260831` (385 KB; payload data
+  stays undecryptable without the lost per-session key).
+- New gitignored `.env.dev` (chmod 600) with a **persistent** master key +
+  HMAC secret — `.env.*` was already ignored (`!.env.example` survives).
+  Same secrets on every restart, so `keys.db` stays readable from now on.
+- `make serve` — canonical dev-server target: loads `.env.dev`, runs
+  `uv run python -m src.api.server` in the foreground from the repo root
+  (Ctrl-C to stop). No more ephemeral keys, no more throwaway cwds.
+- Fresh test event created for visual iteration:
+  `event_21f49499ed3d609b9a756259615baeb2` (master key + door access key
+  handed to the user in-session). Roundtrip verified: create → mint key →
+  `get_event_details` validates both keys; organizer UI opens the
+  workspace; browser console clean.
+
+**Observed while here (pre-existing, not from the swap):**
+- An invalid key *format* (no `org|local` shape) passed to
+  `GET /api/events/{id}?master_key=…` raises `InvalidKeyFormatError` uncaught
+  → HTTP 500 instead of a 400 message; worth a route-level catch when
+  convenient.
+- `make clean` runs `rm -f *.db` — it deletes the dev DB (not the `.bak`).
