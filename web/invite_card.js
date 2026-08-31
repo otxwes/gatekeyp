@@ -19,38 +19,10 @@ window.gkpInviteCard = (function () {
 
     // Design tokens — mirrors the web design system (monochrome, paper & ink).
     const INK = "#111111";
-    const INK_SOFT = "#4d4d4d";
-    const INK_FAINT = "#6b6b6b";
     const PAPER = "#ffffff";
     const PAPER_DEEP = "#f6f6f6";
     const LINE = "#e2e2e2";
     const LINE_STRONG = "#c9c9c9";
-    const FONT_SERIF = "'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif";
-    const FONT_SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    const FONT_MONO = "ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
-
-    function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
-        const words = String(text).split(/\s+/).filter(Boolean);
-        let line = "";
-        let lines = 0;
-        for (const word of words) {
-            const probe = line ? `${line} ${word}` : word;
-            if (line && ctx.measureText(probe).width > maxWidth) {
-                ctx.fillText(line, x, y);
-                line = word;
-                y += lineHeight;
-                lines += 1;
-                if (maxLines && lines >= maxLines) return y;
-            } else {
-                line = probe;
-            }
-        }
-        if (line) {
-            ctx.fillText(line, x, y);
-            lines += 1;
-        }
-        return y;
-    }
 
     function drawDots(ctx, x, y, w, h, step) {
         ctx.save();
@@ -126,11 +98,6 @@ window.gkpInviteCard = (function () {
         } catch {
             return null; // QR is a fallback — never block the card on it.
         }
-    }
-
-    function fmtEventId(eventId) {
-        const id = String(eventId || "");
-        return id.length > 34 ? `${id.slice(0, 15)}…${id.slice(-14)}` : id;
     }
 
     /**
@@ -239,11 +206,6 @@ window.gkpInviteCard = (function () {
     function render(canvas, opts) {
         const o = opts || {};
         const scale = o.scale > 0 ? o.scale : 1;
-        const title = String(o.title || "Untitled event");
-        const organizer = String(o.organizerId || "an organizer");
-        const location = String(o.location || "");
-        const eventId = String(o.eventId || "");
-        const accessKey = String(o.accessKey || "");
 
         const ctx = canvas.getContext("2d");
         canvas.width = Math.round(CARD_W * scale);
@@ -255,72 +217,31 @@ window.gkpInviteCard = (function () {
         ctx.fillRect(0, 0, CARD_W, CARD_H);
         drawDots(ctx, 0, 0, CARD_W, CARD_H, 28);
 
-        // Top stamp band: double keyline + hatch strip + eyebrow + keyhole.
-        ctx.fillStyle = PAPER_DEEP;
-        ctx.fillRect(16, 16, CARD_W - 32, 118);
+        // Slim keyline frame — the card's edge. No words, no stamp band.
         ctx.strokeStyle = LINE_STRONG;
         ctx.lineWidth = 2;
-        ctx.strokeRect(24, 24, CARD_W - 48, 102);
+        ctx.strokeRect(24, 24, CARD_W - 48, CARD_H - 48);
         ctx.strokeStyle = LINE;
         ctx.lineWidth = 1;
-        ctx.strokeRect(32, 32, CARD_W - 64, 86);
-        drawHatch(ctx, 32, 96, CARD_W - 64, 14, 10, 1);
+        ctx.strokeRect(32, 32, CARD_W - 64, CARD_H - 64);
 
-        ctx.fillStyle = INK_SOFT;
-        ctx.font = `600 22px ${FONT_SANS}`;
-        ctx.textBaseline = "middle";
-        ctx.fillText("gatekeyp — you're invited", 52, 64);
-        ctx.font = `500 18px ${FONT_SANS}`;
-        ctx.fillStyle = INK_FAINT;
-        ctx.fillText("PRINTED KEY · INK ON PAPER", 52, 94);
-        drawKeyhole(ctx, CARD_W - 78, 62, 20);
+        // Top ornament: a single keyhole, centered.
+        drawKeyhole(ctx, CARD_W / 2, 78, 18);
 
-        // Optional custom cover band (Phase 3.7): preset pattern or uploaded
-        // photo drawn cover-fit. Absent / "none" keeps the classic paper look.
-        drawCoverBand(ctx, 48, 150, CARD_W - 96, 240, o.cover, o.coverImage || null);
+        // Hero cover band — the stego image is the whole focus. Preset pattern
+        // or uploaded photo drawn cover-fit; absent / "none" keeps paper.
+        drawCoverBand(ctx, 48, 120, CARD_W - 96, 600, o.cover, o.coverImage || null);
 
-        // Serif display title.
-        ctx.fillStyle = INK;
-        ctx.font = `600 78px ${FONT_SERIF}`;
-        ctx.textBaseline = "alphabetic";
-        wrapText(ctx, title, 48, 430, CARD_W - 96, 96, 3);
-
-        // Rule under the title.
-        ctx.strokeStyle = LINE_STRONG;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(48, 560);
-        ctx.lineTo(CARD_W - 48, 560);
-        ctx.stroke();
-
-        // Meta block.
-        ctx.fillStyle = INK_SOFT;
-        ctx.font = `500 30px ${FONT_SANS}`;
-        ctx.fillText(`by ${organizer}`, 48, 596);
-        if (location) {
-            ctx.font = `500 26px ${FONT_SANS}`;
-            ctx.fillStyle = INK_FAINT;
-            wrapText(ctx, location, 48, 650, CARD_W - 96, 38, 2);
-        }
-
-        // QR fallback (survives re-encoding by photo apps).
+        // QR fallback (survives re-encoding by photo apps), centered, uncaptioned.
         const qr = buildQr(String(o.qrText || ""));
         if (qr) {
-            ctx.fillStyle = INK_SOFT;
-            ctx.font = `600 20px ${FONT_SANS}`;
-            ctx.textBaseline = "alphabetic";
-            ctx.fillText("SCAN TO UNLOCK", 52, 826);
-            drawQr(ctx, qr, 56, 850, 250);
+            const qrSize = 240;
+            const qrX = (CARD_W - (qrSize + 32)) / 2;
+            drawQr(ctx, qr, qrX, 790, qrSize);
         }
 
-        // Bottom rail: event id + monogram + privacy note.
-        ctx.fillStyle = INK_FAINT;
-        ctx.font = `500 24px ${FONT_MONO}`;
-        ctx.fillText(fmtEventId(eventId), 48, CARD_H - 110);
-        ctx.font = `500 18px ${FONT_SANS}`;
-        ctx.fillStyle = LINE_STRONG;
-        ctx.fillText("GKP·1  —  the key lives in these pixels", 48, CARD_H - 64);
-        drawKeyhole(ctx, CARD_W - 88, CARD_H - 86, 16);
+        // Bottom ornament: a single keyhole, centered.
+        drawKeyhole(ctx, CARD_W / 2, CARD_H - 70, 12);
     }
 
     function safeFileName(title) {
@@ -331,7 +252,7 @@ window.gkpInviteCard = (function () {
     /**
      * Draw, embed the invite payload and trigger a download of the stego PNG.
      *
-     * opts: { eventId, accessKey, title, organizerId, location }
+     * opts: { eventId, accessKey, title, qrText, cover, coverImage, scale }
      * Returns the Blob (for tests / preview) after downloading.
      */
     async function download(opts) {

@@ -167,11 +167,16 @@ arch -x86_64 python -m pytest -q               # full suite (Apple Silicon)
   case.
 - **Custom covers** (Phase 3.7). Both card paths open a cover picker first:
   preset monochrome patterns (hatch / keyline / dots / keyhole) or the
-  organizer's own image, drawn *cover-fit* on a 704×240 band at the top of the
-  card, with a live 200×300 preview before download. Purely client-side — the
-  cover never leaves the tab, and the hidden key + printed QR are untouched.
-- The card embeds the event id and current event metadata (title, organizer,
-  location) from the workspace session.
+  organizer's own image, drawn *cover-fit* on a 704×600 hero band under the
+  top keyhole, with a live 200×300 preview before download. Purely client-side
+  — the cover never leaves the tab, and the hidden key + printed QR are
+  untouched.
+- The card is **text-free** (minimalist pass): keyhole ornament top and bottom,
+  the hero cover band (or plain dotted paper when no cover), and a centered,
+  uncaptioned QR — nothing else. It embeds the
+  `gkp:event_id:access_key` payload in its pixels and QR; the event title only
+  names the downloaded file (`<title>-invite.png`). No organizer, location, or
+  caption text is printed on the card.
 
 ### Attendee (Join door)
 
