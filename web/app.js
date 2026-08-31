@@ -986,14 +986,13 @@ async function wsMedia(main) {
 /* ------------------------------------------------------------------
  * Workspace: Access keys tab
  * ------------------------------------------------------------------ */
-/** Build the invite-card metadata for the current workspace event. */
+/** Build the invite-card metadata for the current workspace event. The card
+ *  itself carries no event metadata — `eventId` drives the hidden payload and
+ *  QR, `title` is used only for the downloaded file name. */
 function inviteCardOpts() {
-    const meta = (org && org.meta) || {};
     return {
         eventId: (org && org.eventId) || "",
         title: (org && org.title) || "Untitled event",
-        organizerId: meta.organizerId || "",
-        location: meta.locationData || "",
     };
 }
 
