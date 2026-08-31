@@ -32,6 +32,7 @@ ENV/
 
 # Databases
 *.db
+keys.db.bak-*
 *.sqlite
 *.sqlite3
 

@@ -59,6 +59,13 @@ format:
 audit:
 	uv run pip-audit
 
+# Start the dev server in the foreground from the repo root (Ctrl-C to stop).
+# Secrets come from .env.dev (gitignored) so the same keys.db stays readable
+# across restarts. See .env.example for the variable reference.
+serve:
+	@if [ ! -f .env.dev ]; then echo "Missing .env.dev - create it with GATEKEYP_MASTER_KEY and GATEKEYP_HMAC_SECRET (see .env.example)"; exit 1; fi
+	@set -a && . ./.env.dev && set +a && uv run python -m src.api.server
+
 # Docker targets
 docker-build:
 	docker build -t gatekeyp .
