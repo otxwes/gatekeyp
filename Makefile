@@ -1,4 +1,4 @@
-.PHONY: setup install test test-verbose lint audit security clean docker-build docker-up docker-down typecheck format check
+.PHONY: setup install test test-verbose lint audit security serve serve-lite backup clean docker-build docker-up docker-down typecheck format check
 
 # Default target: show available commands
 .DEFAULT_GOAL := help
@@ -18,7 +18,10 @@ help:
 	@echo "  make docker-build - Build the Docker image"
 	@echo "  make docker-up    - Start services with docker compose"
 	@echo "  make docker-down  - Stop services with docker compose"
-	@echo "  make clean        - Remove build artifacts and caches"
+	@echo "  make serve        - Run dev server (full profile) in the foreground"
+	@echo "  make serve-lite   - Run dev server (lite/ephemeral-only profile)"
+	@echo "  make backup       - Timestamped backup of keys.db"
+	@echo "  make clean        - Remove build artifacts (databases are preserved)"
 
 # Set up virtual environment and install all dependencies
 setup:
@@ -66,6 +69,20 @@ serve:
 	@if [ ! -f .env.dev ]; then echo "Missing .env.dev - create it with GATEKEYP_MASTER_KEY and GATEKEYP_HMAC_SECRET (see .env.example)"; exit 1; fi
 	@set -a && . ./.env.dev && set +a && uv run python -m src.api.server
 
+# Start the lite (ephemeral-only) profile in the foreground.
+# Mounts only: POST /api/lite/events, GET /i/{event_id}, the public flyer
+# route and /health. Standard API routes are NOT exposed in this profile.
+serve-lite:
+	@if [ ! -f .env.dev ]; then echo "Missing .env.dev - create it with GATEKEYP_MASTER_KEY and GATEKEYP_HMAC_SECRET (see .env.example)"; exit 1; fi
+	@set -a && . ./.env.dev && set +a && GATEKEYP_PROFILE=lite uv run python -m src.api.server
+
+# Timestamped backup of the production database. Run this before migrations
+# or any destructive operation - keys.db is the only copy of event keys.
+backup:
+	@if [ ! -f keys.db ]; then echo "No keys.db found - nothing to back up"; exit 1; fi
+	@cp keys.db keys.db.bak-$$(date +%Y%m%d)
+	@echo "Backed up keys.db to keys.db.bak-$$(date +%Y%m%d)"
+
 # Docker targets
 docker-build:
 	docker build -t gatekeyp .
@@ -76,11 +93,13 @@ docker-up:
 docker-down:
 	docker compose down
 
-# Clean up build artifacts and caches
+# Clean up build artifacts and caches.
+# NOTE: database files (keys.db*) are NEVER removed here - they hold the only
+# copy of event keys. Run `make backup` before any destructive operation.
 clean:
 	rm -rf .pytest_cache
 	rm -rf __pycache__
 	rm -rf src/__pycache__ src/*/__pycache__
 	rm -rf tests/__pycache__
-	rm -f *.db
-	@echo "Cleaned build artifacts and caches"
+	rm -rf .ruff_cache
+	@echo "Cleaned build artifacts and caches (databases are preserved)"

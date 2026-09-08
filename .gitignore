@@ -38,6 +38,8 @@ keys.db.bak-*
 
 # Testing
 .pytest_cache/
+# Local QA scratch space (screenshots, flyers, server logs)
+tmp/
 .coverage
 htmlcov/
 .tox/

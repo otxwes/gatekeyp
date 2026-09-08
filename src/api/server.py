@@ -5,16 +5,18 @@ from pathlib import Path
 from urllib.parse import quote
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Response, UploadFile
+from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from src.api.gateway import Gateway, RateLimiter
 from src.core.content_manager import ContentAccessError, ContentManager, ContentValidationError
 from src.core.event_lifecycle import EventLifecycleError, EventLifecycleManager
-from src.core.key_manager import KeyManager
+from src.core.key_manager import InvalidKeyFormatError, KeyManager
 from src.db.database_handler import DatabaseHandler
+from src.ephemeral import EphemeralService, build_ephemeral_router
 
 # ------------------------------------------------------------------
 # Request/Response Models
@@ -94,12 +96,58 @@ class AddCommentRequest(BaseModel):
 # ------------------------------------------------------------------
 
 
+def _new_app() -> FastAPI:
+    """Create a FastAPI app with CORS and shared exception handlers."""
+    app = FastAPI(
+        title="gatekeyp API",
+        description="Privacy-preserving, federated event-organizing toolkit",
+        version="0.1.0",
+    )
+    # CORS for the web UI
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # TODO(@otxwes): Restrict in production (issue #42)  # noqa: FIX002
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.exception_handler(InvalidKeyFormatError)
+    async def invalid_key_handler(_request: Request, exc: InvalidKeyFormatError) -> JSONResponse:
+        """Malformed keys are client errors, not server errors."""
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    return app
+
+
+def _mount_web(app: FastAPI) -> None:
+    """Serve the static web UI from web/ when it exists."""
+    static_dir = Path(__file__).parent.parent.parent / "web"
+    if static_dir.exists():
+        app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="web")
+
+
+def _build_lite_app(ephemeral: EphemeralService) -> FastAPI:
+    """Assemble the lite profile: ephemeral funnel routes, health, static UI."""
+    app = _new_app()
+
+    @app.get("/health")
+    def lite_health() -> dict:
+        """Health check endpoint."""
+        return {"status": "ok", "service": "gatekeyp"}
+
+    app.include_router(build_ephemeral_router(ephemeral))
+    _mount_web(app)
+    return app
+
+
 def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
     db: DatabaseHandler | None = None,
     key_manager: KeyManager | None = None,
     content_manager: ContentManager | None = None,
     lifecycle: EventLifecycleManager | None = None,
     gateway: Gateway | None = None,
+    profile: str | None = None,
 ) -> FastAPI:
     """
     Create the FastAPI application with all routes wired up.
@@ -110,9 +158,14 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
         content_manager: Optional shared ContentManager. If None, creates one.
         lifecycle: Optional shared EventLifecycleManager. If None, creates one.
         gateway: Optional shared Gateway. If None, creates one.
+        profile: "full" (default) mounts every route; "lite" mounts only the
+            ephemeral funnel routes. Falls back to GATEKEYP_PROFILE env var.
 
     Returns:
         Configured FastAPI application.
+
+    Raises:
+        ValueError: If an unknown profile is requested.
     """
     # Create shared services if not provided
     if db is None:
@@ -129,20 +182,20 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
         rate_limiter = RateLimiter()
         gateway = Gateway(db=db, key_manager=key_manager, rate_limiter=rate_limiter)
 
-    app = FastAPI(
-        title="gatekeyp API",
-        description="Privacy-preserving, federated event-organizing toolkit",
-        version="0.1.0",
-    )
+    profile = profile or os.environ.get("GATEKEYP_PROFILE", "full")
+    if profile not in ("full", "lite"):
+        message = f"Unknown profile: {profile!r} (expected 'full' or 'lite')"
+        raise ValueError(message)
 
-    # CORS for the web UI
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],  # TODO(@otxwes): Restrict in production (issue #42)  # noqa: FIX002
-        allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # Startup sweep: wipe ephemeral events whose TTL elapsed while the process
+    # was down. Cheap (single indexed SELECT) and a no-op when nothing expired.
+    ephemeral = EphemeralService(db=db, lifecycle=lifecycle, content_manager=content_manager)
+    ephemeral.sweep_expired()
+
+    if profile == "lite":
+        return _build_lite_app(ephemeral)
+
+    app = _new_app()
 
     # Health
     @app.get("/health")
@@ -364,10 +417,11 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
         else:
             return {"deleted": deleted}
 
+    # Ephemeral ("lite") funnel routes — mounted in the full profile too
+    app.include_router(build_ephemeral_router(ephemeral))
+
     # Static Web UI
-    static_dir = Path(__file__).parent.parent.parent / "web"
-    if static_dir.exists():
-        app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="web")
+    _mount_web(app)
 
     return app
 

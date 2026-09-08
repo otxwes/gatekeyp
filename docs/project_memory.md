@@ -617,3 +617,73 @@ have failed InvalidToken.
   → HTTP 500 instead of a 400 message; worth a route-level catch when
   convenient.
 - `make clean` runs `rm -f *.db` — it deletes the dev DB (not the `.bak`).
+
+### 2026-09-08 — Phase A: ephemeral ("lite") events landed
+
+*Goal: let anyone fly a flyer event with no account — a public flyer page with
+Open Graph tags for sharing, key-gated details behind it, and a self-wipe
+deadline. Unauthenticated creation funnel with a hard rate limit.*
+
+**Backend:**
+- `src/db/database_handler.py` — `events` gained `mode TEXT DEFAULT 'standard'`
+  and `expires_at TEXT` (via `_ensure_column`, so pre-Phase-A DBs migrate on
+  open); new `event_tombstones` table (id + ended_at). New methods:
+  `set_event_mode`, `get_expired_event_ids`, `get_tombstone`,
+  `list_content_blocks_for_event`, and `wipe_event` (single-transaction wipe
+  of event + blocks + media + bulletins/comments + key→content links + keys
+  left unlinked, optional tombstone, rollback on error).
+- `src/core/content_manager.py` — public `verify_event_access()` wrapper so
+  other modules can check event-scope access without touching privates.
+- `src/ephemeral/` (new) — `service.py` (`EphemeralService`: creates lite
+  events over the standard lifecycle, TTL 1–336h; public/keyed views;
+  fail-closed expiry; `sweep_expired()`; injectable clock; dedicated
+  `LiteRateLimiter` fixed-window limiter) and `routes.py` (`POST
+  /api/lite/events`, `GET /i/{event_id}` OG page, public flyer route with
+  `nosniff`, keyed attendee view). Master keys get ceil(TTL/24)+1 days so
+  they outlive the event; a failed flyer upload rolls the event back.
+- `src/api/server.py` — `create_app(profile=…)`, `GATEKEYP_PROFILE` env
+  (full|lite; unknown → ValueError). Lite profile mounts only the funnel
+  routes + `/health` + the static UI. Shared `_new_app()` (CORS +
+  `InvalidKeyFormatError` → 400 handler, fixing the 500 noted on 2026-08-31)
+  and `_mount_web()`. A startup sweep wipes events whose TTL elapsed while
+  the process was down.
+- `Makefile` — `serve-lite` (lite profile), `make backup` (timestamped
+  keys.db copy), and `make clean` no longer runs `rm -f *.db` (the footgun
+  noted above; databases are preserved).
+
+**Frontend:**
+- `web/index.html` + `web/app.js` — `#/flyer` creation funnel (title; gated
+  description/when/where; optional public flyer upload; TTL) → master key
+  shown once with copyable share/organizer links; `#/e/{event_id}` attendee
+  page: key prompt (or `?k=` from the organizer link), unlocked view of
+  when/where + flyer image, and an honest "Event ended" state after a wipe.
+
+**Tests:** `tests/test_ephemeral.py` (36 tests: schema migration including a
+legacy-DB fixture, wipe semantics including shared-key preservation, service
+views/expiry sweep with an injectable clock, rate limiter, and the HTTP
+surface: OG page never leaks keys/description, flyer bytes round-trip,
+invalid key format → 400, standard events invisible to lite routes, lite
+profile hides the standard API, 429 on the sixth creation).
+`tests/test_security_audit.py` gained `TestEphemeralSecurityAudit` (gated
+content + flyer encrypted at rest; wipe leaves no plaintext in any table;
+wiped master key no longer validates; tombstone records nothing sensitive).
+Full suite: 217 passed.
+
+**DB safety:** migration verified against a copy of `keys.db.bak-20260908`
+before anything touched `keys.db` — 2 events / 4 keys preserved, every stored
+event decrypts and reads back `mode='standard'`.
+
+**Live QA (2026-09-08, browser, lite profile on :8775):** end-to-end funnel
+pass — `#/flyer` fill + flyer upload → one-shot master-key panel with
+share/attendee links; OG page rendered title + flyer + wipe deadline
+(created+48h, verified) with no gated fields; `?k=` attendee unlock showed
+when/where + flyer; backdating the QA event's `expires_at` made both the OG
+page and the keyed attendee page render their honest ended states; then
+`sweep_expired()` (run against the live DB with the same default wiring,
+`GATEKEYP_MASTER_KEY` sourced from `.env.dev`) wiped event + media + blocks,
+leaving only the tombstone — confirmed by direct SQL (tombstone present,
+events/media/content-blocks rows = 0). Known cosmetic gap: `GET /favicon.ico`
+404s on the OG page (no favicon route; console noise only). One
+environment gotcha for future QA: `uv run python` is the reliable interpreter
+(`.venv/bin/python` under `arm64` hits an x86_64 `cryptography` wheel
+incompatibility — same known issue as the `arch -x86_64` test invocation).

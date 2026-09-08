@@ -148,6 +148,10 @@ class ContentManager:
         message = "Key does not grant access to this content"
         raise ContentAccessError(message)
 
+    def verify_event_access(self, input_key: str, event_id: str) -> str:
+        """Return the key hash when input_key grants access to the event itself."""
+        return self._verify_key_access(input_key, event_id)
+
     # ------------------------------------------------------------------
     # Media Assets (Content Hosting)
     # ------------------------------------------------------------------

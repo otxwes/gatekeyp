@@ -393,6 +393,8 @@ function route() {
     if (name === "home") renderHome();
     else if (name === "organize") renderOrganize();
     else if (name === "join") renderJoin();
+    else if (name === "flyer") renderFlyer();
+    else if (name === "e") renderLiteEvent();
 }
 
 /* ------------------------------------------------------------------
@@ -1553,6 +1555,129 @@ async function loadAttendeeMedia() {
         }
     } catch (err) {
         box.innerHTML = emptyState("Could not load media", err.message);
+    }
+}
+
+/* ------------------------------------------------------------------
+ * Lite events (ephemeral flyer funnel)
+ * ------------------------------------------------------------------ */
+
+/** Render the flyer creation funnel result panel. */
+function showFlyerDone(done, body) {
+    const publicUrl = body.public_url || `${location.origin}/i/${body.event_id}`;
+    const eventHref =
+        `#/e/${encodeURIComponent(body.event_id)}?k=${encodeURIComponent(body.master_key)}`;
+    done.innerHTML =
+        `<header class="view-head"><p class="eyebrow">Lite events</p>` +
+        `<h2 class="view-title">Your event is live</h2></header>` +
+        `<div class="card form-card">` +
+        `<h3 class="card-title">Save the master key now</h3>` +
+        `<p class="key-hint">It is shown <strong>only once</strong> and never stored anywhere ` +
+        `you can read later. Keep it to manage this event until it auto-wipes.</p>` +
+        `<code class="key-hint">${esc(body.master_key)}</code>` +
+        `<div class="field"><label>Share link (anyone)</label>` +
+        `<div class="item"><code>${esc(publicUrl)}</code></div></div>` +
+        `<div class="item"><a class="btn btn-primary" href="${esc(eventHref)}">` +
+        `Open the event page</a></div>` +
+        `</div>`;
+}
+
+async function renderFlyer() {
+    const entry = $("#flyer-entry");
+    const done = $("#flyer-done");
+    if (!entry || !done) return;
+    entry.hidden = false;
+    done.hidden = true;
+
+    const form = $("#flyer-form");
+    if (!form || form.dataset.bound) return;
+    form.dataset.bound = "1";
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const note = $("#flyer-note");
+        const btn = $("#flyer-btn");
+        note.textContent = "";
+        btn.disabled = true;
+        try {
+            const fd = new FormData();
+            fd.set("title", $("#flyer-title").value);
+            fd.set("description", $("#flyer-description").value);
+            fd.set("when", $("#flyer-when").value);
+            fd.set("where", $("#flyer-where").value);
+            fd.set("ttl_hours", String(Number($("#flyer-ttl")?.value || 48)));
+            const file = $("#flyer-file")?.files?.[0];
+            if (file) fd.set("flyer", file, file.name);
+            const resp = await fetch("/api/lite/events", { method: "POST", body: fd });
+            const body = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(body.detail || `HTTP ${resp.status}`);
+            entry.hidden = true;
+            showFlyerDone(done, body);
+            toast("Copy the master key before leaving this page.", "ok", "Event is live");
+        } catch (err) {
+            note.textContent = err.message;
+        } finally {
+            btn.disabled = false;
+        }
+    });
+}
+
+/** Pull the lite event id (and optional key) out of `#/e/{id}?k=…`. */
+function parseLiteHash() {
+    const raw = (location.hash || "#/").replace(/^#/, "");
+    const [path, query] = raw.split("?");
+    if (!path.startsWith("/e/")) return { id: "", key: "" };
+    const params = new URLSearchParams(query || "");
+    return { id: path.slice(3), key: params.get("k") || "" };
+}
+
+function liteKeyForm() {
+    return `<form id="lite-key-form" class="card form-card" autocomplete="off">` +
+        `<h3 class="card-title">Unlock this event</h3>` +
+        `<div class="field"><label for="lite-key">Event key</label>` +
+        `<input type="password" id="lite-key" required placeholder="local:…" autocomplete="off"></div>` +
+        `<p class="key-hint">Your key unlocks the event details and never leaves this tab.</p>` +
+        `<button type="submit" class="btn btn-primary btn-block">Unlock</button></form>`;
+}
+
+async function renderLiteEvent() {
+    const root = $("#lite-views");
+    if (!root) return;
+    const { id, key } = parseLiteHash();
+    if (!id) {
+        root.innerHTML = emptyState("No event here", "This page needs an event id in the link.");
+        return;
+    }
+    if (!key) {
+        root.innerHTML = liteKeyForm();
+        $("#lite-key-form").addEventListener("submit", (event) => {
+            event.preventDefault();
+            const entered = $("#lite-key").value.trim();
+            location.hash = `#/e/${encodeURIComponent(id)}?k=${encodeURIComponent(entered)}`;
+        });
+        return;
+    }
+    root.innerHTML = `<p class="form-note">Unlocking…</p>`;
+    try {
+        const data = await api(`/api/lite/events/${encodeURIComponent(id)}${qs({ key })}`);
+        const evt = data.event || {};
+        const flyer = data.flyer_asset_id
+            ? `<img class="lite-flyer" src="/api/lite/events/${encodeURIComponent(id)}/flyer" alt="${esc(evt.title || "Flyer")}">`
+            : "";
+        root.innerHTML =
+            `<div class="view-head"><p class="eyebrow">Lite event</p>` +
+            `<h2 class="view-title">${esc(evt.title || "")}</h2></div>` +
+            `${flyer}` +
+            (evt.description ? `<p>${esc(evt.description)}</p>` : "") +
+            (data.when ? `<p><strong>When:</strong> ${esc(data.when)}</p>` : "") +
+            (data.where ? `<p><strong>Where:</strong> ${esc(data.where)}</p>` : "") +
+            `<p class="form-note">This page is temporary — everything is wiped ` +
+            `${esc(fmtDate(data.expires_at))}.</p>`;
+    } catch (err) {
+        if (/ended|expired/i.test(err.message)) {
+            root.innerHTML = emptyState("Event ended", "All data for this event was wiped.");
+        } else {
+            root.innerHTML = emptyState("Could not unlock this event", err.message);
+        }
     }
 }
 

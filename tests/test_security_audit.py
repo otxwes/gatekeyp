@@ -7,8 +7,11 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from src.api.gateway import Gateway, RateLimiter
+from src.core.content_manager import ContentManager
+from src.core.event_lifecycle import EventLifecycleManager
 from src.core.key_manager import KeyManager
 from src.db.database_handler import DatabaseHandler
+from src.ephemeral import EphemeralService
 
 TEST_HMAC_SECRET = "test-hmac-secret-for-unit-tests-only-1234567890"
 
@@ -252,6 +255,95 @@ class TestEncryptionPropertyBased(unittest.TestCase):
         self.db.cursor.execute("SELECT payload FROM content_blocks WHERE block_id = ?", (block_id,))
         raw = self.db.cursor.fetchone()[0]
         self.assertNotIn(payload, raw)
+
+
+# ------------------------------------------------------------------
+# 7. Phase A: ephemeral ("lite") events
+# ------------------------------------------------------------------
+
+
+class TestEphemeralSecurityAudit(unittest.TestCase):
+    """
+    Ephemeral events inherit the threat-model posture: gated content stays
+    encrypted at rest, only the flyer is public, a wipe removes every trace
+    (including keys), and the tombstone records nothing sensitive.
+    """
+
+    TEST_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+
+    def setUp(self):
+        self.db = DatabaseHandler(":memory:", master_key=TEST_MASTER_KEY)
+        self.km = KeyManager(db=self.db, hmac_secret=TEST_HMAC_SECRET)
+        self.cm = ContentManager(db=self.db, key_manager=self.km)
+        self.lifecycle = EventLifecycleManager(
+            db=self.db, key_manager=self.km, content_manager=self.cm
+        )
+        self.svc = EphemeralService(db=self.db, lifecycle=self.lifecycle, content_manager=self.cm)
+
+    def tearDown(self):
+        self.db.close()
+
+    def _lite_event(self):
+        """Create a lite event with gated when/where and a flyer."""
+        return self.svc.create_lite_event(
+            "Secret Rooftop",
+            description="A private gathering",
+            when="Friday 9pm",
+            where="40.7128,-74.0060",
+            flyer={"filename": "flyer.png", "mime_type": "image/png", "data": self.TEST_PNG},
+        )
+
+    def test_lite_gated_content_encrypted_at_rest(self):
+        """when/where blocks and the flyer are encrypted in the database."""
+        result = self._lite_event()
+        self.db.cursor.execute(
+            "SELECT payload FROM content_blocks WHERE event_id = ?", (result["event_id"],)
+        )
+        payloads = [row[0] for row in self.db.cursor.fetchall()]
+        self.assertEqual(len(payloads), 2)
+        for raw in payloads:
+            self.assertNotIn("Friday 9pm", raw)
+        self.db.cursor.execute(
+            "SELECT data FROM media_assets WHERE event_id = ?", (result["event_id"],)
+        )
+        for (blob,) in self.db.cursor.fetchall():
+            self.assertFalse(blob.startswith(self.TEST_PNG[:8]))
+
+    def test_wipe_removes_all_plaintext_traces(self):
+        """After a wipe, no remaining row contains the secrets or the raw key."""
+        result = self._lite_event()
+        master = result["master_key"]
+        secrets = ["Secret Rooftop", "Friday 9pm", "-74.0060", master]
+
+        self.db.wipe_event(result["event_id"])
+
+        checks = {
+            "events": "SELECT title, description, location_data FROM events",
+            "content_blocks": "SELECT payload FROM content_blocks",
+            "media_assets": "SELECT filename, data FROM media_assets",
+            "keys": "SELECT hash_key FROM keys",
+        }
+        for query in checks.values():
+            self.db.cursor.execute(query)
+            for row in self.db.cursor.fetchall():
+                for field in row:
+                    text = field.decode("utf-8", "ignore") if isinstance(field, bytes) else field
+                    for secret in secrets:
+                        self.assertNotIn(secret, text or "")
+
+    def test_wiped_master_key_no_longer_validates(self):
+        """The wiped event's master key no longer resolves to anything."""
+        result = self._lite_event()
+        self.db.wipe_event(result["event_id"])
+        self.assertEqual(self.km.validate_key(result["master_key"])["status"], "invalid")
+
+    def test_tombstone_records_no_event_data(self):
+        """The tombstone stores only the id and the ended-at timestamp."""
+        result = self._lite_event()
+        self.db.wipe_event(result["event_id"])
+        tombstone = self.db.get_tombstone(result["event_id"])
+        self.assertIsNotNone(tombstone)
+        self.assertNotIn("Secret Rooftop", str(tombstone))
 
 
 if __name__ == "__main__":
