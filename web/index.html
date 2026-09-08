@@ -24,6 +24,7 @@
             <nav class="topnav" aria-label="Primary">
                 <a class="nav-link" href="#/organize">Organize</a>
                 <a class="nav-link" href="#/join">Join</a>
+                <a class="nav-link" href="#/flyer">Flyer</a>
             </nav>
             <button id="theme-toggle" type="button" class="icon-btn" title="Toggle light / dark theme" aria-label="Toggle light or dark theme">
                 <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true">
@@ -161,6 +162,59 @@
                     <div id="join-event" hidden>
                         <div id="join-views"></div>
                     </div>
+                </section>
+
+                <!-- ================= Flyer (lite funnel) ================= -->
+                <section id="view-flyer" class="view" hidden>
+                    <div id="flyer-entry">
+                        <header class="view-head">
+                            <p class="eyebrow">Lite events</p>
+                            <h2 class="view-title">Fly a short-lived event</h2>
+                        </header>
+                        <form id="flyer-form" class="card form-card" autocomplete="off">
+                            <h3 class="card-title">No account, gone by itself</h3>
+                            <p class="key-hint">Everything except the flyer image is locked behind the
+                               event key. The whole event wipes itself after the deadline.</p>
+                            <div class="field">
+                                <label for="flyer-title">Event title <span class="req">*</span></label>
+                                <input type="text" id="flyer-title" name="title" required maxlength="256"
+                                       placeholder="Rooftop listening night" autocomplete="off">
+                            </div>
+                            <div class="field">
+                                <label for="flyer-description">Description <span class="opt">key holders only</span></label>
+                                <textarea id="flyer-description" rows="3" maxlength="65536"
+                                          placeholder="An informal evening of music and readings."></textarea>
+                            </div>
+                            <div class="field">
+                                <label for="flyer-when">When <span class="opt">key holders only</span></label>
+                                <input type="text" id="flyer-when" maxlength="256"
+                                       placeholder="Friday, 9pm" autocomplete="off">
+                            </div>
+                            <div class="field">
+                                <label for="flyer-where">Where <span class="opt">key holders only</span></label>
+                                <input type="text" id="flyer-where" maxlength="256"
+                                       placeholder="Corner rooftop" autocomplete="off">
+                            </div>
+                            <div class="field">
+                                <label for="flyer-file">Flyer image <span class="opt">optional, public</span></label>
+                                <input type="file" id="flyer-file" accept="image/png,image/jpeg,image/webp">
+                            </div>
+                            <div class="field">
+                                <label for="flyer-ttl">Gone after (hours)</label>
+                                <input type="number" id="flyer-ttl" min="1" max="336" value="48">
+                            </div>
+                            <p id="flyer-note" class="form-note" role="status" aria-live="polite"></p>
+                            <button type="submit" class="btn btn-primary btn-block" id="flyer-btn">
+                                Create flyer event
+                            </button>
+                        </form>
+                    </div>
+                    <div id="flyer-done" hidden></div>
+                </section>
+
+                <!-- ================= Lite event page (attendee) ================= -->
+                <section id="view-e" class="view" hidden>
+                    <div id="lite-views"></div>
                 </section>
 
             </div>

@@ -85,7 +85,9 @@ class DatabaseHandler:
                 description TEXT,
                 organizer_id TEXT,
                 location_data TEXT,
-                created_at TEXT
+                created_at TEXT,
+                mode TEXT DEFAULT 'standard',
+                expires_at TEXT
             )
         """)
         self.cursor.execute("""
@@ -134,6 +136,13 @@ class DatabaseHandler:
                 parent_comment_id TEXT
             )
         """)
+        # Phase A: Ephemeral event tombstones (marker that data was wiped)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS event_tombstones (
+                event_id TEXT PRIMARY KEY,
+                ended_at TEXT
+            )
+        """)
         self.connection.commit()
 
     def _migrate_schema(self) -> None:
@@ -150,6 +159,18 @@ class DatabaseHandler:
         # Check and add missing columns to 'events'
         self._ensure_column("events", "location_data", "TEXT")
         self._ensure_column("events", "created_at", "TEXT")
+
+        # Phase A: Ephemeral events (mode flag + expiry deadline)
+        self._ensure_column("events", "mode", "TEXT DEFAULT 'standard'")
+        self._ensure_column("events", "expires_at", "TEXT")
+
+        # Phase A: Tombstones table may not exist in pre-Phase-A databases
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS event_tombstones (
+                event_id TEXT PRIMARY KEY,
+                ended_at TEXT
+            )
+        """)
 
         # Phase 2: Check and add missing columns to 'media_assets'
         self._ensure_column("media_assets", "created_at", "TEXT")
@@ -337,6 +358,8 @@ class DatabaseHandler:
                 "organizer_id": result[3],
                 "location_data": location_data,
                 "created_at": result[5],
+                "mode": result[6],
+                "expires_at": result[7],
             }
         return None
 
@@ -360,6 +383,154 @@ class DatabaseHandler:
             (event_id, title, description, organizer_id, encrypted_location, now),
         )
         self.connection.commit()
+
+    # ------------------------------------------------------------------
+    # Ephemeral Events (Phase A)
+    # ------------------------------------------------------------------
+
+    def set_event_mode(self, event_id: str, mode: str, expires_at: str | None = None) -> None:
+        """Set an event's mode ('standard' or 'ephemeral') and expiry timestamp."""
+        self.cursor.execute(
+            "UPDATE events SET mode = ?, expires_at = ? WHERE event_id = ?",
+            (mode, expires_at, event_id),
+        )
+        self.connection.commit()
+
+    def get_expired_event_ids(self, now_iso: str) -> list[str]:
+        """List ephemeral event IDs whose expiry timestamp has passed."""
+        self.cursor.execute(
+            """
+            SELECT event_id FROM events
+            WHERE mode = 'ephemeral' AND expires_at IS NOT NULL AND expires_at <= ?
+            """,
+            (now_iso,),
+        )
+        return [row[0] for row in self.cursor.fetchall()]
+
+    def get_tombstone(self, event_id: str) -> dict | None:
+        """Retrieve the tombstone record for an event, if any."""
+        self.cursor.execute(
+            "SELECT event_id, ended_at FROM event_tombstones WHERE event_id = ?", (event_id,)
+        )
+        result = self.cursor.fetchone()
+        if result:
+            return {"event_id": result[0], "ended_at": result[1]}
+        return None
+
+    def list_content_blocks_for_event(self, event_id: str) -> list[dict]:
+        """List all content blocks for an event, decrypting payloads."""
+        self.cursor.execute(
+            "SELECT * FROM content_blocks WHERE event_id = ? ORDER BY created_at ASC",
+            (event_id,),
+        )
+        blocks = []
+        for result in self.cursor.fetchall():
+            payload = result[4]
+            try:
+                payload = self._decrypt(payload) if payload else payload
+            except (ValueError, TypeError) as err:
+                block_id = result[0]
+                message = f"Failed to decrypt content block {block_id}"
+                raise DecryptionError(message) from err
+            blocks.append(
+                {
+                    "id": result[0],
+                    "event_id": result[1],
+                    "key_id": result[2],
+                    "content_type": result[3],
+                    "payload": payload,
+                    "created_at": result[5],
+                }
+            )
+        return blocks
+
+    def wipe_event(self, event_id: str, *, tombstone: bool = True) -> dict[str, int]:
+        """
+        Permanently delete every trace of an event in one transaction.
+
+        Removes the event row, its content blocks, media assets, bulletins
+        (and their comments), all key->content links for the event's content,
+        and any key that no longer links to any remaining content. Intended
+        for ephemeral event expiry; standard events use decommission_event
+        (revoke-only) instead.
+
+        Args:
+            event_id: The event to wipe.
+            tombstone: Whether to leave a tombstone row (set False when
+                rolling back a partially-created event).
+
+        Returns:
+            Deletion counts per table, for logging and verification.
+        """
+        counts: dict[str, int] = {
+            "comments": 0,
+            "bulletins": 0,
+            "media_assets": 0,
+            "content_blocks": 0,
+            "key_content_links": 0,
+            "keys": 0,
+            "events": 0,
+        }
+        try:
+            self.cursor.execute(
+                "SELECT block_id FROM content_blocks WHERE event_id = ?", (event_id,)
+            )
+            block_ids = [row[0] for row in self.cursor.fetchall()]
+            self.cursor.execute("SELECT asset_id FROM media_assets WHERE event_id = ?", (event_id,))
+            asset_ids = [row[0] for row in self.cursor.fetchall()]
+            self.cursor.execute("SELECT bulletin_id FROM bulletins WHERE event_id = ?", (event_id,))
+            bulletin_ids = [row[0] for row in self.cursor.fetchall()]
+            content_ids = [event_id, *block_ids, *asset_ids, *bulletin_ids]
+            # Keys touching this event's content, captured before links vanish
+            affected_keys: set[str] = set()
+            for content_id in content_ids:
+                self.cursor.execute(
+                    "SELECT DISTINCT key_hash FROM key_content_links WHERE content_id = ?",
+                    (content_id,),
+                )
+                affected_keys.update(row[0] for row in self.cursor.fetchall())
+            self.cursor.execute(
+                """
+                DELETE FROM comments
+                WHERE bulletin_id IN (SELECT bulletin_id FROM bulletins WHERE event_id = ?)
+                """,
+                (event_id,),
+            )
+            counts["comments"] = self.cursor.rowcount
+            self.cursor.execute("DELETE FROM bulletins WHERE event_id = ?", (event_id,))
+            counts["bulletins"] = self.cursor.rowcount
+            self.cursor.execute("DELETE FROM media_assets WHERE event_id = ?", (event_id,))
+            counts["media_assets"] = self.cursor.rowcount
+            self.cursor.execute("DELETE FROM content_blocks WHERE event_id = ?", (event_id,))
+            counts["content_blocks"] = self.cursor.rowcount
+            removed_links = 0
+            for content_id in content_ids:
+                self.cursor.execute(
+                    "DELETE FROM key_content_links WHERE content_id = ?", (content_id,)
+                )
+                removed_links += self.cursor.rowcount
+            counts["key_content_links"] = removed_links
+            # Keys that exist solely for this event are deleted outright
+            for key_hash in affected_keys:
+                self.cursor.execute(
+                    "SELECT COUNT(*) FROM key_content_links WHERE key_hash = ?", (key_hash,)
+                )
+                remaining = self.cursor.fetchone()
+                if not remaining or remaining[0] == 0:
+                    self.cursor.execute("DELETE FROM keys WHERE hash_key = ?", (key_hash,))
+                    counts["keys"] = counts.get("keys", 0) + 1
+            self.cursor.execute("DELETE FROM events WHERE event_id = ?", (event_id,))
+            counts["events"] = self.cursor.rowcount
+            if tombstone and counts["events"] > 0:
+                self.cursor.execute(
+                    "INSERT OR IGNORE INTO event_tombstones (event_id, ended_at) VALUES (?, ?)",
+                    (event_id, self._now_iso()),
+                )
+        except Exception:
+            self.connection.rollback()
+            raise
+        self.connection.commit()
+        return counts
 
     # ------------------------------------------------------------------
     # Key ↔ Content Links (many-to-many)
