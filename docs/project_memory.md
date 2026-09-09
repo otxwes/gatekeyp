@@ -732,3 +732,53 @@ as `fix(flyer): show the one-shot key panel after creating a lite event`
 earlier QA validated the organizer funnel's key modal but never visually
 confirmed the lite funnel's done panel; drive the actual funnel when
 touching it.
+
+### 2026-09-08 — Simplification pass: dark-only UI, upload-only join, event-anchored lite expiry
+
+**Trigger:** user design review; aesthetic reference is the user's own
+application deck (`/Users/jackhuang/projects/setup/application.pdf`) —
+near-empty black slides, large serif display, plain first-person voice, no
+chrome. Direction: the UI should read like those slides.
+
+**Copy trims (web/):** `<title>` → `gatekeyp` (the "events worth attending"
+tagline is gone from the codebase); home drops "An event and a key."; join
+is now **only** the invite upload (drop zone + ⌘V paste — the manual
+event-id/key card, the "Attendee door"/"Unlock an invite" head and the
+key-privacy sentence are gone; reading an invite unlocks immediately via
+`unlockEvent()`, replacing `bindJoinEntry`); the lite unlock form drops its
+title + "never leaves this tab" hint; the flyer drops "Lite events"/"Fly a
+short-lived event"/"New flyer event"; every `placeholder` in index.html and
+the app.js-rendered forms was removed (fields stand empty per design §3.4).
+
+**Dark-only (web/style.css + index.html + app.js):** dark tokens promoted
+into `:root` with `color-scheme: dark`; the `[data-theme="dark"]` block,
+`.icon-btn`/`.theme-icon` rules, the topbar toggle button, `initTheme`/
+`applyTheme` and the `data-theme` attribute are all removed; modal backdrop
+folded to rgba(0,0,0,.6); the print block stays (print stays light on
+paper). `docs/design_system.md` §2/§3.4/§4/§7/§9/§10/§12 and `docs/qa_matrix.md`
+updated to match.
+
+**Organizer handle:** the user asked what it was for — answer: display-only
+metadata (never used to open events; access is keyed by master-key hash; it
+was also the recorded key owner). Removed the create-form field, the
+workspace "Organizer" fact row and the attendee "by …" meta span; API
+contract unchanged (UI sends `"organizer"`, lite keeps `lite:ephemeral`).
+
+**Event-anchored expiry (src/ephemeral/):** `_parse_event_time` — when
+`when` is an ISO-8601 timestamp, `expires_at = event_time + ttl_hours`
+(master-key days computed from that real gap); a past event time raises
+"The event time has already passed…" → 400; free text keeps the
+creation-anchored behaviour. Flyer form: `When` is now `datetime-local`
+(client converts to UTC ISO), label "Gone after (hours after the event)",
+live note computing the wipe moment; done panel + lite page state the
+absolute wipe time; OG notice is now "All event data is wiped automatically
+at {readable UTC}." (`_fmt_utc`).
+
+**Tests:** +6 in `tests/test_ephemeral.py` (anchored expiry at service and
+HTTP level, creation fallback for free text, past-time rejection at both
+levels, OG absolute wipe stamp) — suite 223 passing. Browser pass on :8801
+(home/join/flyer funnel + OG page) verified the dark-only look, the
+upload-only join, the live wipe note, the anchored expiry and the OG
+notice; also fixed a stray `</div>` the join edit introduced (it had
+closed `.stage-inner` early, full-bleeding the flyer card) and dark-mode
+the OG page template while killing its favicon 404 (data-URI mark).

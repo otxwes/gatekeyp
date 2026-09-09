@@ -6,6 +6,10 @@ Companion to `docs/design_system.md` (§10) and the tokens in `web/style.css` §
 Status key: ✅ verified (computed/code-audited) · 👁 manual visual pass (needs a human browser
 look; flag anything that reads as broken or "generated").
 
+> **2026-09-08:** the UI is now a **single dark theme** — the light palette and the topbar
+> toggle were removed (see `docs/design_system.md` §4.1). The light-theme rows below are the
+> historical audit from the two-theme era; §4's matrix predates the consolidation.
+
 ## 1. Contrast audit (WCAG 2.1, computed 2026-08-30)
 
 All pairs below are the **worst case** in which each token is used. Body text hits AAA;
@@ -58,7 +62,6 @@ a row here before shipping.
 | Control | Size | Verdict |
 |---|---|---|
 | `.btn` (primary/secondary) | ≈ 45px tall, full-width on mobile | ✅ |
-| `.icon-btn` (theme toggle) | 44 × 44 | ✅ (raised from 38 in this pass) |
 | `.tab` (workspace tabs) | ≥ 40px tall × generous width | ✅ dense-inline exception, spaced |
 | `.btn-sm` / inline rows (`b-toggle`, `c-del`, copy) | ≥ 32px with ≥ 8px gaps | ✅ inline exception per §10 |
 | `.badge` | informational, non-interactive | n/a |
@@ -103,7 +106,7 @@ Cells: ✅ code-audited this pass · 👁 needs a human visual pass (light + dar
 
 1. `python3 -m pytest -q` (Apple Silicon: `arch -x86_64 python -m pytest -q`).
 2. Serve: `python3 -m src.api.server` (or `uv run ...`) and open `/`.
-3. Toggle theme via the topbar icon; step every view at 1280, 768, and 390 px widths.
+3. Step every view at 1280, 768, and 390 px widths (single dark theme — no toggle).
 4. Check `prefers-reduced-motion` and forced-colors in DevTools Rendering.
 
 *Last run: 2026-08-30 (computed + code audit). Human visual pass outstanding on cells marked 👁.*

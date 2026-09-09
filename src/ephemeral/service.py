@@ -148,6 +148,19 @@ class EphemeralService:
         return ttl_hours
 
     @staticmethod
+    def _parse_event_time(when: str | None) -> datetime | None:
+        """Parse a machine-readable event time; free text (or empty) -> None."""
+        if not when:
+            return None
+        try:
+            event_time = datetime.fromisoformat(when)
+        except ValueError:
+            return None
+        if event_time.tzinfo is None:
+            event_time = event_time.replace(tzinfo=UTC)
+        return event_time
+
+    @staticmethod
     def _validate_flyer(flyer: dict[str, Any] | None) -> dict[str, Any] | None:
         """Pre-validate the flyer payload against ContentManager's limits."""
         if flyer is None:
@@ -182,11 +195,16 @@ class EphemeralService:
             title: Event title (shown publicly on the flyer page).
             description: Optional description; defaults to the title when
                 omitted (lifecycle requires a non-empty description).
-            when: Optional free-text schedule, stored as a gated content block.
+            when: Optional schedule, stored as a gated content block. An
+                ISO-8601 timestamp also anchors the wipe deadline — the event
+                is wiped ttl_hours after the event time, not after creation;
+                free text keeps the creation-anchored deadline.
             where: Optional free-text location, stored as a gated content block.
             flyer: Optional flyer payload (filename, mime_type, data bytes),
                 stored encrypted-at-rest but served publicly.
-            ttl_hours: Event lifetime; all data is wiped after expiry.
+            ttl_hours: Event lifetime in hours — counted from the event time
+                when `when` parses as a timestamp, else from creation; all
+                data is wiped after expiry.
 
         Returns:
             Payload with event_id, master_key (shown once), expiry timestamps
@@ -200,9 +218,14 @@ class EphemeralService:
         self._validate_flyer(flyer)
 
         now = self._clock()
-        expires_at = (now + timedelta(hours=ttl_hours)).isoformat()
+        event_time = self._parse_event_time(when)
+        expiry_dt = (event_time or now) + timedelta(hours=ttl_hours)
+        if event_time is not None and expiry_dt <= now:
+            message = "The event time has already passed — pick a time in the future"
+            raise LiteValidationError(message)
+        expires_at = expiry_dt.isoformat()
         # The master key must outlive the event (plus one day of grace)
-        master_key_days = max(1, math.ceil(ttl_hours / 24) + 1)
+        master_key_days = max(1, math.ceil((expiry_dt - now).total_seconds() / 86400) + 1)
 
         try:
             created = self.lifecycle.create_event(

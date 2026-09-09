@@ -374,6 +374,25 @@ class TestEphemeralService:
         with pytest.raises(LiteGoneError):
             ephemeral.get_keyed_view(key=result["master_key"], event_id=result["event_id"])
 
+    def test_event_time_anchors_expiry(self, ephemeral):
+        """An ISO event time anchors the wipe deadline to the event, not creation."""
+        result = ephemeral.create_lite_event(
+            "Anchored", when="2099-01-01T21:00:00+00:00", ttl_hours=24
+        )
+        expires = datetime.fromisoformat(result["event_expires_at"])
+        assert expires == datetime(2099, 1, 2, 21, 0, tzinfo=UTC)
+
+    def test_free_text_when_keeps_creation_anchor(self, ephemeral, clock):
+        """Unparseable `when` text falls back to counting from creation."""
+        result = ephemeral.create_lite_event("Freeform", when="Friday 9pm", ttl_hours=6)
+        expires = datetime.fromisoformat(result["event_expires_at"])
+        assert expires == clock.now + timedelta(hours=6)
+
+    def test_past_event_time_rejected(self, ephemeral):
+        """A past event time cannot anchor the wipe deadline."""
+        with pytest.raises(LiteValidationError):
+            ephemeral.create_lite_event("Late", when="2001-01-01T00:00:00+00:00", ttl_hours=48)
+
     def test_sweep_wipes_only_expired_events(self, ephemeral, clock):
         """The sweep wipes due events and leaves live events untouched."""
         doomed = ephemeral.create_lite_event("Sweep me", when="soon", where="here", ttl_hours=1)
@@ -455,6 +474,24 @@ class TestLiteRoutes:
         assert 'property="og:title"' in page.text
         assert body["master_key"] not in page.text
         assert "private description" not in page.text
+
+    def test_event_time_anchors_expiry_over_http(self, client):
+        """The wipe deadline counts from the event time, not the creation moment."""
+        body = _create_lite(client, when="2099-01-01T21:00:00+00:00", ttl_hours=24).json()
+        assert body["event_expires_at"] == "2099-01-02T21:00:00+00:00"
+
+    def test_past_event_time_rejected_over_http(self, client):
+        """A past event time is a 400 with a plain-spoken detail."""
+        resp = _create_lite(client, when="2001-01-01T00:00:00+00:00")
+        assert resp.status_code == 400
+        assert "already passed" in resp.json()["detail"]
+
+    def test_og_page_states_absolute_wipe_time(self, client):
+        """The OG page notice states the wipe moment, not a raw timestamp."""
+        body = _create_lite(client, when="2099-01-01T21:00:00+00:00", ttl_hours=24).json()
+        page = client.get(f"/i/{body['event_id']}")
+        assert "wiped automatically at" in page.text
+        assert "Jan 02, 2099 21:00 UTC" in page.text
 
     def test_og_page_after_wipe_shows_honest_ended_page(self, client, db):
         """A wiped event renders a noindex 'ended' page, not old content."""
