@@ -70,6 +70,12 @@ between the fixed steps; everything else picks a step.
 - Mono for any value the user may copy or compare (keys, IDs, facts) — readability echo of
   "this is data."
 - Never justify text; no hyphenation.
+- **No helper prose (caption discipline).** View heads and card titles carry labels, not
+  sentences — never a paragraph explaining what the form/page does; labels, the title, and
+  the artifact itself state the model. Optionality/visibility is at most a single-word
+  `.opt` tag. The one-shot key warning is the sole exception (functional safety): one line,
+  reusing the canonical modal copy. — added 2026-09-08, after the Phase A funnel
+  reintroduced caption text; stripped in the same session (see `docs/project_memory.md`).
 
 ## 4. Color
 
