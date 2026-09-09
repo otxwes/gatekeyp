@@ -1612,6 +1612,7 @@ async function renderFlyer() {
             if (!resp.ok) throw new Error(body.detail || `HTTP ${resp.status}`);
             entry.hidden = true;
             showFlyerDone(done, body);
+            done.hidden = false;
             toast("Copy the master key before leaving this page.", "ok", "Event is live");
         } catch (err) {
             note.textContent = err.message;
