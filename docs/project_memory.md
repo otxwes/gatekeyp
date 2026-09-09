@@ -722,3 +722,13 @@ page, not the app's quiet voice.
 instead of naming data or an action, it's a caption — cut it, or move the
 fact into a label/title. Before shipping a new view, diff its copy against
 §3.4; new prose under a card title is a design review blocker.
+
+**Also caught during the verification pass:** the funnel submit handler
+filled `#flyer-done` but never unhid it (`done.hidden = false` was
+missing), so the one-shot-key panel never displayed — the view went
+blank after creating an event and the key was only in the toast. Fixed
+as `fix(flyer): show the one-shot key panel after creating a lite event`
+(pre-existing at HEAD, string-only caption diff unrelated). Lesson: the
+earlier QA validated the organizer funnel's key modal but never visually
+confirmed the lite funnel's done panel; drive the actual funnel when
+touching it.
