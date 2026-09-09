@@ -256,43 +256,6 @@ function openKeyModal(label, keyValue, cardOpts = null) {
 }
 
 /* ------------------------------------------------------------------
- * Theme
- * ------------------------------------------------------------------ */
-function applyTheme(theme) {
-    document.documentElement.setAttribute("data-theme", theme);
-    const sun = $(".theme-icon-sun");
-    const moon = $(".theme-icon-moon");
-    if (sun) sun.style.display = theme === "light" ? "" : "none";
-    if (moon) moon.style.display = theme === "dark" ? "" : "none";
-    try {
-        localStorage.setItem("gatekeyp.theme", theme);
-    } catch {
-        /* ignore */
-    }
-}
-
-function initTheme() {
-    let theme = "light";
-    try {
-        theme = localStorage.getItem("gatekeyp.theme") || "light";
-        if (!localStorage.getItem("gatekeyp.theme") &&
-            window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-            theme = "dark";
-        }
-    } catch {
-        /* ignore */
-    }
-    applyTheme(theme);
-    const toggle = $("#theme-toggle");
-    if (toggle) {
-        toggle.addEventListener("click", () => {
-            const current = document.documentElement.getAttribute("data-theme");
-            applyTheme(current === "dark" ? "light" : "dark");
-        });
-    }
-}
-
-/* ------------------------------------------------------------------
  * Small UI hooks + render helpers
  * ------------------------------------------------------------------ */
 function btnBusy(btn, busy, busyText) {
@@ -443,7 +406,6 @@ function bindOrganizeEntry() {
         note(noteEl, "");
         const title = getField(createForm, "title");
         const description = getField(createForm, "description");
-        const organizer_id = getField(createForm, "organizer_id") || "organizer";
         const location_data = getField(createForm, "location_data") || null;
         if (!title || !description) {
             note(noteEl, "A title and description are required.", "error");
@@ -453,13 +415,13 @@ function bindOrganizeEntry() {
         try {
             const created = await api("/api/events", {
                 method: "POST",
-                body: { title, description, organizer_id, location_data },
+                body: { title, description, organizer_id: "organizer", location_data },
             });
             org = {
                 eventId: created.event_id,
                 masterKey: created.master_key,
                 title: created.title || title,
-                meta: { description, organizerId: organizer_id, locationData: location_data },
+                meta: { description, locationData: location_data },
             };
             createForm.reset();
             saveSession();
@@ -494,7 +456,6 @@ function bindOrganizeEntry() {
                 title: eventInfo.title || "Untitled event",
                 meta: {
                     description: eventInfo.description || "",
-                    organizerId: eventInfo.organizer_id || "",
                     locationData: eventInfo.location_data || "",
                     createdAt: eventInfo.created_at || "",
                 },
@@ -633,7 +594,6 @@ async function wsContent(main) {
         `<div class="fact-list">` +
         factRow("Title", event.title) +
         factRow("Event ID", fmtId(event.id)) +
-        factRow("Organizer", event.organizer_id) +
         (event.location_data ? factRow("Where", event.location_data) : "") +
         factRow("Created", fmtDate(event.created_at)) +
         `</div>` +
@@ -652,7 +612,7 @@ async function wsContent(main) {
         `<div class="field"><label for="block-type">Type</label>` +
         `<input id="block-type" name="content_type" list="block-types" maxlength="64" value="description" required spellcheck="false"></div>` +
         `<div class="field"><label for="block-payload">Content</label>` +
-        `<textarea id="block-payload" name="payload" rows="3" maxlength="65536" required placeholder="What should attendees know?"></textarea></div>` +
+        `<textarea id="block-payload" name="payload" rows="3" maxlength="65536" required></textarea></div>` +
         `<button class="btn btn-primary" type="submit" id="add-block-btn">Add block</button>` +
         `</form>` +
         `<datalist id="block-types">${Object.keys(CONTENT_TYPE_LABELS).map((t) => `<option value="${esc(t)}">`).join("")}</datalist>` +
@@ -703,9 +663,9 @@ function bulletinCardHTML(bulletin, manage) {
               `</div>`
             : `<form class="comment-form" autocomplete="off">` +
               `<div class="field cf-author"><label for="cf-a-${esc(bulletin.id)}">Your name</label>` +
-              `<input class="cf-author" id="cf-a-${esc(bulletin.id)}" name="author" type="text" maxlength="256" placeholder="Anonymous" autocomplete="off"></div>` +
+              `<input class="cf-author" id="cf-a-${esc(bulletin.id)}" name="author" type="text" maxlength="256" autocomplete="off"></div>` +
               `<div class="field cf-body"><label for="cf-b-${esc(bulletin.id)}">Reply</label>` +
-              `<input class="cf-body" id="cf-b-${esc(bulletin.id)}" name="body" type="text" maxlength="16384" placeholder="A thought…" required autocomplete="off"></div>` +
+              `<input class="cf-body" id="cf-b-${esc(bulletin.id)}" name="body" type="text" maxlength="16384" required autocomplete="off"></div>` +
               `<button class="btn btn-ghost" type="submit">Post</button>` +
               `</form>`) +
         `</div>` +
@@ -842,7 +802,7 @@ async function wsBulletins(main) {
         `<h3 class="card-title">Post a bulletin</h3>` +
         `<form id="add-bulletin-form" autocomplete="off">` +
         `<div class="field"><label for="bulletin-title">Title</label>` +
-        `<input id="bulletin-title" name="title" type="text" maxlength="256" required placeholder="Update — doors at 7"></div>` +
+        `<input id="bulletin-title" name="title" type="text" maxlength="256" required></div>` +
         `<div class="field"><label for="bulletin-body">Details</label>` +
         `<textarea id="bulletin-body" name="body" rows="4" maxlength="65536" required></textarea></div>` +
         `<button class="btn btn-primary" type="submit" id="add-bulletin-btn">Post bulletin</button>` +
@@ -1006,7 +966,7 @@ function openKeyCardModal(owner) {
             `<p>The raw access key is shown only once at generation and is not stored again. ` +
             `Enter the <strong>${esc(owner || "key")}</strong> value you were given to embed it in a card.</p>` +
             `<div class="field"><label for="key-card-key">Access key</label>` +
-            `<input type="password" id="key-card-key" spellcheck="false" autocomplete="off" placeholder="local:…"></div>` +
+            `<input type="password" id="key-card-key" spellcheck="false" autocomplete="off"></div>` +
             `<p class="field-hint">Send the finished card as a file or attachment — re-encoding it destroys the hidden key (its printed QR is the fallback).</p>`,
         confirmText: "Make card",
         cancelText: "Cancel",
@@ -1181,7 +1141,7 @@ async function wsKeys(main) {
         `<h3 class="card-title">Generate a key</h3>` +
         `<form id="gen-key-form" class="inline-form" autocomplete="off">` +
         `<div class="field"><label for="key-owner">For (name or handle)</label>` +
-        `<input id="key-owner" name="owner" type="text" maxlength="256" placeholder="@person" autocomplete="off"></div>` +
+        `<input id="key-owner" name="owner" type="text" maxlength="256" autocomplete="off"></div>` +
         `<div class="field"><label for="key-days">Lifetime (days)</label>` +
         `<input id="key-days" name="days" type="number" min="1" max="365" value="30"></div>` +
         `<button class="btn btn-primary" type="submit" id="gen-key-btn">Generate</button>` +
@@ -1191,7 +1151,7 @@ async function wsKeys(main) {
         `<h3 class="card-title">Revoke a key</h3>` +
         `<form id="revoke-key-form" class="inline-form" autocomplete="off">` +
         `<div class="field"><label for="revoke-key">Access key</label>` +
-        `<input id="revoke-key" name="access_key" type="password" maxlength="2048" placeholder="local:…" required spellcheck="false" autocomplete="off"></div>` +
+        `<input id="revoke-key" name="access_key" type="password" maxlength="2048" required spellcheck="false" autocomplete="off"></div>` +
         `<button class="btn btn-danger" type="submit" id="revoke-key-btn">Revoke</button>` +
         `</form>` +
         `</section>`;
@@ -1291,8 +1251,8 @@ function setDropBusy(drop, busy, label) {
         if (title) title.textContent = label || "Reading…";
     } else {
         drop.classList.remove("is-busy");
-        if (title) title.textContent = "Drop your invite card here";
-        if (sub) sub.textContent = "or paste it with ⌘V — the key lives in its pixels";
+        if (title) title.textContent = "Drop your invite here";
+        if (sub) sub.textContent = "or paste it with ⌘V";
     }
 }
 
@@ -1322,21 +1282,7 @@ async function handleInvitePng(file) {
         // 3) Honest, specific rejection instead of a generic failure.
         if (!parsed) throw new Error(window.gkpStego.inviteRejectReason(kind));
 
-        const form = $("#join-form");
-        if (form) {
-            form.elements.event_id.value = parsed.eventId;
-            form.elements.access_key.value = parsed.accessKey;
-        }
-        if (drop) drop.classList.add("is-done");
-        toast(
-            parsed.viaQr
-                ? "QR fallback read from your card — unlock when ready."
-                : "Key read from your card — unlock when ready.",
-            "ok",
-            parsed.viaQr ? "Invite found (QR)" : "Invite found"
-        );
-        const btn = $("#join-btn");
-        if (btn) btn.focus();
+        await unlockEvent(parsed.eventId, parsed.accessKey);
     } catch (err) {
         toast(err.message, "error", "Could not read the card");
     } finally {
@@ -1380,7 +1326,7 @@ function bindJoinDrop() {
         });
     }
     // Paste anywhere while the join entry is visible: an image card or gkp: text.
-    document.addEventListener("paste", (event) => {
+    document.addEventListener("paste", async (event) => {
         const entry = $("#join-entry");
         if (!entry || entry.hidden) return;
         const items = event.clipboardData && event.clipboardData.items;
@@ -1399,56 +1345,44 @@ function bindJoinDrop() {
         const text = event.clipboardData && event.clipboardData.getData("text");
         const parsed = text ? window.gkpStego.parseQrPayload(text.trim()) : null;
         if (parsed) {
-            const form = $("#join-form");
-            if (form) {
-                event.preventDefault();
-                form.elements.event_id.value = parsed.eventId;
-                form.elements.access_key.value = parsed.accessKey;
-                toast("Invite pasted — unlock when ready.", "ok", "Invite found");
-            }
+            event.preventDefault();
+            await unlockEvent(parsed.eventId, parsed.accessKey);
         }
     });
 }
 
 /* ------------------------------------------------------------------
- * Join entry (unlock)
+ * Join unlock (invite → key → event page)
  * ------------------------------------------------------------------ */
-function bindJoinEntry() {
-    const form = $("#join-form");
-    form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const noteEl = $("#join-note");
-        const btn = $("#join-btn");
-        note(noteEl, "");
-        const eventId = getField(form, "event_id");
-        const accessKey = getField(form, "access_key");
-        if (!eventId || !accessKey) {
-            note(noteEl, "Both the event ID and your access key are required.", "error");
-            return;
+async function unlockEvent(eventId, accessKey) {
+    const drop = $("#key-drop");
+    const noteEl = $("#join-note");
+    note(noteEl, "");
+    setDropBusy(drop, true, "Unlocking…");
+    try {
+        // The gateway answers any valid key+content pair with the event dict.
+        const result = await api("/api/access", {
+            method: "POST",
+            body: { key: accessKey, content_id: eventId },
+        });
+        if (!result || result.status !== "success") {
+            throw new Error((result && result.message) || "The key did not unlock this event.");
         }
-        btnBusy(btn, true, "Unlocking…");
-        try {
-            // The gateway answers any valid key+content pair with the event dict.
-            const result = await api("/api/access", {
-                method: "POST",
-                body: { key: accessKey, content_id: eventId },
-            });
-            if (!result || result.status !== "success") {
-                throw new Error((result && result.message) || "The key did not unlock this event.");
-            }
-            attendee = { eventId, accessKey, event: result.data || {} };
-            form.reset();
-            saveSession();
-            $("#join-entry").hidden = true;
-            $("#join-event").hidden = false;
+        attendee = { eventId, accessKey, event: result.data || {} };
+        saveSession();
+        const entry = $("#join-entry");
+        const evt = $("#join-event");
+        if (entry) entry.hidden = true;
+        if (evt) {
+            evt.hidden = false;
             renderEventPage();
-            toast("Event unlocked.", "ok", "Welcome");
-        } catch (err) {
-            note(noteEl, err.message, "error");
-        } finally {
-            btnBusy(btn, false);
         }
-    });
+        toast("Event unlocked.", "ok", "Welcome");
+    } catch (err) {
+        note(noteEl, err.message, "error");
+    } finally {
+        setDropBusy(drop, false);
+    }
 }
 
 function renderJoin() {
@@ -1480,7 +1414,6 @@ function renderEventPage() {
         `<p class="ep-lede">${esc(event.description || "")}</p>` +
         `<div class="ep-meta">` +
         (event.location_data ? `<span class="ep-meta-item">📍 ${esc(event.location_data)}</span>` : "") +
-        `<span class="ep-meta-item">by ${esc(event.organizer_id || "organizer")}</span>` +
         `<button class="btn btn-ghost btn-sm" type="button" id="attendee-end">Leave (drop key)</button>` +
         `</div>` +
         `</header>` +
@@ -1568,8 +1501,7 @@ function showFlyerDone(done, body) {
     const eventHref =
         `#/e/${encodeURIComponent(body.event_id)}?k=${encodeURIComponent(body.master_key)}`;
     done.innerHTML =
-        `<header class="view-head"><p class="eyebrow">Lite events</p>` +
-        `<h2 class="view-title">Your event is live</h2></header>` +
+        `<header class="view-head"><h2 class="view-title">Your event is live</h2></header>` +
         `<div class="card form-card">` +
         `<h3 class="card-title">Master key</h3>` +
         `<p class="key-hint">Copy this key now — it is shown only once and cannot be ` +
@@ -1579,6 +1511,7 @@ function showFlyerDone(done, body) {
         `<div class="item"><code>${esc(publicUrl)}</code></div></div>` +
         `<div class="item"><a class="btn btn-primary" href="${esc(eventHref)}">` +
         `Open the event page</a></div>` +
+        `<p class="key-hint">This page wipes itself ${esc(fmtDate(body.event_expires_at))}.</p>` +
         `</div>`;
 }
 
@@ -1592,6 +1525,32 @@ async function renderFlyer() {
     const form = $("#flyer-form");
     if (!form || form.dataset.bound) return;
     form.dataset.bound = "1";
+
+    // Live wipe note: the page vanishes ttl hours after the event time.
+    const noteEl = $("#flyer-note");
+    const updateNote = () => {
+        if (!noteEl) return;
+        const ttl = Number($("#flyer-ttl")?.value || 48);
+        const whenRaw = $("#flyer-when")?.value;
+        const whenDate = whenRaw ? new Date(whenRaw) : null;
+        if (!whenDate || Number.isNaN(whenDate.getTime())) {
+            note(noteEl, `Wipes ${ttl} hours after you create it.`);
+            return;
+        }
+        const wipes = new Date(whenDate.getTime() + ttl * 3600 * 1000);
+        if (wipes.getTime() <= Date.now()) {
+            note(noteEl, "The event time has already passed — pick a time in the future.", "error");
+            return;
+        }
+        note(noteEl, `Wipes ${fmtDate(wipes.toISOString())} — ${ttl} hours after the event.`);
+    };
+    ["#flyer-when", "#flyer-ttl"].forEach((sel) => {
+        const el = $(sel);
+        if (el) el.addEventListener("input", updateNote);
+        if (el) el.addEventListener("change", updateNote);
+    });
+    updateNote();
+
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const note = $("#flyer-note");
@@ -1602,7 +1561,8 @@ async function renderFlyer() {
             const fd = new FormData();
             fd.set("title", $("#flyer-title").value);
             fd.set("description", $("#flyer-description").value);
-            fd.set("when", $("#flyer-when").value);
+            const whenRaw = $("#flyer-when")?.value;
+            if (whenRaw) fd.set("when", new Date(whenRaw).toISOString());
             fd.set("where", $("#flyer-where").value);
             fd.set("ttl_hours", String(Number($("#flyer-ttl")?.value || 48)));
             const file = $("#flyer-file")?.files?.[0];
@@ -1633,10 +1593,8 @@ function parseLiteHash() {
 
 function liteKeyForm() {
     return `<form id="lite-key-form" class="card form-card" autocomplete="off">` +
-        `<h3 class="card-title">Unlock this event</h3>` +
         `<div class="field"><label for="lite-key">Event key</label>` +
-        `<input type="password" id="lite-key" required placeholder="local:…" autocomplete="off"></div>` +
-        `<p class="key-hint">Your key unlocks the event details and never leaves this tab.</p>` +
+        `<input type="password" id="lite-key" required autocomplete="off"></div>` +
         `<button type="submit" class="btn btn-primary btn-block">Unlock</button></form>`;
 }
 
@@ -1669,9 +1627,9 @@ async function renderLiteEvent() {
             `<h2 class="view-title">${esc(evt.title || "")}</h2></div>` +
             `${flyer}` +
             (evt.description ? `<p>${esc(evt.description)}</p>` : "") +
-            (data.when ? `<p><strong>When:</strong> ${esc(data.when)}</p>` : "") +
+            (data.when ? `<p><strong>When:</strong> ${esc(fmtDate(data.when))}</p>` : "") +
             (data.where ? `<p><strong>Where:</strong> ${esc(data.where)}</p>` : "") +
-            `<p class="form-note">Everything is wiped ` +
+            `<p class="form-note">This page wipes itself ` +
             `${esc(fmtDate(data.expires_at))}.</p>`;
     } catch (err) {
         if (/ended|expired/i.test(err.message)) {
@@ -1687,10 +1645,8 @@ async function renderLiteEvent() {
  * ------------------------------------------------------------------ */
 function init() {
     loadSession();
-    initTheme();
     bindOrganizeEntry();
     bindJoinDrop();
-    bindJoinEntry();
     window.addEventListener("hashchange", route);
     route();
 }

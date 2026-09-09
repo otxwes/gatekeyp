@@ -10,6 +10,7 @@ every event self-destructs after its TTL. Mounted in both server profiles.
 from __future__ import annotations
 
 import html
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated
 from urllib.parse import quote
 
@@ -22,10 +23,18 @@ from src.ephemeral.service import LiteGoneError, LiteNotFoundError, LiteValidati
 if TYPE_CHECKING:
     from src.ephemeral.service import EphemeralService
 
+_FAVICON = (
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E"
+    "%3Cpath fill='%23f5f5f5' d='M7.5 11a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2.4a2.1 2.1 "
+    "0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2Z'/%3E%3Cpath fill='none' stroke='%23f5f5f5' "
+    "stroke-linecap='round' stroke-width='2' d='M11 11 20 2M16 6l3 3M13 9l2.5-2.5'/%3E%3C/svg%3E"
+)
+
 _PAGE_STYLE = (
-    "body{font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem}"
+    "body{font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;"
+    "background:#0b0b0b;color:#f5f5f5}"
     "h1{font-size:1.4rem}img{max-width:100%;height:auto;border-radius:8px}"
-    ".notice{color:#555;font-size:.9rem}"
+    ".notice{color:#9a9a9a;font-size:.9rem}"
 )
 
 _RETRY_AFTER_SECONDS = "600"
@@ -36,6 +45,8 @@ def _render_page(title: str, head_html: str, body_html: str) -> str:
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<meta name="color-scheme" content="dark">'
+        f'<link rel="icon" href="{_FAVICON}">'
         f"<title>{html.escape(title)}</title>{head_html}"
         f"<style>{_PAGE_STYLE}</style></head><body>{body_html}</body></html>"
     )
@@ -51,6 +62,17 @@ def _render_ended_page(ended_at: str | None) -> str:
     return _render_page("Event ended", '<meta name="robots" content="noindex">', body)
 
 
+def _fmt_utc(expires_at: str | None) -> str:
+    """Render the wipe deadline as a readable UTC stamp; 'soon' if unparseable."""
+    try:
+        dt = datetime.fromisoformat(expires_at or "")
+    except (TypeError, ValueError):
+        return "soon"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).strftime("%b %d, %Y %H:%M UTC")
+
+
 def _render_live_page(
     event_id: str, title: str, flyer_asset_id: str | None, expires_at: str | None, base_url: str
 ) -> str:
@@ -61,12 +83,11 @@ def _render_live_page(
         flyer_url = f"{base_url}/api/lite/events/{event_id}/flyer"
         og_image = f'<meta property="og:image" content="{html.escape(flyer_url)}">'
         flyer_tag = f'<img src="/api/lite/events/{event_id}/flyer" alt="{html.escape(title)}">'
-    expires = html.escape(expires_at) if expires_at else "soon"
     body = (
         f"<h1>{html.escape(title)}</h1>"
         f"{flyer_tag}"
-        '<p class="notice">All event data is '
-        f"automatically wiped after {expires}.</p>"
+        '<p class="notice">All event data is wiped automatically at '
+        f"{_fmt_utc(expires_at)}.</p>"
     )
     head = (
         '<meta property="og:type" content="website">'

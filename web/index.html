@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="gatekeyp — a privacy-preserving, federated event-organizing toolkit. Organize gatherings and share keyed invitations without adtech or tracking.">
-    <meta name="color-scheme" content="light dark">
-    <title>gatekeyp — events worth attending, gated by keys</title>
+    <meta name="color-scheme" content="dark">
+    <title>gatekeyp</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23111111' d='M7.5 11a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2.4a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2Z'/%3E%3Cpath fill='none' stroke='%23111111' stroke-linecap='round' stroke-width='2' d='M11 11 20 2M16 6l3 3M13 9l2.5-2.5'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -26,15 +26,6 @@
                 <a class="nav-link" href="#/join">Join</a>
                 <a class="nav-link" href="#/flyer">Flyer</a>
             </nav>
-            <button id="theme-toggle" type="button" class="icon-btn" title="Toggle light / dark theme" aria-label="Toggle light or dark theme">
-                <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true">
-                    <circle cx="12" cy="12" r="4"></circle>
-                    <path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
-                </svg>
-                <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11Z"></path>
-                </svg>
-            </button>
         </header>
 
         <main id="main" class="stage">
@@ -44,7 +35,6 @@
                 <section id="view-home" class="view">
                     <div class="view-head">
                         <p class="eyebrow">gatekeyp</p>
-                        <h2 class="view-title">An event and a key.</h2>
                         <div class="home-actions">
                             <a class="btn btn-primary" href="#/organize">Make an event</a>
                             <a class="btn btn-ghost" href="#/join">Unlock an invite</a>
@@ -69,22 +59,17 @@
                                 <div class="field">
                                     <label for="title">Title <span class="req">*</span></label>
                                     <input type="text" id="title" name="title" required maxlength="256"
-                                           placeholder="Open Mic Night" autocomplete="off">
+                                           autocomplete="off">
                                 </div>
                                 <div class="field">
                                     <label for="description">Description <span class="req">*</span></label>
                                     <textarea id="description" name="description" required maxlength="65536"
-                                              rows="4" placeholder="An informal evening of music, readings, and snacks."></textarea>
-                                </div>
-                                <div class="field">
-                                    <label for="organizer-id">Organizer handle</label>
-                                    <input type="text" id="organizer-id" name="organizer_id" maxlength="256"
-                                           placeholder="@you:instance.example" autocomplete="off">
+                                              rows="4"></textarea>
                                 </div>
                                 <div class="field">
                                     <label for="location-data">Where it happens <span class="opt">optional</span></label>
                                     <input type="text" id="location-data" name="location_data" maxlength="1024"
-                                           placeholder="Comfort Station — 40.75, -73.98" autocomplete="off">
+                                           autocomplete="off">
                                 </div>
                                 <p id="create-note" class="form-note" role="status" aria-live="polite"></p>
                                 <button type="submit" class="btn btn-primary btn-block" id="create-btn">
@@ -97,12 +82,12 @@
                                 <div class="field">
                                     <label for="open-event-id">Event ID</label>
                                     <input type="text" id="open-event-id" name="event_id" required
-                                           placeholder="event_b3c9…" spellcheck="false" autocomplete="off">
+                                           spellcheck="false" autocomplete="off">
                                 </div>
                                 <div class="field">
                                     <label for="open-master-key">Master key</label>
                                     <input type="password" id="open-master-key" name="master_key" required
-                                           placeholder="local:…" spellcheck="false" autocomplete="off">
+                                           spellcheck="false" autocomplete="off">
                                 </div>
                                 <p id="open-note" class="form-note" role="status" aria-live="polite"></p>
                                 <button type="submit" class="btn btn-secondary btn-block" id="open-btn">
@@ -122,40 +107,17 @@
                 <section id="view-join" class="view" hidden>
                     <!-- entry: unlock -->
                     <div id="join-entry">
-                        <header class="view-head">
-                            <p class="eyebrow">Attendee door</p>
-                            <h2 class="view-title">Unlock an invite</h2>
-                        </header>
-
                         <div id="key-drop" class="key-drop" tabindex="0" role="button"
-                             aria-label="Drop, paste or choose an invite card image">
+                             aria-label="Drop, paste or choose an invite image">
                             <div class="key-drop-inner">
                                 <span class="key-drop-icon" aria-hidden="true">⤓</span>
-                                <div class="key-drop-title">Drop your invite card here</div>
-                                <div class="key-drop-sub">or paste with ⌘V — a photo of the card works too</div>
+                                <div class="key-drop-title">Drop your invite here</div>
+                                <div class="key-drop-sub">or paste it with ⌘V</div>
                             </div>
                             <input type="file" id="key-drop-file" accept="image/png,image/*" hidden>
                         </div>
 
-                        <form id="join-form" class="card form-card join-card" autocomplete="off">
-                            <h3 class="card-title">Your event key</h3>
-                            <div class="field">
-                                <label for="join-event-id">Event ID</label>
-                                <input type="text" id="join-event-id" name="event_id" required
-                                       placeholder="event_b3c9…" spellcheck="false" autocomplete="off">
-                            </div>
-                            <div class="field">
-                                <label for="join-access-key">Access key</label>
-                                <input type="password" id="join-access-key" name="access_key" required
-                                       placeholder="local:…" spellcheck="false" autocomplete="off">
-                            </div>
-                            <p class="key-hint">Your key is used only to decrypt this event's content and never
-                               leaves your session — close the tab and it's gone.</p>
-                            <p id="join-note" class="form-note" role="status" aria-live="polite"></p>
-                            <button type="submit" class="btn btn-primary btn-block" id="join-btn">
-                                Unlock event
-                            </button>
-                        </form>
+                        <p id="join-note" class="form-note" role="status" aria-live="polite"></p>
                     </div>
 
                     <!-- event page: rendered by app.js -->
@@ -167,38 +129,31 @@
                 <!-- ================= Flyer (lite funnel) ================= -->
                 <section id="view-flyer" class="view" hidden>
                     <div id="flyer-entry">
-                        <header class="view-head">
-                            <p class="eyebrow">Lite events</p>
-                            <h2 class="view-title">Fly a short-lived event</h2>
-                        </header>
                         <form id="flyer-form" class="card form-card" autocomplete="off">
-                            <h3 class="card-title">New flyer event</h3>
                             <div class="field">
                                 <label for="flyer-title">Event title <span class="req">*</span></label>
                                 <input type="text" id="flyer-title" name="title" required maxlength="256"
-                                       placeholder="Rooftop listening night" autocomplete="off">
+                                       autocomplete="off">
                             </div>
                             <div class="field">
                                 <label for="flyer-description">Description</label>
-                                <textarea id="flyer-description" rows="3" maxlength="65536"
-                                          placeholder="An informal evening of music and readings."></textarea>
+                                <textarea id="flyer-description" rows="3" maxlength="65536"></textarea>
                             </div>
                             <div class="field">
                                 <label for="flyer-when">When</label>
-                                <input type="text" id="flyer-when" maxlength="256"
-                                       placeholder="Friday, 9pm" autocomplete="off">
+                                <input type="datetime-local" id="flyer-when" autocomplete="off">
                             </div>
                             <div class="field">
                                 <label for="flyer-where">Where</label>
                                 <input type="text" id="flyer-where" maxlength="256"
-                                       placeholder="Corner rooftop" autocomplete="off">
+                                       autocomplete="off">
                             </div>
                             <div class="field">
                                 <label for="flyer-file">Flyer image <span class="opt">optional</span></label>
                                 <input type="file" id="flyer-file" accept="image/png,image/jpeg,image/webp">
                             </div>
                             <div class="field">
-                                <label for="flyer-ttl">Gone after (hours)</label>
+                                <label for="flyer-ttl">Gone after (hours after the event)</label>
                                 <input type="number" id="flyer-ttl" min="1" max="336" value="48">
                             </div>
                             <p id="flyer-note" class="form-note" role="status" aria-live="polite"></p>

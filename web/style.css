@@ -1,11 +1,11 @@
 /* ============================================================
    gatekeyp — Web UI design system
    Monochrome editorial minimalism (Phase 3.5, 2026-08): pure
-   paper & ink, one grayscale ramp, texture instead of color.
-   Status is carried by shape, hatching, weight and glyphs —
-   never hue alone. No webfonts, no trackers — the UI is as
-   privacy-lean as the product. Tokens drive both a light and
-   a dark theme.
+   ink, one grayscale ramp, texture instead of color. Status is
+   carried by shape, hatching, weight and glyphs — never hue
+   alone. No webfonts, no trackers — the UI is as privacy-lean
+   as the product. Single dark theme (2026-09-08): black paper,
+   white ink; the light theme and its toggle were removed.
    ============================================================ */
 
 /* ------------------------------------------------------------
@@ -20,41 +20,41 @@
     --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas,
                  "Liberation Mono", monospace;
 
-    /* Light palette (pure paper & ink) */
-    --paper: #ffffff;
-    --paper-deep: #f6f6f6;
-    --surface: #ffffff;
-    --surface-2: #f2f2f2;
-    --ink: #111111;
-    --ink-soft: #4d4d4d;
-    --ink-faint: #6b6b6b;
-    --line: #e2e2e2;
-    --line-strong: #c9c9c9;
+    /* Palette (pure ink on black paper) */
+    --paper: #0b0b0b;
+    --paper-deep: #080808;
+    --surface: #131313;
+    --surface-2: #1a1a1a;
+    --ink: #f5f5f5;
+    --ink-soft: #c0c0c0;
+    --ink-faint: #9a9a9a;
+    --line: #2a2a2a;
+    --line-strong: #404040;
 
-    /* Accent = ink. The "key moment" is black-on-white; in dark
-       it inverts to white-on-black. No hue carries meaning. */
-    --accent: #111111;
-    --accent-deep: #000000;
-    --accent-strong: #333333;
-    --accent-soft: rgba(17, 17, 17, 0.08);
+    /* Accent = ink. The "key moment" is white-on-black.
+       No hue carries meaning. */
+    --accent: #f5f5f5;
+    --accent-deep: #ffffff;
+    --accent-strong: #d9d9d9;
+    --accent-soft: rgba(245, 245, 245, 0.10);
 
     /* Semantic — monochrome. Distinction comes from the motif set
        (solid / dashed / hatched) and glyphs, never hue alone. */
-    --ok: #111111;
-    --ok-soft: #ececec;
-    --warn: #4d4d4d;
-    --warn-soft: #f4f4f4;
-    --bad: #111111;
-    --bad-soft: #ececec;
+    --ok: #f5f5f5;
+    --ok-soft: #1c1c1c;
+    --warn: #c0c0c0;
+    --warn-soft: #141414;
+    --bad: #f5f5f5;
+    --bad-soft: #1c1c1c;
 
-    /* Ink for filled control surfaces (text/icon on accent & bad) — AA in both themes */
-    --accent-contrast: #ffffff;
-    --bad-contrast: #ffffff;
+    /* Ink for filled control surfaces (text/icon on accent & bad) — AA */
+    --accent-contrast: #0b0b0b;
+    --bad-contrast: #0b0b0b;
 
-    /* Deeper status ink for chip/badge text on soft washes — AA on light ground */
-    --ok-deep: #111111;
-    --warn-deep: #4d4d4d;
-    --bad-deep: #111111;
+    /* Status ink for chip/badge text on soft washes — AA */
+    --ok-deep: #f5f5f5;
+    --warn-deep: #c0c0c0;
+    --bad-deep: #f5f5f5;
 
     /* Motif fills (Phase 3.5 item 5) — texture does what color used to do.
        Theme-aware: built from --line / --surface tokens at use time. */
@@ -66,11 +66,11 @@
                    transparent 0 5px, var(--line-strong) 5px 6px);
 
     /* Faint dot grid on the page ground — the paper's tooth */
-    --dot: rgba(0, 0, 0, 0.045);
+    --dot: rgba(255, 255, 255, 0.05);
 
     /* Elevation + shape */
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.06);
-    --shadow-2: 0 6px 22px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-2: 0 6px 22px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
     --radius-s: 6px;
     --radius-m: 10px;
     --radius-l: 16px;
@@ -117,47 +117,7 @@
     --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 
     --focus-ring: 0 0 0 3px var(--accent-soft);
-}
 
-[data-theme="dark"] {
-    --paper: #0b0b0b;
-    --paper-deep: #080808;
-    --surface: #131313;
-    --surface-2: #1a1a1a;
-    --ink: #f5f5f5;
-    --ink-soft: #c0c0c0;
-    --ink-faint: #9a9a9a;
-    --line: #2a2a2a;
-    --line-strong: #404040;
-
-    /* Accent = ink — white-on-black in dark */
-    --accent: #f5f5f5;
-    --accent-deep: #ffffff;
-    --accent-strong: #d9d9d9;
-    --accent-soft: rgba(245, 245, 245, 0.10);
-
-    /* Semantic — monochrome (motif + glyph carry the meaning) */
-    --ok: #f5f5f5;
-    --ok-soft: #1c1c1c;
-    --warn: #c0c0c0;
-    --warn-soft: #141414;
-    --bad: #f5f5f5;
-    --bad-soft: #1c1c1c;
-
-    /* Ink for filled control surfaces — black on bright white ink */
-    --accent-contrast: #0b0b0b;
-    --bad-contrast: #0b0b0b;
-
-    /* Deep variants lifted a touch brighter than vivid — keeps badge/chip text ≥ 5:1 even on surface-2 (§10) */
-    --ok-deep: #f5f5f5;
-    --warn-deep: #c0c0c0;
-    --bad-deep: #f5f5f5;
-
-    /* Dot grid flips to white specks on black paper */
-    --dot: rgba(255, 255, 255, 0.05);
-
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.3);
-    --shadow-2: 0 6px 22px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
     color-scheme: dark;
 }
 
@@ -338,42 +298,6 @@ p {
 .nav-link[aria-current="page"] {
     color: var(--accent);
     background: var(--accent-soft);
-}
-
-.icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    padding: 0;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-s);
-    background: var(--surface);
-    color: var(--ink-soft);
-    cursor: pointer;
-    transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
-}
-
-.icon-btn:hover {
-    color: var(--ink);
-    border-color: var(--line-strong);
-    background: var(--surface-2);
-}
-
-.theme-icon {
-    width: 18px;
-    height: 18px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-
-[data-theme="light"] .theme-icon-moon,
-[data-theme="dark"] .theme-icon-sun {
-    display: none;
 }
 
 /* ------------------------------------------------------------
@@ -1414,7 +1338,7 @@ p {
     position: fixed;
     inset: 0;
     z-index: 80;
-    background: rgba(0, 0, 0, 0.45);
+    background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(2px);
     display: flex;
     align-items: center;
@@ -1489,10 +1413,6 @@ p {
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: var(--space-2);
-}
-
-[data-theme="dark"] .modal-backdrop {
-    background: rgba(0, 0, 0, 0.6);
 }
 
 /* ------------------------------------------------------------

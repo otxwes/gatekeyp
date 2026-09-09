@@ -16,9 +16,9 @@ pattern isn't here, don't invent it in CSS — add it here first, then wire the 
 
 1. **Are.na-minimal, not SaaS-generic.** Monochrome paper & ink, generous air, hairline
    borders. If a screen "feels generated," it is wrong — see §8.
-2. **One ink, used as a verb.** Black (`--accent`) is the single accent — primary buttons,
-   active nav/tab, the key moment. It never decorates; in dark it inverts to white. Texture
-   (stamps, hatches — §12) does the work color used to do.
+2. **One ink, used as a verb.** White (`--accent`) is the single accent — primary buttons,
+   active nav/tab, the key moment. It never decorates. Texture (stamps, hatches — §12) does
+   the work color used to do.
 3. **Text is the hero; type does the work.** Three faces, each with a job: serif display for
    identity & invitation, system sans for UI & reading, mono for keys & data. Nothing else.
 4. **Privacy-lean by construction.** No webfonts, no trackers, no remote assets. The UI is as
@@ -76,25 +76,32 @@ between the fixed steps; everything else picks a step.
   `.opt` tag. The one-shot key warning is the sole exception (functional safety): one line,
   reusing the canonical modal copy. — added 2026-09-08, after the Phase A funnel
   reintroduced caption text; stripped in the same session (see `docs/project_memory.md`).
+- **No placeholder prose.** Fields stand empty — no invented example copy in `placeholder`
+  attributes ("Open Mic Night", "Friday, 9pm"). The label names the field; if a user can't
+  tell what goes in it, fix the label. — added 2026-09-08.
+- **No invented taglines.** The browser title is the wordmark (`gatekeyp`); view heads name
+  the action or the artifact and stop — selling copy is not part of the UI voice.
+  — added 2026-09-08.
 
 ## 4. Color
 
-### 4.1 Tokens (light / dark)
+### 4.1 Tokens (dark — the only theme)
 
-Full definitions live in `web/style.css` §1; roles:
+Full definitions live in `web/style.css` §1; roles. Single dark theme since 2026-09-08 —
+the light palette and its topbar toggle were removed:
 
-| Token | Light | Dark | Role |
-|---|---|---|---|
-| `--paper` / `--paper-deep` | `#ffffff` / `#f6f6f6` | `#0b0b0b` / `#080808` | page ground / wells & footer |
-| `--surface` / `--surface-2` | `#ffffff` / `#f2f2f2` | `#131313` / `#1a1a1a` | cards / inset wells |
-| `--ink` / `--ink-soft` / `--ink-faint` | `#111111` / `#4d4d4d` / `#6b6b6b` | `#f5f5f5` / `#c0c0c0` / `#9a9a9a` | text hierarchy |
-| `--line` / `--line-strong` | `#e2e2e2` / `#c9c9c9` | `#2a2a2a` / `#404040` | hairline borders |
-| `--accent` (+ deep / strong / soft) | `#111111` / `#000000` / `#333333` / ink 8% | `#f5f5f5` / `#ffffff` / `#d9d9d9` / white 10% | action, live state, key moment — ink |
-| `--ok` / `--warn` / `--bad` (+ soft) | `#111111` / `#4d4d4d` / `#111111` (+ `#ececec` / `#f4f4f4` / `#ececec`) | `#f5f5f5` / `#c0c0c0` / `#f5f5f5` (+ `#1c1c1c` / `#141414` / `#1c1c1c`) | semantic status — grayscale; meaning via motif §12 + glyphs, never hue |
-| `--ok-deep` / `--warn-deep` / `--bad-deep` | `#111111` / `#4d4d4d` / `#111111` | `#f5f5f5` / `#c0c0c0` / `#f5f5f5` | chip/badge ink on soft washes — AA in both themes (item 3) |
-| `--accent-contrast` / `--bad-contrast` | `#ffffff` / `#ffffff` | `#0b0b0b` / `#0b0b0b` | ink on filled accent/bad control surfaces (item 3) |
-| `--hatch-soft` / `--hatch-fill` / `--hatch-strong` | derived from `--line` / `--surface` (theme-aware) | same, auto | motif fills — texture language (§12) |
-| `--dot` | rgba black 4.5% | rgba white 5% | paper ground dot grid ("tooth") |
+| Token | Value | Role |
+|---|---|---|
+| `--paper` / `--paper-deep` | `#0b0b0b` / `#080808` | page ground / wells & footer |
+| `--surface` / `--surface-2` | `#131313` / `#1a1a1a` | cards / inset wells |
+| `--ink` / `--ink-soft` / `--ink-faint` | `#f5f5f5` / `#c0c0c0` / `#9a9a9a` | text hierarchy |
+| `--line` / `--line-strong` | `#2a2a2a` / `#404040` | hairline borders |
+| `--accent` (+ deep / strong / soft) | `#f5f5f5` / `#ffffff` / `#d9d9d9` / white 10% | action, live state, key moment — ink |
+| `--ok` / `--warn` / `--bad` (+ soft) | `#f5f5f5` / `#c0c0c0` / `#f5f5f5` (+ `#1c1c1c` / `#141414` / `#1c1c1c`) | semantic status — grayscale; meaning via motif §12 + glyphs, never hue |
+| `--ok-deep` / `--warn-deep` / `--bad-deep` | `#f5f5f5` / `#c0c0c0` / `#f5f5f5` | chip/badge ink on soft washes — AA |
+| `--accent-contrast` / `--bad-contrast` | `#0b0b0b` / `#0b0b0b` | ink on filled accent/bad control surfaces |
+| `--hatch-soft` / `--hatch-fill` / `--hatch-strong` | derived from `--line` / `--surface` | motif fills — texture language (§12) |
+| `--dot` | rgba white 5% | paper ground dot grid ("tooth") |
 
 ### 4.2 Rules
 
@@ -104,7 +111,7 @@ Full definitions live in `web/style.css` §1; roles:
 - Status is **monochrome + motif**: never hue alone. Badges, banners, and toasts pair ink with
   shape/texture (§12) and glyphs (`⚠` / `✓`), so meaning survives color-blind viewers,
   forced-colors overrides, and print.
-- Both themes hold WCAG AA for body text (§10).
+- The dark theme holds WCAG AA for body text (§10).
 
 ## 5. Spacing & layout grid
 
@@ -138,15 +145,15 @@ Full definitions live in `web/style.css` §1; roles:
   `--dur-std` 180 toast/modal · `--dur-view` 250 view/route entrance ·
   `--dur-slow` 400 large/choreographed.
 - **Easings:** `--ease-out` (decelerate) for entrances/feedback; `--ease-in-out` for
-  theme/color cross-fades. No linear for subjective motion; no bounce/spring.
+  color cross-fades. No linear for subjective motion; no bounce/spring.
 - **Vocabulary:** `view-in` (fade + 6px rise) route change; `modal-in` (fade + 10px rise +
   0.98 scale) overlays; `toast-in/out` (fade + 8px); button press = 1px translateY; hover =
   color/border change only.
 - **Wired (Phase 3.5 item 4, 2026-08):** every rule consumes the tokens — `view-in`, tabs and
   nav links via `--dur-view`; modal & toast entrances via `--dur-std`; buttons, fields, badges,
-  items, bulletin, toast-out & fade-in via `--dur-fast`; button press via `--dur-micro`; theme
-  cross-fade via `--dur-view` × `--ease-in-out`. The §17 `prefers-reduced-motion` switch is the
-  global off switch. No hardcoded durations/easings remain in the sheet.
+  items, bulletin, toast-out & fade-in via `--dur-fast`; button press via `--dur-micro`.
+  The §17 `prefers-reduced-motion` switch is the global off switch. No hardcoded
+  durations/easings remain in the sheet.
 
 ## 8. No generic generated-look (the decline list)
 
@@ -172,10 +179,10 @@ AI landing page," cut the decoration and return to §2.
 
 ## 9. Component inventory & states
 
-All Phase-3 components exist; Phase 3.5's unification pass makes each *identical in both
-themes* and resolves any drift. Canonical states:
+All Phase-3 components exist; the 2026-09-08 consolidation keeps each consistent in the
+single dark theme. Canonical states:
 
-| Component | Classes | States to keep identical across themes |
+| Component | Classes | States |
 |---|---|---|
 | Buttons | `.btn` (+`-primary/-secondary/-ghost/-danger`, `-sm`, `-block`) | hover bg/border, `:active` 1px, `:disabled` 0.55 opacity |
 | Cards | `.card`, `.form-card` | resting `shadow-1`, `--line` hairline |
@@ -188,15 +195,13 @@ themes* and resolves any drift. Canonical states:
 
 ## 10. Accessibility & responsive baseline
 
-- **Contrast:** WCAG AA in both themes; body ink is AAA. Spot checks (Phase 3.5 monochrome,
-  2026-08): light ink `#111111` on white ≈ **18.9:1**; light soft `#4d4d4d` ≈ **8.5:1**;
-  light faint `#6b6b6b` ≈ **5.3:1** (on `--surface-2` `#f2f2f2` ≈ **4.8:1**); dark ink
-  `#f5f5f5` on `#0b0b0b` ≈ **18.0:1**; dark soft `#c0c0c0` ≈ **10.8:1**; dark faint `#9a9a9a`
-  ≈ **7.0:1** (on `#1a1a1a` ≈ **6.2:1**). Chips/badges: light `#111111`/`#4d4d4d` on
-  `#ececec`/`#f4f4f4` ≈ 10–14:1; dark `#f5f5f5`/`#c0c0c0` on `#1c1c1c`/`#141414` ≈ 8–10:1
-  (worst-case `--surface-2`). Filled buttons: `#111111` on white ≈ 18.9:1 and `#f5f5f5` on
-  `#0b0b0b` ≈ 18.0:1. Full audit lives in `docs/qa_matrix.md`; re-check when values drift.
-- **Targets:** ≥ 44px for primary controls (icon-btn 44×44, tabs ≥ 40px tall); dense inline
+- **Contrast:** WCAG AA in the dark theme; body ink is AAA. Spot checks (2026-08-30 audit,
+  values unchanged): ink `#f5f5f5` on `#0b0b0b` ≈ **18.0:1**; soft `#c0c0c0` ≈ **10.8:1**;
+  faint `#9a9a9a` ≈ **7.0:1** (on `#1a1a1a` ≈ **6.2:1**). Chips/badges: `#f5f5f5`/`#c0c0c0`
+  on `#1c1c1c`/`#141414` ≈ 8–10:1 (worst-case `--surface-2`). Filled buttons: `#f5f5f5` on
+  `#0b0b0b` ≈ 18.0:1. (Light-theme ratios from the two-theme era are preserved in
+  `docs/qa_matrix.md` §1.) Full audit lives in `docs/qa_matrix.md`; re-check when values drift.
+- **Targets:** ≥ 44px for primary controls (tabs ≥ 40px tall); dense inline
   rows may use `btn-sm` with gaps so effective touch zones stay usable.
 - **Non-color signals:** because status is grayscale, meaning is double-coded — badges use
   motif (§12) and form notes prefix `⚠` / `✓` glyphs. Verify new status UI carries a
@@ -248,7 +253,7 @@ Rules:
   (`⚠`/`✓`, "Revoked", "Active") so meaning survives monochrome print and forced-colors.
 - The `.hatch-*` / `.voided` classes are the primitives the Phase 3.6 invite
   cards build on — reuse the tokens, don't invent new textures.
-- The paper dot grid is capped at ~5% alpha in both themes; it is a tooth, not a pattern.
+- The paper dot grid is capped at ~5% alpha; it is a tooth, not a pattern.
 
 ## 13. Change management
 
