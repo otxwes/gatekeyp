@@ -687,3 +687,38 @@ events/media/content-blocks rows = 0). Known cosmetic gap: `GET /favicon.ico`
 environment gotcha for future QA: `uv run python` is the reliable interpreter
 (`.venv/bin/python` under `arm64` hits an x86_64 `cryptography` wheel
 incompatibility — same known issue as the `arch -x86_64` test invocation).
+
+### 2026-09-08 — Phase A follow-up: caption discipline pass (design §3.4)
+
+**Trigger:** watching the live QA pass showed the Phase A surfaces had
+reintroduced the helper prose/captions that the 2026-08-30 de-chrome pass had
+removed everywhere — a regression against design-system §2 (are.na-minimal)
+and the de-chrome session's rules. The lite funnel read like an explainer
+page, not the app's quiet voice.
+
+**What was done:**
+- `web/index.html` (flyer form) — decorative card-title copy
+  ("No account, gone by itself") → noun phrase "New flyer event" (matches
+  "New gathering" style); removed the two-sentence key-hint paragraph under
+  the title; dropped the three repeated "key holders only" spans;
+  "optional, public" → "optional" (single-word `.opt` tag, matching the
+  organizer form's convention).
+- `web/app.js` — success panel: card title → "Master key"; the one-shot
+  warning now reuses the canonical `openKeyModal` line verbatim ("Copy this
+  key now — it is shown only once and cannot be recovered later.") instead of
+  its own two-sentence version; "Share link (anyone)" → "Share link";
+  attendee-page wipe note tightened to "Everything is wiped {date}."
+- `src/ephemeral/routes.py` — OG live-page notice drops "This page is
+  temporary." (the wipe sentence already says it); ended page collapses its
+  two notices into one line ("All event data has been permanently deleted at
+  …"). Tests pin only "Event ended"/"noindex"/og:title and the absence of the
+  key/description — none of the trimmed copy is asserted.
+- `docs/design_system.md` §3.4 — codified the rule so it doesn't regress:
+  **no helper prose** — card titles/view heads carry labels, not sentences;
+  visibility is at most a single-word `.opt` tag; the one-shot-key warning is
+  the sole exception and must reuse the canonical modal line.
+
+**Rule for future phases (anti-regression):** if a string explains the UI
+instead of naming data or an action, it's a caption — cut it, or move the
+fact into a label/title. Before shipping a new view, diff its copy against
+§3.4; new prose under a card title is a design review blocker.

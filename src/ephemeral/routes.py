@@ -43,13 +43,11 @@ def _render_page(title: str, head_html: str, body_html: str) -> str:
 
 def _render_ended_page(ended_at: str | None) -> str:
     """HTML for an expired or wiped event; crawlers are told to forget it."""
+    at = f" at {html.escape(ended_at)}" if ended_at else ""
     body = (
         "<h1>Event ended</h1>"
-        '<p class="notice">This event has ended and all of its data has been '
-        "permanently deleted.</p>"
+        f'<p class="notice">All event data has been permanently deleted{at}.</p>'
     )
-    if ended_at:
-        body += f'<p class="notice">Ended at: {html.escape(ended_at)}</p>'
     return _render_page("Event ended", '<meta name="robots" content="noindex">', body)
 
 
@@ -67,7 +65,7 @@ def _render_live_page(
     body = (
         f"<h1>{html.escape(title)}</h1>"
         f"{flyer_tag}"
-        '<p class="notice">This page is temporary. All event data is '
+        '<p class="notice">All event data is '
         f"automatically wiped after {expires}.</p>"
     )
     head = (

@@ -1571,11 +1571,11 @@ function showFlyerDone(done, body) {
         `<header class="view-head"><p class="eyebrow">Lite events</p>` +
         `<h2 class="view-title">Your event is live</h2></header>` +
         `<div class="card form-card">` +
-        `<h3 class="card-title">Save the master key now</h3>` +
-        `<p class="key-hint">It is shown <strong>only once</strong> and never stored anywhere ` +
-        `you can read later. Keep it to manage this event until it auto-wipes.</p>` +
+        `<h3 class="card-title">Master key</h3>` +
+        `<p class="key-hint">Copy this key now — it is shown only once and cannot be ` +
+        `recovered later.</p>` +
         `<code class="key-hint">${esc(body.master_key)}</code>` +
-        `<div class="field"><label>Share link (anyone)</label>` +
+        `<div class="field"><label>Share link</label>` +
         `<div class="item"><code>${esc(publicUrl)}</code></div></div>` +
         `<div class="item"><a class="btn btn-primary" href="${esc(eventHref)}">` +
         `Open the event page</a></div>` +
@@ -1670,7 +1670,7 @@ async function renderLiteEvent() {
             (evt.description ? `<p>${esc(evt.description)}</p>` : "") +
             (data.when ? `<p><strong>When:</strong> ${esc(data.when)}</p>` : "") +
             (data.where ? `<p><strong>Where:</strong> ${esc(data.where)}</p>` : "") +
-            `<p class="form-note">This page is temporary — everything is wiped ` +
+            `<p class="form-note">Everything is wiped ` +
             `${esc(fmtDate(data.expires_at))}.</p>`;
     } catch (err) {
         if (/ended|expired/i.test(err.message)) {
