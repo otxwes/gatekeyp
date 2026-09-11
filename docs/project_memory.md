@@ -782,3 +782,13 @@ upload-only join, the live wipe note, the anchored expiry and the OG
 notice; also fixed a stray `</div>` the join edit introduced (it had
 closed `.stage-inner` early, full-bleeding the flyer card) and dark-mode
 the OG page template while killing its favicon 404 (data-URI mark).
+
+**Flyer-note copy fix (user review, same day):** the pre-pick live note
+read "Wipes N hours after you create it" — contradicting the
+"Gone after (hours after the event)" label (and pluralized "1 hours").
+`When` is now required on the flyer form (the event-anchored rule is
+unconditional in the UI), the pre-pick note states the rule instead —
+"The wipe runs N hour(s) after the event." — and the hour count
+pluralizes correctly. Backend untouched: the free-text
+creation-anchored fallback remains for API callers only; the browser
+always sends a UTC ISO `when`.
