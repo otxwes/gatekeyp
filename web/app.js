@@ -1531,10 +1531,11 @@ async function renderFlyer() {
     const updateNote = () => {
         if (!noteEl) return;
         const ttl = Number($("#flyer-ttl")?.value || 48);
+        const hours = ttl === 1 ? "hour" : "hours";
         const whenRaw = $("#flyer-when")?.value;
         const whenDate = whenRaw ? new Date(whenRaw) : null;
         if (!whenDate || Number.isNaN(whenDate.getTime())) {
-            note(noteEl, `Wipes ${ttl} hours after you create it.`);
+            note(noteEl, `The wipe runs ${ttl} ${hours} after the event.`);
             return;
         }
         const wipes = new Date(whenDate.getTime() + ttl * 3600 * 1000);
@@ -1542,7 +1543,7 @@ async function renderFlyer() {
             note(noteEl, "The event time has already passed — pick a time in the future.", "error");
             return;
         }
-        note(noteEl, `Wipes ${fmtDate(wipes.toISOString())} — ${ttl} hours after the event.`);
+        note(noteEl, `Wipes ${fmtDate(wipes.toISOString())} — ${ttl} ${hours} after the event.`);
     };
     ["#flyer-when", "#flyer-ttl"].forEach((sel) => {
         const el = $(sel);
