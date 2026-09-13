@@ -17,6 +17,7 @@ from src.core.event_lifecycle import EventLifecycleError, EventLifecycleManager
 from src.core.key_manager import InvalidKeyFormatError, KeyManager
 from src.db.database_handler import DatabaseHandler
 from src.ephemeral import EphemeralService, build_ephemeral_router
+from src.ephemeral.lxmf_delivery import LXMFKeyDeliverer, get_deliverer
 
 # ------------------------------------------------------------------
 # Request/Response Models
@@ -127,7 +128,9 @@ def _mount_web(app: FastAPI) -> None:
         app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="web")
 
 
-def _build_lite_app(ephemeral: EphemeralService) -> FastAPI:
+def _build_lite_app(
+    ephemeral: EphemeralService, lxmf_deliverer: LXMFKeyDeliverer | None = None
+) -> FastAPI:
     """Assemble the lite profile: ephemeral funnel routes, health, static UI."""
     app = _new_app()
 
@@ -136,7 +139,7 @@ def _build_lite_app(ephemeral: EphemeralService) -> FastAPI:
         """Health check endpoint."""
         return {"status": "ok", "service": "gatekeyp"}
 
-    app.include_router(build_ephemeral_router(ephemeral))
+    app.include_router(build_ephemeral_router(ephemeral, deliverer=lxmf_deliverer))
     _mount_web(app)
     return app
 
@@ -147,6 +150,7 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
     content_manager: ContentManager | None = None,
     lifecycle: EventLifecycleManager | None = None,
     gateway: Gateway | None = None,
+    lxmf_deliverer: LXMFKeyDeliverer | None = None,
     profile: str | None = None,
 ) -> FastAPI:
     """
@@ -158,6 +162,8 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
         content_manager: Optional shared ContentManager. If None, creates one.
         lifecycle: Optional shared EventLifecycleManager. If None, creates one.
         gateway: Optional shared Gateway. If None, creates one.
+        lxmf_deliverer: Optional injectable mesh (LXMF) key-deliverer
+            prototype. If None, the env-configured process-wide one is used.
         profile: "full" (default) mounts every route; "lite" mounts only the
             ephemeral funnel routes. Falls back to GATEKEYP_PROFILE env var.
 
@@ -193,7 +199,7 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
     ephemeral.sweep_expired()
 
     if profile == "lite":
-        return _build_lite_app(ephemeral)
+        return _build_lite_app(ephemeral, lxmf_deliverer)
 
     app = _new_app()
 
@@ -418,7 +424,7 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             return {"deleted": deleted}
 
     # Ephemeral ("lite") funnel routes — mounted in the full profile too
-    app.include_router(build_ephemeral_router(ephemeral))
+    app.include_router(build_ephemeral_router(ephemeral, deliverer=lxmf_deliverer))
 
     # Static Web UI
     _mount_web(app)
@@ -435,6 +441,10 @@ app = create_app()
 
 def main() -> None:
     """Run the server with uvicorn."""
+    # Pre-build the optional LXMF stack in the main thread (LXMRouter
+    # installs signal handlers there; uvicorn overrides them afterwards).
+    if get_deliverer().warmup():
+        print("mesh (LXMF) key delivery enabled")  # noqa: T201 - CLI feedback
     port = int(os.environ.get("GATEKEYP_PORT", "8000"))
     host = os.environ.get("GATEKEYP_HOST", "127.0.0.1")
     uvicorn.run("src.api.server:app", host=host, port=port, reload=False)

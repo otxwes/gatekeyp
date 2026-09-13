@@ -11,6 +11,12 @@ dependencies = [
     "uvicorn>=0.30.0",
 ]
 
+[project.optional-dependencies]
+mesh = [
+    "lxmf>=1.1.1",
+    "rns>=1.5.4",
+]
+
 [dependency-groups]
 dev = [
     {include-group = "lint"},
@@ -70,6 +76,14 @@ ignore = ["D", "COM812", "ISC001", "PLR0911", "PLR0913", "PLR0917"]
     "SLF001",  # Private member access (test fixtures)
     "TID252",  # Relative imports
 ]
+
+# Mesh (LXMF) prototype: optional deps are imported lazily on purpose and
+# RNS/LXMF objects are duck-typed (not in the base dependency set)
+"src/ephemeral/lxmf_delivery.py" = ["PLC0415", "ANN401"]
+
+# Demo script: prints are the point; it is not a package, and its
+# sys.path insert must precede the repo import (E402)
+"scripts/**" = ["E402", "INP001", "PLC0415", "T201"]
 
 [tool.ty.environment]
 python-version = "3.11"

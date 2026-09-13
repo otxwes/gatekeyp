@@ -71,3 +71,7 @@ logs/
 # Personal application documents
 application.pdf
 application.txt
+
+# Mesh (LXMF/Reticulum) prototype scratch + runtime state
+.lxmf_ref/
+instance/

@@ -103,3 +103,10 @@ This document identifies the primary adversaries, trust boundaries, and data flo
 - [x] Detectability is documented as casual-opacity, not cryptographic secrecy: LSB replacement is statistically detectable by a motivated analyst who already suspects steganography; the key itself remains the secret.
 - [x] Vendored dependencies are only `qrcode-generator` (MIT) and `jsQR` (Apache-2.0) — single files, no network calls, LICENSE files shipped; no third-party tracking/analytics.
 - [x] Threat model reviewed and updated each phase
+
+### Phase 3.9 Status (Mesh key delivery prototype — considered and parked)
+- [x] **Decision: the LXMF/Reticulum mesh option for master-key delivery was evaluated and documented but is not enabled by default.** A working prototype exists (`src/ephemeral/lxmf_delivery.py`, opt-in via `GATEKEYP_LXMF_ENABLED=1` + the `mesh` extra) that relays an event master key to an attendee's LXMF address through the organizer's own instance; `scripts/lxmf_loopback.py` proves the send/decrypt path end to end.
+- [x] **Why it was parked rather than shipped:** it re-centralises distribution on the instance's always-on network presence, the operator's node holds ciphertext (and its metadata) indefinitely instead of "browser only, wiped at expiry", and LXMF's retry/job-thread delivery model conflicts with the "key exists for the TTL, then nothing" expiry model.
+- [x] **What the prototype guarantees when enabled:** the endpoint only relays keys that were actually displayed for that event (same HMAC check as the attendee unlock, via `get_keyed_view`), the destination must be a 32-hex-character LXMF destination hash, payloads are end-to-end encrypted by Reticulum (relays see ciphertext only), and gatekeyp never logs or persists the key.
+- [x] **The browser "show once" flow remains the default** delivery path; mesh delivery is an explicit operator opt-in aimed at closed meshes.
+- [x] Threat model reviewed and updated each phase

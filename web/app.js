@@ -1495,11 +1495,34 @@ async function loadAttendeeMedia() {
  * Lite events (ephemeral flyer funnel)
  * ------------------------------------------------------------------ */
 
+/** Ask the instance to relay the master key to an attendee's LXMF address. */
+async function deliverByMesh(eventId, masterKey, statusEl) {
+    const address = prompt(
+        "LXMF address of the attendee (32 hex characters, e.g. from Sideband):"
+    );
+    if (!address) return;
+    statusEl.textContent = "Queueing over mesh…";
+    try {
+        const body = await api(
+            `/api/lite/events/${encodeURIComponent(eventId)}/deliver`,
+            { body: { destination: address.trim(), master_key: masterKey }, method: "POST" }
+        );
+        statusEl.textContent = body.detail || "Queued over mesh.";
+    } catch (err) {
+        statusEl.textContent = `Mesh delivery failed: ${err.message}`;
+    }
+}
+
 /** Render the flyer creation funnel result panel. */
 function showFlyerDone(done, body) {
     const publicUrl = body.public_url || `${location.origin}/i/${body.event_id}`;
     const eventHref =
         `#/e/${encodeURIComponent(body.event_id)}?k=${encodeURIComponent(body.master_key)}`;
+    const meshPanel = body.mesh_delivery_available
+        ? `<div class="item"><button type="button" class="btn" id="mesh-deliver-btn">` +
+          `Send key over mesh (LXMF)</button>` +
+          `<p class="key-hint" id="mesh-deliver-status"></p></div>`
+        : "";
     done.innerHTML =
         `<header class="view-head"><h2 class="view-title">Your event is live</h2></header>` +
         `<div class="card form-card">` +
@@ -1509,10 +1532,21 @@ function showFlyerDone(done, body) {
         `<code class="key-hint">${esc(body.master_key)}</code>` +
         `<div class="field"><label>Share link</label>` +
         `<div class="item"><code>${esc(publicUrl)}</code></div></div>` +
+        meshPanel +
         `<div class="item"><a class="btn btn-primary" href="${esc(eventHref)}">` +
         `Open the event page</a></div>` +
         `<p class="key-hint">This page wipes itself ${esc(fmtDate(body.event_expires_at))}.</p>` +
         `</div>`;
+    const meshBtn = document.getElementById("mesh-deliver-btn");
+    if (meshBtn) {
+        meshBtn.addEventListener("click", () => {
+            deliverByMesh(
+                body.event_id,
+                body.master_key,
+                document.getElementById("mesh-deliver-status")
+            );
+        });
+    }
 }
 
 async function renderFlyer() {

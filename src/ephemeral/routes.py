@@ -16,11 +16,19 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 
 from src.db.database_handler import DecryptionError
-from src.ephemeral.service import LiteGoneError, LiteNotFoundError, LiteValidationError
+from src.ephemeral.lxmf_delivery import LXMF_DEST_RE, get_deliverer
+from src.ephemeral.service import (
+    LiteGoneError,
+    LiteNotFoundError,
+    LiteRateLimiter,
+    LiteValidationError,
+)
 
 if TYPE_CHECKING:
+    from src.ephemeral.lxmf_delivery import LXMFKeyDeliverer
     from src.ephemeral.service import EphemeralService
 
 _FAVICON = (
@@ -98,9 +106,20 @@ def _render_live_page(
     return _render_page(title, head, body)
 
 
-def build_ephemeral_router(service: EphemeralService) -> APIRouter:  # noqa: C901, PLR0915 - many routes
+class DeliverKeyRequest(BaseModel):
+    """Body for mesh (LXMF) master-key delivery."""
+
+    destination: str
+    master_key: str
+
+
+def build_ephemeral_router(  # noqa: C901, PLR0915 - many routes
+    service: EphemeralService, deliverer: LXMFKeyDeliverer | None = None
+) -> APIRouter:
     """Build the ephemeral events router bound to the shared service."""
     router = APIRouter()
+    mesh = deliverer or get_deliverer()
+    mesh_limiter = LiteRateLimiter()
 
     @router.post("/api/lite/events", status_code=201)
     async def create_lite_event(
@@ -149,6 +168,7 @@ def build_ephemeral_router(service: EphemeralService) -> APIRouter:  # noqa: C90
             f"{base_url}/#/organizer/{result['event_id']}?k={result['master_key']}"
         )
         result["public_url"] = f"{base_url}/i/{result['event_id']}"
+        result["mesh_delivery_available"] = mesh.available()
         return result
 
     @router.get("/api/lite/events/{event_id}/flyer")
@@ -192,6 +212,57 @@ def build_ephemeral_router(service: EphemeralService) -> APIRouter:  # noqa: C90
             raise HTTPException(status_code=410, detail=str(err)) from err
         except LiteValidationError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err
+
+    @router.post("/api/lite/events/{event_id}/deliver")
+    def deliver_master_key(event_id: str, body: DeliverKeyRequest, request: Request) -> dict:
+        """Opt-in mesh delivery: relay the master key to an LXMF address.
+
+        The key must match the event's stored HMAC (the same check the
+        attendee unlock uses), so the endpoint only ever relays a key that
+        was actually displayed for this event. The destination is a
+        32-hex-character LXMF destination hash, as shown by Sideband or
+        Nomad Network. Delivery itself is end-to-end encrypted by
+        Reticulum; gatekeyp only ever acts as a relay of ciphertext.
+        """
+        client_id = request.client.host if request.client else "unknown"
+        if not mesh_limiter.allow(client_id):
+            raise HTTPException(
+                status_code=429,
+                detail="Too many mesh delivery attempts; try again later",
+                headers={"Retry-After": _RETRY_AFTER_SECONDS},
+            )
+        if not mesh.available():
+            raise HTTPException(
+                status_code=503,
+                detail="Mesh delivery is not enabled on this instance",
+            )
+        address = body.destination.strip().lower()
+        if not LXMF_DEST_RE.match(address):
+            raise HTTPException(
+                status_code=400,
+                detail="LXMF address must be 32 hex characters",
+            )
+        try:
+            view = service.get_keyed_view(key=body.master_key, event_id=event_id)
+        except LiteNotFoundError as err:
+            raise HTTPException(status_code=404, detail="Event not found") from err
+        except LiteGoneError as err:
+            raise HTTPException(status_code=410, detail=str(err)) from err
+        except LiteValidationError as err:
+            raise HTTPException(
+                status_code=400,
+                detail=f"This key does not grant access to event {event_id}",
+            ) from err
+        result = mesh.send_master_key(
+            address,
+            title=view["event"]["title"],
+            master_key=body.master_key,
+            share_url=f"{str(request.base_url).rstrip('/')}/i/{event_id}",
+            expires_at=_fmt_utc(view["expires_at"]),
+        )
+        if result.get("status") != "queued":
+            raise HTTPException(status_code=502, detail=result.get("detail", "Delivery failed"))
+        return result
 
     @router.get("/i/{event_id}")
     def lite_og_page(event_id: str, request: Request) -> HTMLResponse:

@@ -792,3 +792,31 @@ unconditional in the UI), the pre-pick note states the rule instead —
 pluralizes correctly. Backend untouched: the free-text
 creation-anchored fallback remains for API callers only; the browser
 always sends a UTC ISO `when`.
+
+**Mesh (LXMF) key-delivery prototype (opt-in, same day):** shipped a
+working Reticulum relay for master keys — `POST /api/lite/events/{id}/deliver`
+takes the master key shown in the done panel plus a 32-hex LXMF destination
+hash, re-verifies the key through `get_keyed_view` (same HMAC check as the
+attendee unlock), then hands an `LXMF.DIRECT` message to `LXMRouter`
+(`src/ephemeral/lxmf_delivery.py`; `GATEKEYP_LXMF_ENABLED=1` + `mesh`
+extra; RNS/LXMF imported lazily so a default install never touches them).
+"Queued" means handed to the mesh — the router retries from its background
+job thread — not "delivered yet". Learned: `LXMRouter.__init__` installs
+signal handlers, so `warmup()` must run on the main thread before uvicorn
+replaces them; RNS allows one stack per process (demo configs set
+`share_instance = No`); `LXMessage.content_as_string()` decrypts on
+arrival; attendee addresses are `RNS.hexrep(destination.hash)` → 32 hex
+chars. End-to-end loopback proof lives in `scripts/lxmf_loopback.py` (two
+independent RNS processes over a TCP pair; the receiver decrypts the key).
+The done panel grew a "Send key over mesh (LXMF)" button when
+`mesh_delivery_available` is set; the deliver route is rate limited like
+create (429 + `Retry-After`), 503 when the feature is off, 400 for a bad
+address or key, 404/410 for missing/ended events, 502 when the mesh has no
+path yet.
+
+**Tests:** +13 in `tests/test_lxmf_delivery.py` (composer, address regex,
+deliverer off/sticky-failure states, and the route contract 503/400/404/
+200/502 with a stubbed deliverer) — suite passing; ruff clean using
+per-file-ignores for lazy imports (`PLC0415`) and duck-typed RNS objects
+(`ANN401`). Docs: threat model now records the mesh option as "considered
+and parked" (§ Phase 3.9).
