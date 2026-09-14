@@ -14,6 +14,7 @@ from src.core.content_manager import (
 )
 from src.core.key_manager import KeyManager
 from src.db.database_handler import DatabaseHandler
+from src.rsvp.service import RSVP_STATUS_PENDING
 
 # Configure structured logging (no PII)
 logging.basicConfig(
@@ -213,6 +214,15 @@ class Gateway:
             return None
         return content
 
+    def _key_rsvp_status(self, key_hash: str) -> str | None:
+        """Return the status of the RSVP behind a key, when the key has one."""
+        key_info = self.db.get_key(key_hash)
+        rsvp_id = key_info.get("rsvp_id") if key_info else None
+        if not rsvp_id:
+            return None
+        rsvp = self.db.get_rsvp(rsvp_id)
+        return rsvp["status"] if rsvp else None
+
     def _validate_and_rate_limit(
         self,
         input_key: object,
@@ -302,6 +312,15 @@ class Gateway:
         if validation_result["status"] != "valid":
             reason = validation_result.get("message", "invalid")
             return self._reject_request(rate_limit_id, key_rate_id, reason, "Invalid key")
+
+        # RSVP funnel gate (Phase B): keys pre-minted for pending RSVPs carry
+        # no grants yet — the door answers "awaiting approval" instead of
+        # unlocking anything. A denied RSVP revokes its key, which the
+        # validation step above already rejects as revoked.
+        rsvp_status = self._key_rsvp_status(validation_result["hash"])
+        if rsvp_status == RSVP_STATUS_PENDING:
+            self._audit_log("rsvp_awaiting_approval", status="pending")
+            return {"status": "pending", "message": "Your RSVP is awaiting organizer approval"}
 
         # 2. Database Retrieval
         content = self._retrieve_content(content_id)

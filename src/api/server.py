@@ -18,6 +18,7 @@ from src.core.key_manager import InvalidKeyFormatError, KeyManager
 from src.db.database_handler import DatabaseHandler
 from src.ephemeral import EphemeralService, build_ephemeral_router
 from src.ephemeral.lxmf_delivery import LXMFKeyDeliverer, get_deliverer
+from src.rsvp import RsvpService, build_rsvp_router
 
 # ------------------------------------------------------------------
 # Request/Response Models
@@ -129,7 +130,9 @@ def _mount_web(app: FastAPI) -> None:
 
 
 def _build_lite_app(
-    ephemeral: EphemeralService, lxmf_deliverer: LXMFKeyDeliverer | None = None
+    ephemeral: EphemeralService,
+    lxmf_deliverer: LXMFKeyDeliverer | None = None,
+    rsvp: RsvpService | None = None,
 ) -> FastAPI:
     """Assemble the lite profile: ephemeral funnel routes, health, static UI."""
     app = _new_app()
@@ -140,6 +143,8 @@ def _build_lite_app(
         return {"status": "ok", "service": "gatekeyp"}
 
     app.include_router(build_ephemeral_router(ephemeral, deliverer=lxmf_deliverer))
+    if rsvp is not None:
+        app.include_router(build_rsvp_router(rsvp))
     _mount_web(app)
     return app
 
@@ -197,9 +202,10 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
     # was down. Cheap (single indexed SELECT) and a no-op when nothing expired.
     ephemeral = EphemeralService(db=db, lifecycle=lifecycle, content_manager=content_manager)
     ephemeral.sweep_expired()
+    rsvp = RsvpService(db=db, key_manager=key_manager, lifecycle=lifecycle)
 
     if profile == "lite":
-        return _build_lite_app(ephemeral, lxmf_deliverer)
+        return _build_lite_app(ephemeral, lxmf_deliverer, rsvp=rsvp)
 
     app = _new_app()
 
@@ -425,6 +431,9 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
 
     # Ephemeral ("lite") funnel routes — mounted in the full profile too
     app.include_router(build_ephemeral_router(ephemeral, deliverer=lxmf_deliverer))
+
+    # RSVP funnel routes — attendee submissions + organizer gate management
+    app.include_router(build_rsvp_router(rsvp))
 
     # Static Web UI
     _mount_web(app)

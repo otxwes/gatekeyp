@@ -6,6 +6,12 @@ from datetime import UTC, datetime
 
 from cryptography.fernet import Fernet
 
+# Legacy-schema guards: a row exposes a Phase B RSVP field only when its
+# column count is strictly greater than that field's index.
+_KEY_RSVP_MIN_COLS = 7  # keys.rsvp_id lives at column index 7
+_EVENT_RPH_MIN_COLS = 8  # events.rsvp_passphrase_hash lives at column index 8
+_EVENT_RAA_MIN_COLS = 9  # events.rsvp_auto_approve lives at column index 9
+
 
 class MissingMasterKeyError(ValueError):
     """Raised when no master key is available for encryption-at-rest."""
@@ -143,6 +149,20 @@ class DatabaseHandler:
                 ended_at TEXT
             )
         """)
+        # Phase B: RSVP requests (pull-flow funnel; the pre-minted access key
+        # is persisted as a keyed HMAC in `keys` and linked back via rsvp_id)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS rsvps (
+                rsvp_id TEXT PRIMARY KEY,
+                event_id TEXT,
+                display_name TEXT,
+                contact TEXT,
+                status TEXT DEFAULT 'pending',
+                key_hash TEXT,
+                created_at TEXT,
+                decided_at TEXT
+            )
+        """)
         self.connection.commit()
 
     def _migrate_schema(self) -> None:
@@ -164,11 +184,32 @@ class DatabaseHandler:
         self._ensure_column("events", "mode", "TEXT DEFAULT 'standard'")
         self._ensure_column("events", "expires_at", "TEXT")
 
+        # Phase B: RSVP funnel settings (per-event, defaults off/manual)
+        self._ensure_column("events", "rsvp_passphrase_hash", "TEXT")
+        self._ensure_column("events", "rsvp_auto_approve", "INTEGER")
+
+        # Phase B: RSVP requests link back to their pre-minted access keys
+        self._ensure_column("keys", "rsvp_id", "TEXT")
+
         # Phase A: Tombstones table may not exist in pre-Phase-A databases
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS event_tombstones (
                 event_id TEXT PRIMARY KEY,
                 ended_at TEXT
+            )
+        """)
+
+        # Phase B: rsvps table may not exist in pre-Phase-B databases
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS rsvps (
+                rsvp_id TEXT PRIMARY KEY,
+                event_id TEXT,
+                display_name TEXT,
+                contact TEXT,
+                status TEXT DEFAULT 'pending',
+                key_hash TEXT,
+                created_at TEXT,
+                decided_at TEXT
             )
         """)
 
@@ -228,6 +269,7 @@ class DatabaseHandler:
                 "revoked": bool(result[4]),
                 "revoked_at": result[5],
                 "owner_id": result[6],
+                "rsvp_id": result[7] if len(result) > _KEY_RSVP_MIN_COLS else None,
             }
         return None
 
@@ -237,15 +279,17 @@ class DatabaseHandler:
         key_type: str,
         expires_at: str | None = None,
         owner_id: str | None = None,
+        rsvp_id: str | None = None,
     ) -> None:
         """Add a new key record."""
         now = self._now_iso()
         self.cursor.execute(
             """
-            INSERT INTO keys (hash_key, type, expires_at, created_at, revoked, revoked_at, owner_id)
-            VALUES (?, ?, ?, ?, 0, NULL, ?)
+            INSERT INTO keys
+                (hash_key, type, expires_at, created_at, revoked, revoked_at, owner_id, rsvp_id)
+            VALUES (?, ?, ?, ?, 0, NULL, ?, ?)
         """,
-            (hash_key, key_type, expires_at, now, owner_id),
+            (hash_key, key_type, expires_at, now, owner_id, rsvp_id),
         )
         self.connection.commit()
 
@@ -281,6 +325,7 @@ class DatabaseHandler:
                 "revoked": bool(r[4]),
                 "revoked_at": r[5],
                 "owner_id": r[6],
+                "rsvp_id": r[7] if len(r) > _KEY_RSVP_MIN_COLS else None,
             }
             for r in results
         ]
@@ -360,6 +405,8 @@ class DatabaseHandler:
                 "created_at": result[5],
                 "mode": result[6],
                 "expires_at": result[7],
+                "rsvp_passphrase_hash": result[8] if len(result) > _EVENT_RPH_MIN_COLS else None,
+                "rsvp_auto_approve": result[9] if len(result) > _EVENT_RAA_MIN_COLS else None,
             }
         return None
 
@@ -396,6 +443,19 @@ class DatabaseHandler:
         )
         self.connection.commit()
 
+    def set_rsvp_settings(
+        self,
+        event_id: str,
+        passphrase_hash: str | None,
+        auto_approve: int | None,
+    ) -> None:
+        """Set the per-event RSVP gate: optional passphrase (hashed) + dial."""
+        self.cursor.execute(
+            "UPDATE events SET rsvp_passphrase_hash = ?, rsvp_auto_approve = ? WHERE event_id = ?",
+            (passphrase_hash, auto_approve, event_id),
+        )
+        self.connection.commit()
+
     def get_expired_event_ids(self, now_iso: str) -> list[str]:
         """List ephemeral event IDs whose expiry timestamp has passed."""
         self.cursor.execute(
@@ -416,6 +476,99 @@ class DatabaseHandler:
         if result:
             return {"event_id": result[0], "ended_at": result[1]}
         return None
+
+    # ------------------------------------------------------------------
+    # RSVPs (Phase B - pull-flow invite funnel)
+    # ------------------------------------------------------------------
+
+    def add_rsvp(
+        self,
+        rsvp_id: str,
+        event_id: str,
+        display_name: str,
+        contact: str | None,
+        key_hash: str | None,
+        status: str = "pending",
+    ) -> None:
+        """Add an RSVP row. `contact` is stored encrypted (reminder-only)."""
+        now = self._now_iso()
+        encrypted_contact = self._encrypt(contact) if contact else None
+        self.cursor.execute(
+            """
+            INSERT INTO rsvps
+                (rsvp_id, event_id, display_name, contact, status, key_hash, created_at, decided_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+        """,
+            (rsvp_id, event_id, display_name, encrypted_contact, status, key_hash, now),
+        )
+        self.connection.commit()
+
+    def get_rsvp(self, rsvp_id: str) -> dict | None:
+        """Retrieve an RSVP row, decrypting the contact field."""
+        self.cursor.execute("SELECT * FROM rsvps WHERE rsvp_id = ?", (rsvp_id,))
+        result = self.cursor.fetchone()
+        if result:
+            contact = result[3]
+            if contact:
+                try:
+                    contact = self._decrypt(contact)
+                except (ValueError, TypeError) as err:
+                    message = f"Failed to decrypt contact for RSVP {rsvp_id}"
+                    raise DecryptionError(message) from err
+            return {
+                "id": result[0],
+                "event_id": result[1],
+                "display_name": result[2],
+                "contact": contact,
+                "status": result[4],
+                "key_hash": result[5],
+                "created_at": result[6],
+                "decided_at": result[7],
+            }
+        return None
+
+    def list_rsvps(self, event_id: str) -> list[dict]:
+        """List all RSVP rows for an event, oldest first, decrypting contacts."""
+        self.cursor.execute(
+            "SELECT * FROM rsvps WHERE event_id = ? ORDER BY created_at ASC", (event_id,)
+        )
+        rows = self.cursor.fetchall()
+        out: list[dict] = []
+        for result in rows:
+            contact = result[3]
+            if contact:
+                try:
+                    contact = self._decrypt(contact)
+                except (ValueError, TypeError) as err:
+                    message = f"Failed to decrypt contact for RSVP {result[0]}"
+                    raise DecryptionError(message) from err
+            out.append(
+                {
+                    "id": result[0],
+                    "event_id": result[1],
+                    "display_name": result[2],
+                    "contact": contact,
+                    "status": result[4],
+                    "key_hash": result[5],
+                    "created_at": result[6],
+                    "decided_at": result[7],
+                }
+            )
+        return out
+
+    def set_rsvp_status(self, rsvp_id: str, status: str) -> bool:
+        """Flip an RSVP's status and stamp the decision time. True if updated."""
+        self.cursor.execute(
+            "UPDATE rsvps SET status = ?, decided_at = ? WHERE rsvp_id = ?",
+            (status, self._now_iso(), rsvp_id),
+        )
+        self.connection.commit()
+        return self.cursor.rowcount > 0
+
+    def delete_rsvps_for_event(self, event_id: str) -> int:
+        """Delete every RSVP row for an event. Returns the deletion count."""
+        self.cursor.execute("DELETE FROM rsvps WHERE event_id = ?", (event_id,))
+        return self.cursor.rowcount
 
     def list_content_blocks_for_event(self, event_id: str) -> list[dict]:
         """List all content blocks for an event, decrypting payloads."""
@@ -449,7 +602,8 @@ class DatabaseHandler:
         Permanently delete every trace of an event in one transaction.
 
         Removes the event row, its content blocks, media assets, bulletins
-        (and their comments), all key->content links for the event's content,
+        (and their comments), all RSVP rows (and the pre-minted access keys
+        they link to), all key->content links for the event's content,
         and any key that no longer links to any remaining content. Intended
         for ephemeral event expiry; standard events use decommission_event
         (revoke-only) instead.
@@ -467,6 +621,7 @@ class DatabaseHandler:
             "bulletins": 0,
             "media_assets": 0,
             "content_blocks": 0,
+            "rsvps": 0,
             "key_content_links": 0,
             "keys": 0,
             "events": 0,
@@ -480,6 +635,10 @@ class DatabaseHandler:
             asset_ids = [row[0] for row in self.cursor.fetchall()]
             self.cursor.execute("SELECT bulletin_id FROM bulletins WHERE event_id = ?", (event_id,))
             bulletin_ids = [row[0] for row in self.cursor.fetchall()]
+            # Pre-minted RSVP keys may carry no content links yet (pending
+            # approval), so they must be captured here before the rows vanish.
+            self.cursor.execute("SELECT key_hash FROM rsvps WHERE event_id = ?", (event_id,))
+            rsvp_keys = [row[0] for row in self.cursor.fetchall() if row[0]]
             content_ids = [event_id, *block_ids, *asset_ids, *bulletin_ids]
             # Keys touching this event's content, captured before links vanish
             affected_keys: set[str] = set()
@@ -489,6 +648,7 @@ class DatabaseHandler:
                     (content_id,),
                 )
                 affected_keys.update(row[0] for row in self.cursor.fetchall())
+            affected_keys.update(rsvp_keys)
             self.cursor.execute(
                 """
                 DELETE FROM comments
@@ -519,6 +679,8 @@ class DatabaseHandler:
                 if not remaining or remaining[0] == 0:
                     self.cursor.execute("DELETE FROM keys WHERE hash_key = ?", (key_hash,))
                     counts["keys"] = counts.get("keys", 0) + 1
+            self.cursor.execute("DELETE FROM rsvps WHERE event_id = ?", (event_id,))
+            counts["rsvps"] = self.cursor.rowcount
             self.cursor.execute("DELETE FROM events WHERE event_id = ?", (event_id,))
             counts["events"] = self.cursor.rowcount
             if tombstone and counts["events"] > 0:
