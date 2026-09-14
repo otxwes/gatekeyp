@@ -1,0 +1,3 @@
+# Vendored: https://github.com/bbaassssiiee/claudia (fork of lexler/augmented-coding-patterns)
+# Upstream commit at time of vendoring: b5b78bd723924aef821e648052bfe4ecbd697a51
+# Re-vendor: git clone --depth 1 <url> <here> then rm -rf <here>/.git

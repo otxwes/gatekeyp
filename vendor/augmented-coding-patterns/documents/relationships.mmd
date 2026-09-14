@@ -1,0 +1,118 @@
+graph LR
+  %% Centralized relationship graph with semantic types
+  %% Types: solves, similar, enables, uses, causes, alternative, related
+
+  %% Pattern → Anti-pattern/Obstacle relationships (solves)
+  patterns/active-partner -->|solves| anti-patterns/silent-misalignment
+  patterns/active-partner -->|solves| anti-patterns/tell-me-a-lie
+  patterns/active-partner -->|solves| obstacles/compliance-bias
+  patterns/active-partner -->|solves| obstacles/obedient-contractor
+  patterns/canary-in-the-code-mine -->|solves| obstacles/degrades-under-complexity
+  patterns/canary-in-the-code-mine -->|solves| obstacles/context-rot
+  patterns/chain-of-small-steps -->|solves| obstacles/degrades-under-complexity
+  patterns/chain-of-small-steps -->|solves| obstacles/limited-focus
+  patterns/check-alignment -->|solves| anti-patterns/silent-misalignment
+  patterns/check-alignment -->|solves| obstacles/black-box-ai
+  patterns/chunking -->|solves| obstacles/limited-focus
+  patterns/chunking -->|solves| obstacles/limited-context-window
+  patterns/chunking -->|solves| obstacles/degrades-under-complexity
+  patterns/context-management -->|solves| obstacles/cannot-learn
+  patterns/context-management -->|solves| obstacles/context-rot
+  patterns/context-management -->|solves| obstacles/limited-context-window
+  patterns/context-markers -->|solves| obstacles/black-box-ai
+  patterns/extract-knowledge -->|solves| obstacles/cannot-learn
+  patterns/focused-agent -->|solves| anti-patterns/distracted-agent
+  patterns/focused-agent -->|solves| obstacles/limited-focus
+  patterns/focused-agent -->|solves| obstacles/context-rot
+  patterns/ground-rules -->|solves| obstacles/cannot-learn
+  patterns/happy-to-delete -->|solves| anti-patterns/sunk-cost
+  patterns/knowledge-checkpoint -->|solves| obstacles/non-determinism
+  patterns/knowledge-document -->|solves| obstacles/cannot-learn
+  patterns/noise-cancellation -->|solves| obstacles/excess-verbosity
+  patterns/semantic-zoom -->|solves| obstacles/excess-verbosity
+  patterns/offload-deterministic -->|solves| obstacles/non-determinism
+  patterns/parallel-implementations -->|solves| obstacles/non-determinism
+  patterns/playgrounds -->|solves| anti-patterns/perfect-recall-fallacy
+  patterns/reference-docs -->|solves| anti-patterns/distracted-agent
+  patterns/reference-docs -->|solves| obstacles/limited-focus
+  patterns/reference-docs -->|solves| obstacles/context-rot
+  patterns/reference-docs -->|solves| anti-patterns/perfect-recall-fallacy
+  patterns/reminders -->|solves| obstacles/context-rot
+  patterns/reverse-direction -->|solves| anti-patterns/answer-injection
+  patterns/take-all-paths -->|solves| obstacles/non-determinism
+  patterns/approved-fixtures -->|solves| obstacles/hallucinations
+  patterns/approved-logs -->|solves| obstacles/hallucinations
+  patterns/approved-logs -->|solves| obstacles/black-box-ai
+  patterns/constrained-tests -->|solves| obstacles/non-determinism
+  patterns/active-partner -->|solves| obstacles/keeping-up
+  patterns/feedback-loop -->|solves| obstacles/keeping-up
+  patterns/constrained-tests -->|solves| obstacles/keeping-up
+  patterns/active-partner -->|solves| anti-patterns/flying-blind
+  patterns/feedback-loop -->|solves| anti-patterns/flying-blind
+  patterns/constrained-tests -->|solves| anti-patterns/flying-blind
+  patterns/habit-hooks -->|solves| obstacles/cannot-learn
+  patterns/habit-hooks -->|solves| obstacles/context-rot
+  patterns/hooks -->|solves| obstacles/selective-hearing
+  patterns/reminders -->|solves| obstacles/selective-hearing
+
+  %% Pattern → Pattern relationships (enables, uses, similar, alternative)
+  patterns/reference-docs -->|enables| patterns/knowledge-composition
+  patterns/hooks -->|enables| patterns/habit-hooks
+  patterns/context-management -->|uses| patterns/ground-rules
+  patterns/context-management -->|uses| patterns/reference-docs
+  patterns/context-management -->|uses| patterns/knowledge-document
+  patterns/context-management -->|uses| patterns/extract-knowledge
+  patterns/context-management -->|uses| patterns/knowledge-checkpoint
+  patterns/context-management -->|uses| patterns/focused-agent
+  patterns/context-management -->|uses| patterns/semantic-zoom
+  patterns/context-management -->|uses| patterns/noise-cancellation
+  patterns/extract-knowledge -->|uses| patterns/knowledge-document
+  patterns/ground-rules -->|uses| patterns/knowledge-document
+  patterns/show-the-agent-let-it-repeat-automate -->|uses| patterns/extract-knowledge
+  patterns/chunking -->|uses| patterns/focused-agent
+  patterns/approved-fixtures -->|uses| patterns/feedback-loop
+  patterns/approved-fixtures -->|uses| patterns/constrained-tests
+  patterns/approved-logs -->|uses| patterns/constrained-tests
+  patterns/habit-hooks -->|uses| patterns/hooks
+  patterns/habit-hooks -->|uses| patterns/feedback-loop
+  patterns/feedback-loop <-->|similar| patterns/playgrounds
+  patterns/feedback-loop <-->|similar| patterns/chain-of-small-steps
+  patterns/chain-of-small-steps <-->|similar| patterns/offload-deterministic
+  patterns/happy-to-delete <-->|similar| patterns/parallel-implementations
+  patterns/happy-to-delete <-->|similar| patterns/playgrounds
+  patterns/approved-fixtures <-->|similar| patterns/check-alignment
+  patterns/approved-fixtures <-->|similar| patterns/approved-logs
+  patterns/adoption-cast -->|related| anti-patterns/flying-blind
+  patterns/adoption-cast -->|related| anti-patterns/distracted-agent
+  patterns/adoption-cast -->|related| anti-patterns/unvalidated-leaps
+  patterns/adoption-cast <-->|similar| patterns/check-alignment
+  patterns/adoption-cast <-->|similar| patterns/ground-rules
+  patterns/theatre -->|solves| anti-patterns/flying-blind
+  patterns/theatre -->|solves| obstacles/black-box-ai
+  patterns/theatre <-->|similar| patterns/adoption-cast
+  patterns/theatre -->|related| patterns/orchestrator
+
+  %% Anti-pattern → Obstacle relationships (causes)
+  anti-patterns/distracted-agent -->|causes| obstacles/limited-focus
+  anti-patterns/distracted-agent -->|causes| obstacles/context-rot
+
+  anti-patterns/tell-me-a-lie -->|causes| obstacles/compliance-bias
+  anti-patterns/unvalidated-leaps -->|causes| obstacles/black-box-ai
+  anti-patterns/sunk-cost -->|causes| obstacles/degrades-under-complexity
+
+  %% Anti-pattern → Anti-pattern relationships (related)
+  anti-patterns/sunk-cost -->|related| anti-patterns/answer-injection
+  anti-patterns/sunk-cost -->|related| anti-patterns/tell-me-a-lie
+
+  %% Anti-pattern → Obstacle relationships (related/causes)
+  anti-patterns/sunk-cost -->|related| obstacles/limited-context-window
+
+  %% Obstacle → Obstacle relationships (related)
+  obstacles/solution-fixation -->|related| obstacles/compliance-bias
+  obstacles/selective-hearing -->|related| obstacles/context-rot
+
+  %% Obstacle → Anti-pattern relationships (related)
+  obstacles/obedient-contractor -->|related| anti-patterns/silent-misalignment
+  obstacles/compliance-bias -->|causes| anti-patterns/silent-misalignment
+  obstacles/black-box-ai -->|causes| anti-patterns/silent-misalignment
+  obstacles/keeping-up -->|causes| anti-patterns/flying-blind

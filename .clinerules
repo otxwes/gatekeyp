@@ -1,0 +1,26 @@
+# Project Rules — gatekeyp workspace
+
+## Skills system
+- Before any task, skim `skills_manifest.md` (see "Installed Skills" table) and check
+  `docs/project_memory.md` (per the `project-memory` skill) for relevant lessons.
+- Skill sources: legacy guidance files live in `skills/*.md` (Karpathy guidelines, security
+  audit, insecure defaults, supply-chain, modern python, property-based testing, UI/UX).
+  Web/frontend skills live in `.cline/skills/<name>/SKILL.md` and are auto-discovered:
+  `frontend-design`, `web-artifacts-builder`, `webapp-testing`, and the pattern-catalog
+  coach `augmented-coding-coach` (sources `vendor/augmented-coding-patterns/`, the Claudia
+  fork of augmented-coding-patterns — 66 files of patterns/anti-patterns/obstacles).
+- Invoke the matching approach explicitly when asked: "security audit", "audit dependencies",
+  "design the UI", "test the web app", etc.
+
+## Quality gates (run manually or via pre-commit — no MCP server behind these)
+- Vulnerabilities: `uv run pip-audit`
+- Lint: `uv run ruff check src/ tests/` and `uv run ruff format src/ tests/`
+- Types: `uv run ty check src/`
+- Property tests: `uv run pytest` (Hypothesis configured); browser end-to-end uses Playwright MCP.
+
+## Project conventions
+- Python via uv (never pip directly); package manager discipline per skills/modern_python.md.
+- Privacy-first: no third-party trackers/analytics in web frontends; prefer OpenStreetMap
+  over Google Maps; audit data flows per skills/security_audit.md.
+- Web frontend changes follow `.cline/skills/frontend-design/SKILL.md` principles
+  (distinctive, intentional design; avoid templated AI-default aesthetics).

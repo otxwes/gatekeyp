@@ -40,6 +40,13 @@ This document tracks the technical capabilities and "skills" (derived from the `
 | `insecure_defaults.md` | Adapted from [trailofbits/skills](https://github.com/trailofbits/skills) | Detects fail-open insecure defaults (hardcoded secrets, weak auth, permissive security). |
 | `modern_python.md` | Adapted from [trailofbits/skills](https://github.com/trailofbits/skills) | Modern Python tooling (uv, ruff, ty) and best practices. |
 | `project_memory.md` | Custom | Durable project guidance memory for self-improvement and knowledge retention. |
+| `frontend-design/SKILL.md` | [anthropics/skills](https://github.com/anthropics/skills) (auto-discovered in `.cline/skills/`) | Distinctive, intentional visual design for new UI — palette, typography, layout that avoids templated defaults. |
+| `web-artifacts-builder/SKILL.md` | [anthropics/skills](https://github.com/anthropics/skills) | Multi-component React + Tailwind + shadcn/ui artifact scaffolding with bundled scripts. |
+| `webapp-testing/SKILL.md` | [anthropics/skills](https://github.com/anthropics/skills) | Browser-based webapp testing (Playwright automation helpers in `scripts/` and `examples/`). |
+| `augmented-coding-coach/SKILL.md` | [bbaassssiiee/claudia](https://github.com/bbaassssiiee/claudia) (vendored at `vendor/augmented-coding-patterns/`) | Ambient coach over the augmented-coding catalog — 45 patterns, 9 anti-patterns, 13 obstacles for developing software with LLMs; auto-triggers on workflow/AI-practices questions and names the matching anti-pattern when it appears. |
+
+> Storage: web/frontend skills live in `.cline/skills/` (Cline auto-discovery); legacy
+> `.md` guidelines remain in `skills/` and are surfaced via `.clinerules` in every session.
 
 ## Development Infrastructure
 
@@ -49,7 +56,7 @@ The project leverages the following tooling to ensure clean, reproducible, and s
 | :--- | :--- | :--- |
 | **uv** | Python package manager with virtual environment isolation | `pyproject.toml`, `uv.lock` |
 | **Docker** | Containerization for reproducible runtime environments | `Dockerfile`, `docker-compose.yml` |
-| **MCP Servers** | Model Context Protocol servers for AI-assisted development | `.mcp.json` |
+| **MCP Servers** | Model Context Protocol servers for AI-assisted development | global Playwright in `~/.cline/data/settings/cline_mcp_settings.json`; `.mcp.json` now empty (audit/lint/type-check commands moved to `.clinerules` and pre-commit) |
 | **Sub-Agents** | Parallelized research and analysis workflows | `.agents/workflows.json` |
 | **Pre-commit** | Lifecycle hooks for linting, formatting, and validation | `.pre-commit-config.yaml` |
 | **Ruff** | Fast Python linter and formatter | `pyproject.toml` → `[tool.ruff]` |
