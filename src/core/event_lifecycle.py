@@ -367,7 +367,9 @@ class EventLifecycleManager:
         event_id: str,
     ) -> dict:
         """
-        Decommission an event: revoke all keys and mark the event as inactive.
+        Decommission an event: revoke all keys, wipe every trace of the
+        event's data, and leave a tombstone so late attendees see an ended
+        event (public view reports "ended"; RSVP submissions are refused).
 
         Args:
             master_key: The event's master key.
@@ -400,9 +402,15 @@ class EventLifecycleManager:
                     self.db.revoke_key(key["hash_key"])
                     revoked_count += 1
 
+        # Wipe every trace of the event and leave a tombstone, so the RSVP
+        # funnel (public view, submissions, the door) answers as "ended"
+        # instead of serving a dead event (Phase B lifecycle contract).
+        wiped = self.db.wipe_event(event_id)
+
         return {
             "event_id": event_id,
             "master_key_revoked": True,
             "access_keys_revoked": revoked_count,
+            "wiped": wiped,
             "decommissioned_at": datetime.now(UTC).isoformat(),
         }

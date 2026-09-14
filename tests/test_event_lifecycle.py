@@ -354,6 +354,20 @@ class TestDecommission:
         assert lifecycle.key_manager.validate_key(access1["access_key"])["status"] == "invalid"
         assert lifecycle.key_manager.validate_key(access2["access_key"])["status"] == "invalid"
 
+    def test_decommission_wipes_event_and_leaves_tombstone(self, lifecycle, db, created_event):
+        """Decommissioning wipes the event and leaves an ended tombstone."""
+        event_id = created_event["event_id"]
+        lifecycle.decommission_event(
+            master_key=created_event["master_key"],
+            event_id=event_id,
+        )
+
+        # Every trace of the event is gone; only the tombstone remains so
+        # the RSVP funnel reports the event as ended instead of live.
+        assert db.get_event(event_id) is None
+        assert db.get_tombstone(event_id) is not None
+        assert db.list_rsvps(event_id) == []
+
     def test_decommission_invalid_master(self, lifecycle, created_event):
         """Decommissioning with an invalid master key fails."""
         with pytest.raises(EventLifecycleError, match="does not exist"):
