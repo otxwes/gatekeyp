@@ -25,17 +25,21 @@ card and in the attendee's tab while unlocking.
 
 ### Honest trade-offs
 
-| Property | Invite card (LSB PNG) | QR on the card | Raw `local:` key |
+| Property | Invite card (LSB PNG) | `gkp:` key line (text paste) | Raw `local:` key |
 |---|---|---|---|
 | Survives lossy re-encode (photo apps, socials) | ❌ no | ✅ yes | n/a |
-| Undetectable to a glance | ✅ | ❌ visibly a QR | ❌ visible text |
-| Capacity needed | ~700 bits (~90 B payload) | ~700 bits | n/a |
-| Offline decode | ✅ in-browser | needs a scanner | ✅ |
+| Undetectable to a glance | ✅ | ❌ visible text | ❌ visible text |
+| Capacity needed | ~700 bits (~90 B payload) | n/a | n/a |
+| Offline decode | ✅ in-browser | ✅ | ✅ |
 
-The card therefore prints **both**: the key in the pixels *and* a QR containing
-`gkp:<event_id>:<access_key>` as the survives-re-encode fallback. The QR is the
-honest admission that LSB stego dies under re-encoding; the stego layer is the
-privacy choice, the QR is the resilience choice.
+The card is **stego-only** (Phase B): the key lives only in the pixels, and the
+paste-anywhere `gkp:<event_id>:<access_key>` key line (`web/stego.js` `keyLine` /
+`parseKeyLine`) is the survives-re-encode escape hatch — carried as text, never
+printed on the card. Phase 3.6 printed a QR as that fallback; Phase B **removed
+it** because a scannable key is a secrecy downgrade: a photographed card would
+hand its credential to anyone in camera range, with no need to suspect
+steganography at all (see §6). The stego layer remains the privacy choice; the
+key line is the resilience choice.
 
 ---
 
@@ -109,10 +113,8 @@ decodes any valid PNG an attendee brings.
 
 | File | Role |
 |---|---|
-| `web/stego.js` | zero-dependency codec: `embed` / `extract` / `makePayload` / `parsePayload` / `qrPayload` / `parseQrPayload` |
+| `web/stego.js` | zero-dependency codec: `embed` / `extract` / `makePayload` / `parsePayload` / `keyLine` / `parseKeyLine` |
 | `web/invite_card.js` | canvas card renderer (`render`) + embed-and-download (`download`) + cover engine (`coverFit`, `containFit`, `backdropCrop`, `drawImageFullCard`, `drawPreset`, `drawCoverBand`, `renderCover`, `loadCoverImage`) |
-| `web/vendor/qrcode-generator.js` | MIT `kazuhikoarase` QR encoder (single file, unmodified) |
-| `web/vendor/qrcode-generator-LICENSE.txt` | its MIT license |
 | `tests/stego_ref.py` | stdlib-only Python mirror (the oracle) + `--write-fixture` / `--decode` CLI |
 | `tests/test_stego_invites.py` | Hypothesis round-trips, golden vectors, filter/CRC coverage, corruption recovery, fixture decode |
 | `tests/card_ref.py` | stdlib-only mirror of the cover math (`cover_fit`) + canonical preset ids |
@@ -133,10 +135,9 @@ decodes any valid PNG an attendee brings.
 4. **Corruption recovery**: one channel fully inverted still decodes via the
    majority vote.
 5. **The JXA cross-check** runs the actual `web/stego.js` in JavaScriptCore
-   (macOS) and compares crc32, the PRNG stream, payload/QR helpers,
-   containers, the door `classifyInvite`/`inviteRejectReason` against Python —
-   and round-trips the vendored QR encoder → jsQR decoder (the exact door
-   fallback path) — catching e.g. the float64-seed trap and a missing IIFE
+   (macOS) and compares crc32, the PRNG stream, payload/key-line helpers,
+   containers, and the door `classifyInvite`/`inviteRejectReason` against
+   Python — catching e.g. the float64-seed trap and a missing IIFE
    invocation that pure review missed. Since Phase 3.7 it also loads
    `web/invite_card.js` and pins its `coverFit` crop math against
    `tests/card_ref.py`. JXA's BigInt `%` is broken, so positions are re-derived
@@ -172,49 +173,49 @@ arch -x86_64 python -m pytest -q               # full suite (Apple Silicon)
   cropped; the letterbox around it is a blurred extension of the picture, so
   no paper bands or outlines show at the edges), with a live 200×300 preview
   before download. Purely client-side — the cover never leaves the tab, and
-  the hidden key + printed QR are untouched.
-- The card is **text-free** (minimalist pass): preset/paper cards carry the
-  keyhole ornaments, dotted paper and keyline frame with a hero cover band
-  (or plain dotted paper when no cover); a full-card photo owns the whole
-  surface (no paper chrome) and keeps only an uncaptioned QR — a centered
-  240px plate on preset/paper cards, a compact 192px corner plate
-  (bottom-right) over a full-card photo. It embeds the
-  `gkp:event_id:access_key` payload in its pixels and QR; the event title only
-  names the downloaded file (`<title>-invite.png`). No organizer, location, or
-  caption text is printed on the card.
+  the hidden key is untouched.
+- The card is **text-free and scannable-free** (minimalist pass + Phase B):
+  preset/paper cards carry the keyhole ornaments, dotted paper and keyline
+  frame with a hero cover band (or plain dotted paper when no cover); a
+  full-card photo owns the whole surface (no paper chrome). It embeds only the
+  `gkp:event_id:access_key` payload in its pixels — the QR plates printed by
+  Phase 3.6/3.7 were removed in Phase B (see §1); the event title only
+  names the downloaded file (`<title>-invite.png`). No organizer, location,
+  key, or caption text is printed on the card.
 
 ### Attendee (Join door)
 
 - A **drop / paste / choose** zone sits above the unlock form:
   - drop a card PNG onto it,
-  - `⌘V` an image, or `⌘V` a `gkp:event_id:access_key` string (e.g. from the
-    QR),
+  - `⌘V` an image, or `⌘V` a `gkp:event_id:access_key` key line,
   - click to choose a file.
 - On success the event id + access key are **auto-filled** into the existing
   form; the attendee still presses *Unlock event* and the normal gateway flow
   (validation, expiry, revocation) applies. Manual entry always remains.
-- **QR fallback at the door.** The zone also accepts *photos / re-encoded
-  copies* of a card (JPEG, WebP, screenshots): the hidden key is gone, but the
-  vendored jsQR decoder reads the printed QR straight off the image, so the
-  attendee is never stuck with "bring the original file". Decode is local and
-  the canvas is capped (1600 px longest edge) so a 12 MP photo doesn't thrash
-  memory.
+- **Stego-only at the door (Phase B).** The printed-QR fallback and its
+  in-browser jsQR decoder are gone (see §1/§6): a re-encoded photo of a card
+  (JPEG, WebP, screenshot) cannot be scanned back to a key. The universal
+  fallback is the paste-anywhere `gkp:` key line — it needs no image at all —
+  and the attendee can always type the key manually.
 - **Honest rejection.** When nothing decodes, the door names the problem and
-  the fix instead of a generic error: a re-encoded photo → "scan it or share
-  the original PNG"; a GIF/BMP → "invite cards are PNGs"; an unrecognised file
-  → "drop the card PNG or paste the gkp: text".
+  the fix instead of a generic error: a re-encoded photo → "share the original
+  PNG, or paste the gkp: text"; a GIF/BMP → "invite cards are PNGs"; an
+  unrecognised file → "drop the card PNG, or paste the gkp: text".
 - **Share guidance.** The card modals say it once, up front: *send the card as
   a file or attachment, not a photo* — re-encoding destroys the hidden key, and
-  the printed QR is the fallback if it happens anyway.
+  the `gkp:` key line is the fallback if it happens anyway.
 
 ---
 
 ## 6. Threat-model notes
 
-- **PNG-only, no re-encode.** LSB stego is destroyed by JPEG/webp re-encode or
-  resizing; the QR is the documented fallback. The door now *decodes that QR
-  in-browser* (vendored jsQR, canvas-capped) so a photographed/re-saved card
-  still unlocks, and rejects other files with a specific, honest message.
+- **PNG-only, no re-encode, no QR (Phase B).** LSB stego is destroyed by
+  JPEG/webp re-encode or resizing. The Phase-3.6 printed-QR fallback — and the
+  door's in-browser QR decode (vendored jsQR) — were **removed in Phase B**: a
+  scannable key is a secrecy downgrade, since a photographed card would yield
+  its credential to anyone without any suspicion of steganography. The
+  fallback is now the paste-anywhere `gkp:` key line, and the door rejects
+  damaged files with a specific, honest message pointing at it.
 - **Detectability.** LSB replacement perturbs the LSB histogram slightly; a
   motivated analyst with the *suspicion* of steganography can detect it with a
   statistical pass. The value here is casual-opacity and shoulder-surfing
@@ -225,18 +226,17 @@ arch -x86_64 python -m pytest -q               # full suite (Apple Silicon)
   still fails at the gateway even though the card looks fine.
 - **No new server surface.** `stego.js`/`invite_card.js` are static files
   served by the existing `web/` mount; no new endpoints, no key storage.
-- **Third-party audit.** Vendored dependencies are `qrcode-generator` (MIT,
-  single file, no network calls) and `jsQR` (Apache-2.0, single UMD file, no
-  network calls); everything else is first-party. Both LICENSE files ship in
-  `web/vendor/`.
+- **Third-party audit.** No vendored third-party assets remain (Phase B
+  removed `qrcode-generator` and `jsQR` along with the QR path); every line
+  shipped in `web/` is first-party.
 
 ---
 
 ## 7. Known limitations / future work
 
-- No camera scanning on the door (a phone photo is handled by the *drop the
-  image* path instead); a badly blurred photo can still defeat jsQR — pasting
-  the `gkp:` text always works as the last resort.
+- A badly damaged photo of a card is unrecoverable by design (stego-only,
+  no QR); pasting the `gkp:` key line always works as the last resort and
+  needs no image at all.
 - Only 8-bit, non-interlaced PNGs are accepted as carriers.
 - The stego placement is deterministic (fixed seed); this is deliberate — the
   key is the secret, not the placement — and keeps the format auditable and

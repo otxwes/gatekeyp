@@ -820,3 +820,32 @@ deliverer off/sticky-failure states, and the route contract 503/400/404/
 per-file-ignores for lazy imports (`PLC0415`) and duck-typed RNS objects
 (`ANN401`). Docs: threat model now records the mesh option as "considered
 and parked" (§ Phase 3.9).
+
+### 2026-09-13 — Phase B (web half): RSVP pull-flow funnel + opaque stego-only invites, QR removed
+
+- Attendee RSVP section (`web/app.js`, insert at former line 1404): request-a-seat
+  form with a `website` honeypot field (`field-hp` class; bots filling it get a
+  canned acknowledgement and nothing is stored or minted), passphrase gate when
+  `passphrase_required`, pending/approved result states, single-show key display
+  on approval.
+- Organizer RSVP tab (`web/app.js`, insert at former line 1208): share link, gate
+  settings (passphrase + auto-approve; passphrase re-entry rule), approve/deny
+  queue with `btnBusy` re-render.
+- Renames in `web/stego.js`: `qrPayload` → `keyLine`, `parseQrPayload` →
+  `parseKeyLine` (same `gkp:` format — the paste-anywhere escape hatch; QR
+  removed as a secrecy downgrade). Mirrored in `tests/stego_ref.py`
+  (`make_key_line`/`parse_key_line`) and the JXA harness (hook strings +
+  expected-JSON keys; `qrRoundTrip` pin dropped).
+- Deleted `web/door_qr.js`, `web/vendor/jsqr.js`, `web/vendor/qrcode-generator.js`
+  (+ both LICENSEs); `web/vendor/` removed. `tests/test_stego_e2e.py` now pins
+  the removed door assets to 404.
+- CSS: `.field-hp` honeypot block appended to `web/style.css` — all other RSVP
+  classes (`keycode-full`, `badge-neutral`, `inline-form`, `btn-sm`, `kd-*`,
+  `req`/`opt`, `kc-value`) already existed.
+- Verified: JXA `new Function(s)` syntax checks OK for `app.js`/`stego.js`/
+  `invite_card.js` (§3.4 — no Node on this machine); `python -m
+  tests.jxa_stego_check` → JXA-OK; `uv run pytest` → 290 passed;
+  `uv run ruff check src/ tests/` clean. Commit `ccc0b8c`.
+- Server half (RSVP routes/service, gateway wiring, DB tables) exists locally,
+  uncommitted — land it next and review the threat model for pre-minted
+  approved-but-unclaimed keys held server-side.

@@ -46,14 +46,14 @@ gatekeyp is designed to help communities organize events while prioritizing:
     board, Media, Access keys) with a header Decommission action + one-time master-key modal
   - Attendee door: unlock an invite with an access key, then read content,
     post on the bulletin board, comment, and view media — no account required
-  - Invite cards: the access key is hidden in the card's pixels by a
-    steganographic codec (`web/stego.js`), with a printed QR fallback
-    (`web/invite_card.js`); a client-side cover picker adds a preset
+  - Invite cards (stego-only, Phase B): the access key is hidden in the
+    card's pixels by a steganographic codec (`web/stego.js` +
+    `web/invite_card.js`); a client-side cover picker adds a preset
     monochrome pattern (hatch / keyline / dots / keyhole) or an uploaded
-    image spread across the whole card, uncropped — the key never leaves the tab
-  - Door QR decode: drop a card image at the door; the QR is decoded locally
-    (vendored jsQR, `web/door_qr.js`) with honest rejection + share guidance
-    when a card can't be read
+    image spread across the whole card — the key never leaves the tab, and
+    nothing scannable is printed on the card
+  - Door invite decode: drop a card PNG or paste the `gkp:` key line; decode
+    is local, with honest rejection + share guidance when a card can't be read
   - Keys held only in the session tab (sessionStorage); no third-party tracking or analytics
 
 ## Project Structure
@@ -71,9 +71,7 @@ gatekeyp is designed to help communities organize events while prioritizing:
 ├── web/             # Static web UI (hash-routed SPA, no build step)
 │   ├── app.js       # SPA: organizer desk + attendee door + cover picker
 │   ├── invite_card.js  # Invite-card renderer + cover engine + key embed
-│   ├── stego.js     # Steganographic codec (hide / reveal the key in pixels)
-│   ├── door_qr.js   # Local QR decode at the door (vendored jsQR)
-│   └── vendor/      # Third-party libs (qrcode-generator, jsQR + LICENSE)
+│   └── stego.js     # Steganographic codec (hide / reveal the key in pixels)
 ├── pyproject.toml   # Modern dependency management (uv)
 ├── uv.lock          # Locked dependency versions (commit this!)
 ├── Dockerfile       # Containerization
@@ -130,7 +128,7 @@ The test suite includes:
 - **Property-based tests** (Hypothesis) for key hashing, generation, federation parsing, and encryption roundtrips
 - **Security audit tests** validating the threat model checklist
 - **JS↔Python codec cross-check** (`python -m tests.jxa_stego_check`) — runs the
-  in-browser `stego.js` / `invite_card.js` / `door_qr.js` under JavaScriptCore
+  in-browser `stego.js` / `invite_card.js` under JavaScriptCore
   (JXA) and pins their behavior against the Python oracle
 - **Invite-card cover tests** — golden vectors + Hypothesis object-fit:cover
   properties, oracle-pinned preset ids (`tests/test_invite_card_cover.py`)
