@@ -849,3 +849,38 @@ and parked" (§ Phase 3.9).
 - Server half (RSVP routes/service, gateway wiring, DB tables) exists locally,
   uncommitted — land it next and review the threat model for pre-minted
   approved-but-unclaimed keys held server-side.
+### 2026-09-13 — Phase B (server half): RSVP routes/service, gateway pending gate, pre-minted key storage landed
+
+- `src/rsvp/` (~580 lines): `RsvpService` + `build_rsvp_router` —
+  `POST /api/events/{id}/rsvp` (unauthenticated; `website` honeypot; per-IP
+  limiter 5/600 s → 429 + `Retry-After`), organizer-gated
+  `POST .../rsvp/decide` (approve/deny; approve-after-deny rejected — submit
+  fresh instead), `GET|POST .../rsvp/settings` (passphrase gate + auto-approve
+  dial), `GET .../rsvp/list` (contacts decrypted server-side), `GET
+  .../rsvp/view` (minimal public page data, `Cache-Control: no-store`).
+- Submission pre-mints an access key: raw key returned exactly once, stored
+  only as a keyed HMAC (`keys` row with `rsvp_id` backlink); zero content
+  grants until approval. Deny revokes the key (door treats it as voided);
+  approve grants the event + blocks + media + bulletins; auto-approve dial
+  keeps up to N currently-approved (denial frees the slot).
+- Gateway: `_key_rsvp_status` pending gate — pending keys answer "awaiting
+  organizer approval" with no content; revoked/expired paths unchanged
+  (30-day TTL from `DEFAULT_ACCESS_KEY_DAYS`, enforced in `validate_key`).
+- DB: `rsvps` table; `keys.rsvp_id`; `events.rsvp_passphrase_hash` +
+  `events.rsvp_auto_approve` — additive `_ensure_column` migrations with
+  legacy-schema guards (column-count checks) so pre-Phase-B DBs upgrade on
+  open; contacts Fernet-encrypted at rest; `wipe_event` removes RSVP rows and
+  their pre-minted keys (captured before rows vanish — pending keys carry no
+  content links) in one transaction, tombstone intact.
+- Threat-model review (2026-09-13) — four flagged questions, all cleared:
+  (1) at-rest exposure — HMAC-only, same trust boundary as all keys, raw key
+  never persisted; (2) TTL — 30-day door-enforced expiry, undecided keys
+  self-deadline; (3) rate limiting — three layers (per-IP 429 limiter +
+  500/event pending cap + honeypot); in-process limiter state and NAT
+  bucket-sharing documented as accepted; (4) auto-approve surface — explicit
+  opt-in bounded at 100k; dial semantics corrected in docs to "up to N
+  currently-approved" (+ test pinning it).
+- Tests: `tests/test_rsvp.py` — 57 tests (54 from the review pass + 3 new:
+  pending-cap rejection, denial frees a queue slot, dial slot semantics).
+  Suite 293 passing; ruff clean (format hook reformatted 2 files at commit —
+  re-added and recommitted per the known EOF/format dance). Commit `ec1a141`.
