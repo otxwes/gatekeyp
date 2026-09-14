@@ -171,6 +171,15 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
 - **Phase 4**: Map & Navigation (OpenStreetMap, geofencing)
 - **Phase 5**: Payment & Ticketing (Monero)
 
+### 4.3 Live E2E QA (2026-09-14) — RSVP pull-flow funnel
+
+- **Verdict: PASS** — all funnel parts verified against the live server. One real finding was caught and fixed during QA (`a9a6fc0`): `EventLifecycleManager.decommission_event` only revoked keys — no wipe, no tombstone — so the public view stayed "live" and post-decommission submissions still minted keys. It now calls `db.wipe_event()` (tombstone remains; view → `ended`, late submissions → 410 Gone, door/list reject everything) and surfaces wipe counts in the response. Regression test: `test_decommission_wipes_event_and_leaves_tombstone`.
+- **Runtime for QA**: the repo `.venv` is unlaunchable on this machine (mixed x86_64 wheels + removed Intel-brew OpenSSL — the cryptography wheel links a libssl that no longer exists). Build a clean arm64 venv instead: `/tmp/gkpqa` from `/Library/Frameworks/Python.framework/Versions/3.11/bin/python3` with `cryptography argon2-cffi fastapi python-multipart uvicorn` (+ `pytest hypothesis httpx ruff` for tests/lint). Never run the server from the repo `.venv`.
+- **Multi-line pasted scripts get garbled by the tooling** (middle lines silently dropped). Run QA as short single-line chained commands; verify outcomes via the uvicorn access log (`grep 'HTTP/1.1' /tmp/gkp_server.log`), not tool stdout.
+- **Stale-server trap**: `pkill -f '/tmp/gkpqa/bin/python …'` never matches — the venv python execs as `/Library/Frameworks/…/Python -m src.api.server`. Use `pkill -f 'src.api.server'` and confirm with `ps aux | grep src.api.server`; leftover servers keep port 8000 (new instances die on bind while the old code keeps serving).
+- **Cross-connection visibility caveat (dev-only)**: after wiping rows via a second process against `keys.db`, the running server kept serving its pre-wipe snapshot until restarted. Production paths write+commit on the server's own connection and are self-consistent; just restart the server after any manual out-of-band DB surgery.
+- **Live-tested contract details**: settings are PUT-like — an omitted `passphrase` clears the gate (docstring: "empty/None clears the gate"); wrong passphrase → 400; the auto-approve dial approves while approved_count < N (a cap on currently-approved, not a total); honeypot submissions return a canned ack (`rsvp_id: null`) and bypass the per-IP limiter even when the window is full; content POST requires `event_id` in the body and returns the block under `id` (not `content_id`).
+
 ---
 
 ## 5. Self-Improvement Log
