@@ -114,9 +114,9 @@ def test_invite_card_loop_unlocks_event(client) -> None:
     assert unlock.json()["status"] == "success"
     assert unlock.json()["data"]["id"] == event_id
 
-    # 6. The card's QR text carries the same credential.
-    qr_text = stego_ref.make_qr_payload(event_id, access_key)
-    assert stego_ref.parse_qr_payload(qr_text) == (event_id, access_key)
+    # 6. The card's paste-anywhere key line carries the same credential.
+    key_line = stego_ref.make_key_line(event_id, access_key)
+    assert stego_ref.parse_key_line(key_line) == (event_id, access_key)
 
 
 def test_revoked_card_key_no_longer_unlocks(client) -> None:
@@ -156,17 +156,18 @@ def test_revoked_card_key_no_longer_unlocks(client) -> None:
 def test_new_static_files_are_served_without_server_change(client) -> None:
     for path, needle in [
         ("/stego.js", "window.gkpStego"),
-        ("/door_qr.js", "window.gkpDoorQr"),
         ("/invite_card.js", "window.gkpInviteCard"),
         ("/invite_card.js", "coverFit"),
         ("/invite_card.js", "containFit"),
         ("/invite_card.js", "backdropCrop"),
         ("/invite_card.js", "drawBlurBackdrop"),
-        ("/vendor/qrcode-generator.js", "QR Code Generator"),
-        ("/vendor/jsqr.js", "jsQR"),
-        ("/vendor/jsqr-LICENSE.txt", "Apache License"),
         ("/index.html", "key-drop"),
     ]:
         response = client.get(path)
         assert response.status_code == 200, path
         assert needle.encode() in response.content
+
+    # Phase B: the QR fallback is gone — the door is stego-only, so the old
+    # QR door script and the vendored encoder/decoder must 404.
+    for gone in ("/door_qr.js", "/vendor/qrcode-generator.js", "/vendor/jsqr.js"):
+        assert client.get(gone).status_code == 404, gone

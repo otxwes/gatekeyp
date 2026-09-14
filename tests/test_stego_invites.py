@@ -96,13 +96,13 @@ def test_parse_payload() -> None:
     assert stego_ref.parse_payload("  \n  ") is None
 
 
-def test_qr_payload_roundtrip() -> None:
+def test_key_line_roundtrip() -> None:
     event_id, key = "event_abcd1234", "local:0123456789abcdef"
-    text = stego_ref.make_qr_payload(event_id, key)
+    text = stego_ref.make_key_line(event_id, key)
     assert text.startswith("gkp:")
-    assert stego_ref.parse_qr_payload(text) == (event_id, key)
-    assert stego_ref.parse_qr_payload("https://example.com") is None
-    assert stego_ref.parse_qr_payload("gkp:event_x") is None  # no colon separator
+    assert stego_ref.parse_key_line(text) == (event_id, key)
+    assert stego_ref.parse_key_line("https://example.com") is None
+    assert stego_ref.parse_key_line("gkp:event_x") is None  # no colon separator
 
 
 def test_classify_invite_magic_bytes() -> None:

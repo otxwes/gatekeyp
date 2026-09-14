@@ -1658,3 +1658,16 @@ p {
     height: 300px;
     background: var(--paper-deep);
 }
+
+/* ------------------------------------------------------------------
+ * Honeypot field (attendee RSVP form) — rendered into the DOM but
+ * invisible and un-tabbable for humans (aria-hidden + tabindex=-1 in
+ * the markup); bots that blindly autofill `website` are caught app-side.
+ * ------------------------------------------------------------------ */
+.field-hp {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+}

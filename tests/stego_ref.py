@@ -286,11 +286,14 @@ def parse_payload(payload: str) -> tuple[str, str] | None:
     return event_id, access_key
 
 
-def make_qr_payload(event_id: str, access_key: str) -> str:
+# The `gkp:` key line — the paste-anywhere text form of a key. Formerly the
+# QR payload printed on the card; the QR is gone (Phase B) but the same text
+# survives as the clipboard escape hatch.
+def make_key_line(event_id: str, access_key: str) -> str:
     return f"gkp:{event_id}:{access_key}"
 
 
-def parse_qr_payload(text: str) -> tuple[str, str] | None:
+def parse_key_line(text: str) -> tuple[str, str] | None:
     if not text.startswith("gkp:"):
         return None
     rest = text[4:]
@@ -306,8 +309,8 @@ def parse_qr_payload(text: str) -> tuple[str, str] | None:
 
 REJECT_RE_ENCODE = (
     "This looks like a re-encoded copy of a card — the hidden key was lost to "
-    "compression, but the QR printed on the card still works. Scan it and paste "
-    "the gkp: text, or share the original PNG as a file."
+    "compression. Share the original PNG as a file, or paste the gkp: text "
+    "with ⌘V."
 )
 REJECT = {
     "png": (

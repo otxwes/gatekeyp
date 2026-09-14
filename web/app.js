@@ -222,7 +222,7 @@ function openKeyModal(label, keyValue, cardOpts = null) {
         ? `<button class="btn btn-secondary btn-block" type="button" id="key-card-btn">Also make an invite card</button>`
         : "";
     const cardHint = cardOpts
-        ? `<p class="field-hint">Send the card as a file or attachment, not a photo — re-encoding it in a chat destroys the hidden key. Its printed QR is the fallback.</p>`
+        ? `<p class="field-hint">Send the card as a file or attachment, not a photo — re-encoding it in a chat destroys the hidden key, and there is no fallback: the pixels are the key.</p>`
         : "";
     openModal({
         title: label,
@@ -249,7 +249,6 @@ function openKeyModal(label, keyValue, cardOpts = null) {
             openCardCoverModal({
                 ...cardOpts,
                 accessKey: keyValue,
-                qrText: window.gkpStego.qrPayload(cardOpts.eventId, keyValue),
             });
         });
     }
@@ -358,6 +357,7 @@ function route() {
     else if (name === "join") renderJoin();
     else if (name === "flyer") renderFlyer();
     else if (name === "e") renderLiteEvent();
+    else if (name === "rsvp") renderRsvp();
 }
 
 /* ------------------------------------------------------------------
@@ -505,6 +505,7 @@ const WS_TABS = [
     ["bulletins", "Bulletin board"],
     ["media", "Media"],
     ["keys", "Access keys"],
+    ["rsvps", "RSVP funnel"],
 ];
 
 const WS_LOADERS = {
@@ -512,6 +513,7 @@ const WS_LOADERS = {
     bulletins: wsBulletins,
     media: wsMedia,
     keys: wsKeys,
+    rsvps: wsRsvps,
 };
 
 async function fetchEventDetails() {
@@ -949,8 +951,8 @@ async function wsMedia(main) {
  * Workspace: Access keys tab
  * ------------------------------------------------------------------ */
 /** Build the invite-card metadata for the current workspace event. The card
- *  itself carries no event metadata — `eventId` drives the hidden payload and
- *  QR, `title` is used only for the downloaded file name. */
+ *  carries no visible event metadata — `eventId` is hidden in the pixels and
+ *  `title` is used only for the downloaded file name. */
 function inviteCardOpts() {
     return {
         eventId: (org && org.eventId) || "",
@@ -967,7 +969,7 @@ function openKeyCardModal(owner) {
             `Enter the <strong>${esc(owner || "key")}</strong> value you were given to embed it in a card.</p>` +
             `<div class="field"><label for="key-card-key">Access key</label>` +
             `<input type="password" id="key-card-key" spellcheck="false" autocomplete="off"></div>` +
-            `<p class="field-hint">Send the finished card as a file or attachment — re-encoding it destroys the hidden key (its printed QR is the fallback).</p>`,
+            `<p class="field-hint">Send the finished card as a file or attachment — re-encoding it destroys the hidden key, and there is no fallback: the pixels are the key.</p>`,
         confirmText: "Make card",
         cancelText: "Cancel",
         onConfirm: async () => {
@@ -979,7 +981,6 @@ function openKeyCardModal(owner) {
             openCardCoverModal({
                 ...inviteCardOpts(),
                 accessKey,
-                qrText: window.gkpStego.qrPayload((org && org.eventId) || "", accessKey),
             });
         },
     });
@@ -1017,8 +1018,8 @@ function openCardCoverModal(card) {
         );
     }).join("");
     const body =
-        `<p class="field-hint">Pick a cover — a monochrome pattern for the hero band, or your own image spread across the whole card (nothing cropped; the QR tucks into a corner). ` +
-        `The hidden key and the printed QR are untouched.</p>` +
+        `<p class="field-hint">Pick a cover — a monochrome pattern for the hero band, or your own image spread across the whole card (nothing cropped). ` +
+        `The hidden key is untouched.</p>` +
         `<div class="field"><label>Cover</label>` +
         `<div class="cover-picker">${chips}` +
         `<label class="cover-chip cover-upload" id="cover-upload-chip" for="cover-file" role="button" tabindex="0">` +
@@ -1205,6 +1206,160 @@ async function wsKeys(main) {
 }
 
 /* ------------------------------------------------------------------
+ * Workspace: RSVP funnel tab (Phase B)
+ * ------------------------------------------------------------------ */
+function rsvpBadge(status) {
+    if (status === "approved") return `<span class="badge badge-active">Approved</span>`;
+    if (status === "denied") return `<span class="badge badge-revoked">Denied</span>`;
+    return `<span class="badge badge-neutral">Pending</span>`;
+}
+
+function rsvpRowHTML(rsvp) {
+    const actions =
+        rsvp.status === "pending"
+            ? `<button class="btn btn-secondary btn-sm" type="button" data-act="approve" data-rsvp="${esc(rsvp.id)}">Approve</button>` +
+              `<button class="btn btn-danger btn-sm" type="button" data-act="deny" data-rsvp="${esc(rsvp.id)}">Deny</button>`
+            : rsvp.status === "approved"
+              ? `<button class="btn btn-danger btn-sm" type="button" data-act="deny" data-rsvp="${esc(rsvp.id)}">Deny</button>`
+              : "";
+    const decided = rsvp.status === "pending" ? "" : ` · decided ${esc(fmtDate(rsvp.decided_at))}`;
+    return `<div class="key-detail-row" data-rsvp-id="${esc(rsvp.id)}">` +
+        rsvpBadge(rsvp.status) +
+        `<div class="kd-info">` +
+        `<div class="kd-name">${esc(rsvp.display_name || "Unnamed")}</div>` +
+        `<div class="kd-sub">${rsvp.contact ? `${esc(rsvp.contact)} · ` : ""}asked ${esc(fmtDate(rsvp.created_at))}${decided}</div>` +
+        `</div>` +
+        (actions ? `<div class="kd-actions">${actions}</div>` : "") +
+        `</div>`;
+}
+
+
+async function wsRsvps(main) {
+    const eventId = encodeURIComponent(org.eventId);
+    const [rsvps, settings] = await Promise.all([
+        api(`/api/events/${eventId}/rsvp/list${qs({ key: org.masterKey })}`),
+        api(`/api/events/${eventId}/rsvp/settings${qs({ key: org.masterKey })}`),
+    ]);
+    const shareUrl = `${location.href.split("#")[0]}#/rsvp/${org.eventId}`;
+    const pending = rsvps.filter((r) => r.status === "pending").length;
+    const approved = rsvps.filter((r) => r.status === "approved").length;
+    const denied = rsvps.length - pending - approved;
+    const dial = settings.auto_approve;
+    main.innerHTML =
+        `<section class="card">` +
+        `<h3 class="card-title">The pull-flow funnel</h3>` +
+        `<p class="field-hint">People RSVP at your public page; each submission pre-mints a one-time key that unlocks nothing until you approve it. Approve the queue, share the cards — the door reads a pending key as "valid but waiting".</p>` +
+        `<div class="keycode-full"><code class="keycode">${esc(shareUrl)}</code>` +
+        `<button class="btn btn-secondary" type="button" id="rsvp-copy-link">Copy link</button></div>` +
+        `</section>` +
+        `<section class="card">` +
+        `<h3 class="card-title">Gate settings</h3>` +
+        `<form id="rsvp-settings-form" class="inline-form" autocomplete="off">` +
+        `<div class="field">` +
+        `<label for="rsvp-pass-on">` +
+        `<input type="checkbox" id="rsvp-pass-on"${settings.passphrase_required ? " checked" : ""}>` +
+        ` Require a passphrase to RSVP</label>` +
+        `<input type="password" id="rsvp-pass" placeholder="${settings.passphrase_required ? "Passphrase is set — type to replace it" : "Choose a passphrase"}" autocomplete="off">` +
+        `<p class="field-hint">Stored as a keyed hash only. Untick the box and save to remove the gate.</p>` +
+        `</div>` +
+        `<div class="field">` +
+        `<label for="rsvp-auto">Auto-approve the first N RSVPs</label>` +
+        `<input type="number" id="rsvp-auto" min="0" step="1" placeholder="Off — every request waits for you"` +
+        `${Number.isInteger(dial) ? ` value="${dial}"` : ""}>` +
+        `<p class="field-hint">Leave empty for a manual gate. While the dial is on, each new RSVP's key is granted immediately and the attendee's card opens the event on the spot.</p>` +
+        `</div>` +
+        `<p id="rsvp-settings-note" class="form-note" role="status" aria-live="polite"></p>` +
+        `<button class="btn btn-primary" type="submit" id="rsvp-settings-btn">Save gate settings</button>` +
+        `</form>` +
+        `</section>` +
+        `<section class="card">` +
+        `<h3 class="card-title">RSVP queue</h3>` +
+        `<p class="field-hint">${pending} pending · ${approved} approved${denied ? ` · ${denied} denied` : ""}. Approving grants the attendee's pre-minted key; denying revokes it for good — a denied attendee submits a fresh RSVP instead.</p>` +
+        `<div class="key-list">` +
+        (rsvps.length ? rsvps.map(rsvpRowHTML).join("") : emptyState("No RSVPs yet", "Share the funnel link above.")) +
+        `</div>` +
+        `</section>`;
+
+
+    $("#rsvp-copy-link").addEventListener("click", async () => {
+        const ok = await copyText(shareUrl);
+        toast(ok ? "RSVP link copied to clipboard." : "Copy blocked — select the link manually.", ok ? "ok" : "error", "Copy");
+    });
+
+    // Approve / deny per row. Approving grants the pre-minted key (idempotent);
+    // denying revokes it. A denied row shows no actions — the attendee must
+    // submit a fresh RSVP, which mints a fresh key.
+    $$('[data-act="approve"], [data-act="deny"]', main).forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            const decision = btn.dataset.act;
+            btnBusy(btn, true, decision === "approve" ? "Approving…" : "Denying…");
+            try {
+                await api(`/api/events/${eventId}/rsvp/decide`, {
+                    method: "POST",
+                    body: { master_key: org.masterKey, rsvp_id: btn.dataset.rsvp, decision },
+                });
+                toast(
+                    decision === "approve"
+                        ? "RSVP approved — the attendee's card opens the event now."
+                        : "RSVP denied — that card will be rejected at the door.",
+                    "ok",
+                    "Decision saved",
+                );
+                await wsRsvps(main);
+            } catch (err) {
+                toast(err.message, "error", "Could not save the decision");
+                btnBusy(btn, false);
+            }
+        });
+    });
+
+
+    // Gate settings. The API sets or clears the whole gate on each save (there
+    // is no "keep current passphrase" verb), so saving with the box ticked
+    // requires typing the passphrase again; unticking clears it on purpose.
+    $("#rsvp-settings-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const noteEl = $("#rsvp-settings-note");
+        const btn = $("#rsvp-settings-btn");
+        note(noteEl, "");
+        const passOn = $("#rsvp-pass-on").checked;
+        const passValue = $("#rsvp-pass").value.trim();
+        if (passOn && !passValue && settings.passphrase_required) {
+            note(noteEl, "Type the passphrase again to keep the gate (or untick the box to remove it).", "error");
+            return;
+        }
+        if (passOn && !passValue) {
+            note(noteEl, "Type a passphrase, or untick the box to drop the gate.", "error");
+            return;
+        }
+        const autoRaw = $("#rsvp-auto").value.trim();
+        const auto = autoRaw === "" ? null : Number(autoRaw);
+        if (auto !== null && (!Number.isInteger(auto) || auto < 0)) {
+            note(noteEl, "Auto-approve must be a whole number of 0 or more.", "error");
+            return;
+        }
+        btnBusy(btn, true, "Saving…");
+        try {
+            await api(`/api/events/${eventId}/rsvp/settings`, {
+                method: "POST",
+                body: {
+                    master_key: org.masterKey,
+                    passphrase: passOn && passValue ? passValue : null,
+                    auto_approve: auto,
+                },
+            });
+            note(noteEl, "Gate settings saved.", "ok");
+            toast("RSVP gate updated.", "ok", "Saved");
+        } catch (err) {
+            note(noteEl, err.message, "error");
+        } finally {
+            btnBusy(btn, false);
+        }
+    });
+}
+
+
+/* ------------------------------------------------------------------
  * Workspace: Decommission (header action)
  * ------------------------------------------------------------------ */
 function openDecommissionModal() {
@@ -1266,20 +1421,15 @@ async function handleInvitePng(file) {
         const bytes = new Uint8Array(await file.arrayBuffer());
         const kind = window.gkpStego.classifyInvite(bytes);
 
-        // 1) Hidden-key path — PNG cards drop the key straight out of the pixels.
+        // Hidden-key path — PNG cards drop the key straight out of the pixels.
+        // The stego layer is the only channel (Phase B removed the printed-QR
+        // fallback: a scannable key is a secrecy downgrade).
         let parsed = null;
         if (kind === "png") {
             const payload = await window.gkpStego.extract(bytes);
             parsed = payload !== null ? window.gkpStego.parsePayload(payload) : null;
         }
-        // 2) QR fallback — any raster image (re-encoded / photographed cards).
-        //    The hidden key dies on re-encode, but the printed QR survives.
-        if (!parsed) {
-            const qrText = await window.gkpDoorQr.decode(file);
-            const qp = qrText ? window.gkpStego.parseQrPayload(qrText.trim()) : null;
-            if (qp) parsed = { eventId: qp.eventId, accessKey: qp.accessKey, viaQr: true };
-        }
-        // 3) Honest, specific rejection instead of a generic failure.
+        // Honest, specific rejection instead of a generic failure.
         if (!parsed) throw new Error(window.gkpStego.inviteRejectReason(kind));
 
         await unlockEvent(parsed.eventId, parsed.accessKey);
@@ -1343,7 +1493,7 @@ function bindJoinDrop() {
             }
         }
         const text = event.clipboardData && event.clipboardData.getData("text");
-        const parsed = text ? window.gkpStego.parseQrPayload(text.trim()) : null;
+        const parsed = text ? window.gkpStego.parseKeyLine(text.trim()) : null;
         if (parsed) {
             event.preventDefault();
             await unlockEvent(parsed.eventId, parsed.accessKey);
@@ -1365,6 +1515,11 @@ async function unlockEvent(eventId, accessKey) {
             method: "POST",
             body: { key: accessKey, content_id: eventId },
         });
+        if (result && result.status === "pending") {
+            // Pre-minted RSVP key: valid but awaiting the organizer's approval.
+            note(noteEl, result.message || "Your RSVP is awaiting organizer approval.", "info");
+            return;
+        }
         if (!result || result.status !== "success") {
             throw new Error((result && result.message) || "The key did not unlock this event.");
         }
@@ -1399,6 +1554,163 @@ function renderJoin() {
         if (entry) entry.hidden = false;
     }
 }
+
+/* ------------------------------------------------------------------
+ * RSVP funnel (Phase B): public attendee page (#/rsvp/{event_id})
+ * ------------------------------------------------------------------ */
+function parseRsvpHash() {
+    const h = (location.hash || "#/").replace(/^#/, "");
+    if (!h.startsWith("/rsvp/")) return "";
+    return h.slice("/rsvp/".length).split("/")[0];
+}
+
+async function renderRsvp() {
+    const root = $("#rsvp-views");
+    if (!root) return;
+    const eventId = parseRsvpHash();
+    if (!eventId) {
+        root.innerHTML = emptyState("No event here", "This RSVP link is missing its event id.");
+        return;
+    }
+    root.innerHTML = emptyState("Loading…");
+    try {
+        const view = await api(`/api/events/${encodeURIComponent(eventId)}/rsvp/view`);
+        if (view.status === "ended") {
+            root.innerHTML = emptyState("Event ended", "All data for this event was wiped at the end of its life.");
+            return;
+        }
+        const event = (view && view.event) || {};
+        root.innerHTML =
+            `<header class="ep-head">` +
+            `<p class="eyebrow ep-eyebrow">RSVP</p>` +
+            `<h2 class="ep-title">${esc(event.title || "Untitled event")}</h2>` +
+            `<p class="ep-lede">${esc(event.description || "")}</p>` +
+            `</header>` +
+            `<form id="rsvp-form" class="card form-card" autocomplete="off">` +
+            `<h3 class="card-title">Request an invite</h3>` +
+            `<p class="field-hint">Every request pre-mints a one-time access key. It unlocks nothing until the organizer approves your RSVP — you will see the key exactly once, on the next screen.</p>` +
+            `<div class="field">` +
+            `<label for="rsvp-name">Name <span class="req">*</span></label>` +
+            `<input type="text" id="rsvp-name" name="display_name" required maxlength="64" autocomplete="off">` +
+            `</div>` +
+            `<div class="field">` +
+            `<label for="rsvp-contact">How the organizer can reach you <span class="opt">optional</span></label>` +
+            `<input type="text" id="rsvp-contact" name="contact" maxlength="256" autocomplete="off">` +
+            `<p class="field-hint">Only the organizer sees this. Leave blank to stay faceless until the door.</p>` +
+            `</div>` +
+            (view.passphrase_required
+                ? `<div class="field">` +
+                  `<label for="rsvp-passphrase">Passphrase <span class="req">*</span></label>` +
+                  `<input type="password" id="rsvp-passphrase" name="passphrase" autocomplete="off">` +
+                  `<p class="field-hint">The organizer gated this event with a shared passphrase.</p>` +
+                  `</div>`
+                : "") +
+            // Honeypot: humans never see this field (CSS-hidden + no tab
+            // focus). Bots that fill it get a canned acknowledgement and
+            // nothing is stored or minted.
+            `<div class="field field-hp" aria-hidden="true">` +
+            `<label for="rsvp-website">Website</label>` +
+            `<input type="text" id="rsvp-website" name="website" tabindex="-1" autocomplete="off">` +
+            `</div>` +
+            `<p id="rsvp-note" class="form-note" role="status" aria-live="polite"></p>` +
+            `<button type="submit" class="btn btn-primary btn-block" id="rsvp-btn">Request invite</button>` +
+            `</form>`;
+        bindRsvpForm(eventId, event, Boolean(view.passphrase_required));
+    } catch (err) {
+        root.innerHTML = emptyState("Could not load this event", err.message);
+    }
+}
+
+
+function bindRsvpForm(eventId, event, passphraseRequired) {
+    const form = $("#rsvp-form");
+    if (!form) return;
+    const noteEl = $("#rsvp-note");
+    const btn = $("#rsvp-btn");
+    form.addEventListener("submit", async (submitEvent) => {
+        submitEvent.preventDefault();
+        note(noteEl, "");
+        const name = getField(form, "display_name");
+        if (!name) {
+            note(noteEl, "A name is required.", "error");
+            return;
+        }
+        const passphrase = passphraseRequired ? getField(form, "passphrase") : null;
+        if (passphraseRequired && !passphrase) {
+            note(noteEl, "This event needs its passphrase.", "error");
+            return;
+        }
+        btnBusy(btn, true, "Sending…");
+        try {
+            const result = await api(`/api/events/${encodeURIComponent(eventId)}/rsvp`, {
+                method: "POST",
+                body: {
+                    display_name: name,
+                    contact: getField(form, "contact") || null,
+                    passphrase: passphrase || null,
+                    website: getField(form, "website") || null,
+                },
+            });
+            showRsvpResult(eventId, event, result);
+        } catch (err) {
+            note(noteEl, err.message, "error");
+        } finally {
+            btnBusy(btn, false);
+        }
+    });
+}
+
+
+/** The one-time RSVP result: the pre-minted key is displayed exactly once. */
+function showRsvpResult(eventId, event, result) {
+    const root = $("#rsvp-views");
+    if (!root) return;
+    const key = (result && result.access_key) || "";
+    if (!key) {
+        // Honeypot-style canned reply — humans never reach this (their
+        // submissions always mint a key).
+        root.innerHTML = emptyState("Request received", "Your access card will arrive once approved.");
+        return;
+    }
+    const approved = result.status === "approved";
+    root.innerHTML =
+        `<header class="ep-head">` +
+        `<p class="eyebrow ep-eyebrow">RSVP received</p>` +
+        `<h2 class="ep-title">${esc(result.display_name || "You're on the list")}</h2>` +
+        `<p class="ep-lede">${approved
+            ? "You're approved — the card below opens the event right now."
+            : "Your card works the moment the organizer approves your RSVP. Approve or deny is their call."}</p>` +
+        `</header>` +
+        `<div class="card form-card">` +
+        `<h3 class="card-title">Your access card — shown once</h3>` +
+        `<p class="field-hint">Save it now: the server stored only a keyed fingerprint and can never show this again. Send the card as a file, not a photo — re-encoding destroys the hidden key, and there is no fallback: the pixels are the key.</p>` +
+        `<div class="keycode-full"><code class="keycode kc-value">${esc(key)}</code>` +
+        `<button class="btn btn-secondary" type="button" id="rsvp-copy">Copy</button></div>` +
+        `<button class="btn btn-secondary btn-block" type="button" id="rsvp-card">Make an invite card</button>` +
+        (approved
+            ? `<button class="btn btn-primary btn-block" type="button" id="rsvp-unlock">Open the event now</button>`
+            : `<a class="btn btn-ghost btn-block" href="#/join">Go to the door →</a>`) +
+        `</div>`;
+    $("#rsvp-copy").addEventListener("click", async () => {
+        const ok = await copyText(key);
+        toast(ok ? "Key copied to clipboard." : "Copy blocked — select the key manually.", ok ? "ok" : "error", "Copy");
+    });
+    $("#rsvp-card").addEventListener("click", () => {
+        openCardCoverModal({ eventId, title: event.title, accessKey: key });
+    });
+    const unlock = $("#rsvp-unlock");
+    if (unlock) {
+        unlock.addEventListener("click", () => {
+            // An approved RSVP's key already carries the content grants, so
+            // the door flow (and this shortcut) both work immediately.
+            attendee = { eventId, accessKey: key, event };
+            saveSession();
+            toast("Event unlocked.", "ok", "Welcome");
+            location.hash = "#/join";
+        });
+    }
+}
+
 
 /* ------------------------------------------------------------------
  * Attendee event page

@@ -83,11 +83,15 @@ window.gkpStego = (function () {
         return { eventId, accessKey };
     }
 
-    function qrPayload(eventId, accessKey) {
+    // The `gkp:` key line — the paste-anywhere text form of a key. It used to
+    // travel as a printed QR on the card; the QR is gone (Phase B: a scannable
+    // key is a secrecy downgrade — anything photographable can be harvested
+    // en masse), but the same text survives as the clipboard escape hatch.
+    function keyLine(eventId, accessKey) {
         return `gkp:${eventId}:${accessKey}`;
     }
 
-    function parseQrPayload(str) {
+    function parseKeyLine(str) {
         if (typeof str !== "string" || !str.startsWith("gkp:")) return null;
         const rest = str.slice(4);
         const sep = rest.indexOf(":");
@@ -382,8 +386,8 @@ window.gkpStego = (function () {
      * Door: image-kind sniffing + honest rejection messages
      * ---------------------------------------------------------- */
     // Magic-byte sniffing for the kinds of file an attendee is likely to drop
-    // at the door. `kind` drives both the QR fallback (any raster image) and
-    // the specific, honest rejection message when nothing decodes.
+    // at the door. `kind` drives the specific, honest rejection message when
+    // nothing decodes.
     function classifyInvite(input) {
         const b = input instanceof Uint8Array ? input
             : input instanceof ArrayBuffer ? new Uint8Array(input)
@@ -402,8 +406,8 @@ window.gkpStego = (function () {
 
     const REJECT_RE_ENCODE =
         "This looks like a re-encoded copy of a card — the hidden key was lost to " +
-        "compression, but the QR printed on the card still works. Scan it and paste " +
-        "the gkp: text, or share the original PNG as a file.";
+        "compression. Share the original PNG as a file, or paste the gkp: text " +
+        "with ⌘V.";
     const REJECT = {
         png: "This looks like a gatekeyp card, but no key could be read from it — " +
             "the card may have been altered or re-encoded. Share the original PNG as " +
@@ -475,5 +479,5 @@ window.gkpStego = (function () {
         return null;
     }
 
-    return { embed, extract, makePayload, parsePayload, qrPayload, parseQrPayload, classifyInvite, inviteRejectReason };
+    return { embed, extract, makePayload, parsePayload, keyLine, parseKeyLine, classifyInvite, inviteRejectReason };
 })();

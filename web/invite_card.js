@@ -2,13 +2,13 @@
  *
  * Draws a monochrome paper-and-ink card on an offscreen canvas (the Phase 3.5
  * motif vocabulary: keylines, hatch, dotted tooth, serif display type, the
- * keyhole mark), renders the QR fallback, then passes the PNG through
- * `gkpStego.embed()` so the invite payload (`event_id\naccess_key`) is hidden
- * in the pixels. The resulting PNG downloads as the attendee's credential —
- * drop it at the door to unlock.
+ * keyhole mark), then passes the PNG through `gkpStego.embed()` so the invite
+ * payload (`event_id\naccess_key`) is hidden in the pixels. The resulting PNG
+ * downloads as the attendee's credential — drop it at the door to unlock.
+ * No printed QR (Phase B): the stego layer is the only channel — a scannable
+ * key is a secrecy downgrade, so the card carries no visible key material.
  *
- * Depends on: gkpStego (web/stego.js) and the vendored qrcode-generator
- * (web/vendor/qrcode-generator.js).
+ * Depends on: gkpStego (web/stego.js).
  */
 
 "use strict";
@@ -66,39 +66,6 @@ window.gkpInviteCard = (function () {
         ctx.arc(cx, cy, r * 0.34, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
-    }
-
-    function drawQr(ctx, qr, x, y, size, pad) {
-        const p = pad === undefined ? 16 : pad;
-        const n = qr.getModuleCount();
-        const cell = size / n;
-        ctx.save();
-        ctx.fillStyle = PAPER_DEEP;
-        ctx.fillRect(x - p, y - p, size + p * 2, size + p * 2);
-        ctx.strokeStyle = LINE_STRONG;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x - p, y - p, size + p * 2, size + p * 2);
-        ctx.fillStyle = INK;
-        for (let row = 0; row < n; row++) {
-            for (let col = 0; col < n; col++) {
-                if (qr.isDark(row, col)) {
-                    ctx.fillRect(x + col * cell, y + row * cell, Math.ceil(cell), Math.ceil(cell));
-                }
-            }
-        }
-        ctx.restore();
-    }
-
-    function buildQr(text) {
-        if (typeof window.qrcode !== "function" || !text) return null;
-        try {
-            const qr = window.qrcode(0, "M");
-            qr.addData(text, "Byte");
-            qr.make();
-            return qr;
-        } catch {
-            return null; // QR is a fallback — never block the card on it.
-        }
     }
 
     /**
@@ -317,25 +284,11 @@ window.gkpInviteCard = (function () {
             drawCoverBand(ctx, 48, 120, CARD_W - 96, 600, o.cover, o.coverImage || null);
         }
 
-        // QR fallback (survives re-encoding by photo apps), uncaptioned. Over
-        // a full-card photo it tucks into the bottom-right corner as a compact
-        // plate with a 24px quiet zone (≈ 5 modules), 40px off the card edges;
-        // preset / paper cards keep the centered fallback.
-        const qr = buildQr(String(o.qrText || ""));
-        if (qr) {
-            if (fullBleed) {
-                const qrSize = 192;
-                const qrPad = 24;
-                drawQr(ctx, qr, CARD_W - 40 - qrSize - qrPad, CARD_H - 40 - qrSize - qrPad, qrSize, qrPad);
-            } else {
-                const qrSize = 240;
-                const qrX = (CARD_W - (qrSize + 32)) / 2;
-                drawQr(ctx, qr, qrX, 790, qrSize);
-            }
-        }
+        // No printed QR on the card (Phase B): the stego layer is the only
+        // channel — a scannable key would be a secrecy downgrade.
 
-        // Bottom ornament: a single keyhole, centered. Photo cards skip it —
-        // the corner QR plate anchors the bottom edge instead.
+        // Bottom ornament: a single keyhole, centered. Full-bleed photo cards
+        // skip it — the art runs edge to edge.
         if (!fullBleed) drawKeyhole(ctx, CARD_W / 2, CARD_H - 70, 12);
     }
 
@@ -347,7 +300,7 @@ window.gkpInviteCard = (function () {
     /**
      * Draw, embed the invite payload and trigger a download of the stego PNG.
      *
-     * opts: { eventId, accessKey, title, qrText, cover, coverImage, scale }
+     * opts: { eventId, accessKey, title, cover, coverImage, scale }
      * Returns the Blob (for tests / preview) after downloading.
      */
     async function download(opts) {

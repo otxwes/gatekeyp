@@ -51,11 +51,6 @@ __STEGO_MODULE_SOURCE__
 // --- The shipped invite-card module, hooked to expose coverFit via __test ---
 __CARD_MODULE_SOURCE__
 
-// --- Vendored encoder + decoder for the QR fallback round-trip ---
-var self = {};
-__QR_ENCODER_SOURCE__
-__JSQR_SOURCE__
-
 var T = window.gkpStego.__test;
 var exp = JSON.parse(readFile("__EXPECTED_JSON__"));
 var failures = [];
@@ -100,22 +95,22 @@ function bigintMod(x, c) {
     }
 })();
 
-// payload / QR string helpers
+// payload / key-line string helpers
 exp.payloads.forEach(function (p) {
     if (T.makePayload(p.eventId, p.key) !== p.pair) failures.push("makePayload mismatch for " + p.eventId);
     var parsed = T.parsePayload(p.pair);
     if (!parsed || parsed.eventId !== p.eventId || parsed.accessKey !== p.key) {
         failures.push("parsePayload mismatch for " + p.eventId);
     }
-    if (T.qrPayload(p.eventId, p.key) !== p.qr) failures.push("qrPayload mismatch for " + p.eventId);
-    var qparsed = T.parseQrPayload(p.qr);
-    if (!qparsed || qparsed.eventId !== p.eventId || qparsed.accessKey !== p.key) {
-        failures.push("parseQrPayload mismatch for " + p.eventId);
+    if (T.keyLine(p.eventId, p.key) !== p.keyLine) failures.push("keyLine mismatch for " + p.eventId);
+    var kparsed = T.parseKeyLine(p.keyLine);
+    if (!kparsed || kparsed.eventId !== p.eventId || kparsed.accessKey !== p.key) {
+        failures.push("parseKeyLine mismatch for " + p.eventId);
     }
 });
-// negative QR / payload cases
+// negative key-line / payload cases
 ["", "gkp:", "https://example.com/x", "gkp:event_x"].forEach(function (s) {
-    if (T.parseQrPayload(s) !== null) failures.push("parseQrPayload accepted bad input: " + s);
+    if (T.parseKeyLine(s) !== null) failures.push("parseKeyLine accepted bad input: " + s);
 });
 
 // container build/parse vs Python mirror
@@ -180,44 +175,6 @@ if (!C) {
         }
     });
 }
-
-// QR fallback round-trip: vendored encoder -> RGBA pixel buffer -> vendored jsQR.
-// This is exactly what web/door_qr.js does in the browser, minus the canvas.
-function qrPixelBuffer(text) {
-    var qr = qrcode(0, "M");
-    qr.addData(text);
-    qr.make();
-    var n = qr.getModuleCount();
-    var scale = 6, margin = 4;
-    var size = (n + margin * 2) * scale;
-    var data = new Uint8Array(size * size * 4);
-    for (var y = 0; y < size; y++) {
-        for (var x = 0; x < size; x++) {
-            var mRow = Math.floor(y / scale) - margin;
-            var mCol = Math.floor(x / scale) - margin;
-            var dark = mRow >= 0 && mRow < n && mCol >= 0 && mCol < n && qr.isDark(mRow, mCol);
-            var i = (y * size + x) * 4;
-            var v = dark ? 0 : 255;
-            data[i] = v; data[i + 1] = v; data[i + 2] = v; data[i + 3] = 255;
-        }
-    }
-    return { data: data, width: size, height: size };
-}
-exp.qrRoundTrip.forEach(function (text) {
-    var c = qrPixelBuffer(text);
-    var res = self.jsQR(c.data, c.width, c.height, { inversionAttempts: "attemptBoth" });
-    if (!res || res.data !== text) {
-        failures.push("QR round-trip failed for " + text + " (got " + (res ? res.data : "null") + ")");
-    }
-});
-// Decoding pure noise must not crash and must yield null (guarded in door_qr.js).
-(function () {
-    var noise = new Uint8Array(96 * 96 * 4);
-    for (var i = 0; i < noise.length; i++) noise[i] = (i * 7 + 3) & 255;
-    var res = null;
-    try { res = self.jsQR(noise, 96, 96); } catch (e) {}
-    if (res !== null) failures.push("jsQR decoded noise (expected null)");
-})();
 
 if (failures.length) {
     console.log("JXA-FAIL:\n" + failures.join("\n"));
