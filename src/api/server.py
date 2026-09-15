@@ -126,6 +126,11 @@ def _mount_web(app: FastAPI) -> None:
     """Serve the static web UI from web/ when it exists."""
     static_dir = Path(__file__).parent.parent.parent / "web"
     if static_dir.exists():
+        # Fonts vendored in web/fonts/ are served under /fonts/* before the
+        # catch-all "/" mount; html=True would otherwise shadow them.
+        fonts_dir = static_dir / "fonts"
+        fonts_dir.mkdir(exist_ok=True)
+        app.mount("/fonts", StaticFiles(directory=str(fonts_dir)), name="fonts")
         app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="web")
 
 
