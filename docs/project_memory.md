@@ -902,3 +902,31 @@ and parked" (§ Phase 3.9).
   pending-cap rejection, denial frees a queue slot, dial slot semantics).
   Suite 293 passing; ruff clean (format hook reformatted 2 files at commit —
   re-added and recommitted per the known EOF/format dance). Commit `ec1a141`.
+
+### 2026-09-14 — Workspace housekeeping: dev DB deleted, local servers killed
+
+Post-rename cleanup, all prototyping state — nothing worth recovering:
+
+- **Killed the lingering Cline kanban process trio** (`node /opt/homebrew/bin/cline
+  --kanban` launcher + bare CLI + its node server on `127.0.0.1:3484`). The
+  launcher spawns two child processes — `pkill`/kill must cover all three, and
+  verify port 3484 is actually free afterwards (`lsof -iTCP:3484 -sTCP:LISTEN`).
+- **Deleted `keys.db` + both timestamped backups** (`keys.db.bak-YYYYMMDD`,
+  created by `make backup`). ~1 MB reclaimed. These backups **accumulate on
+  every `make backup`** and are gitignored, so they never show in `git status`
+  — remember they exist and sweep them before assuming the repo is clean.
+- **`.env.dev` (with its persisted Fernet master key) was deliberately kept** —
+  that was the fix from the 2026-08-31 ephemeral-key incident. Because the key
+  schema is recreated on open (`_ensure_column` migrations), the next
+  `make serve` boots against a brand-new empty `keys.db` encrypted under the
+  same master key. Nothing else to do to get a fresh DB.
+- **Verification pattern used for DB-schema sanity without a server:**
+  `GATEKEYP_MASTER_KEY=<generated Fernet key> arch -arm64 .venv/bin/python -c
+  "from src.db.database_handler import DatabaseHandler;
+  DatabaseHandler(':memory:'); print('ok')"` — `:memory:` avoids touching the
+  file DB, and the constructor enforces `GATEKEYP_MASTER_KEY` + a valid 32-byte
+  url-safe base64 Fernet key (a plain string fails with a confusing Fernet
+  ValueError, not the missing-key error).
+- Port 5000 on this Mac is occupied by **macOS ControlCenter (AirPlay
+  Receiver)**, not a test server — don't hunt for a process to kill there; use
+  another port for local services.
