@@ -68,38 +68,58 @@ window.gkpStego = (function () {
 
     /* ----------------------------------------------------------
      * Payload helpers
+     *
+     * The attendee payload is unchanged since Phase 3.6: `event_id` +
+     * "\n" + `access_key`. A master (organizer) card carries the same two
+     * facts but is TAGGED — the payload gains a `organizer\n` role line
+     * (3 lines total), so old cards keep decoding and no decoder ever
+     * mistakes the master key for an attendee key.
      * ---------------------------------------------------------- */
-    function makePayload(eventId, accessKey) {
+    function makePayload(eventId, accessKey, role) {
+        if (role === "organizer") return `organizer\n${eventId}\n${accessKey}`;
         return `${eventId}\n${accessKey}`;
     }
 
     function parsePayload(str) {
         if (typeof str !== "string") return null;
-        const nl = str.indexOf("\n");
-        if (nl <= 0 || nl === str.length - 1) return null;
-        const eventId = str.slice(0, nl).trim();
-        const accessKey = str.slice(nl + 1).trim();
-        if (!eventId || !accessKey) return null;
-        return { eventId, accessKey };
+        const lines = str.split("\n");
+        if (lines.length === 2) {
+            const eventId = lines[0].trim();
+            const accessKey = lines[1].trim();
+            if (!eventId || !accessKey) return null;
+            return { eventId, accessKey, role: "attendee" };
+        }
+        if (lines.length === 3 && lines[0].trim() === "organizer") {
+            const eventId = lines[1].trim();
+            const accessKey = lines[2].trim();
+            if (!eventId || !accessKey) return null;
+            return { eventId, accessKey, role: "organizer" };
+        }
+        return null;
     }
 
     // The `gkp:` key line — the paste-anywhere text form of a key. It used to
     // travel as a printed QR on the card; the QR is gone (Phase B: a scannable
     // key is a secrecy downgrade — anything photographable can be harvested
     // en masse), but the same text survives as the clipboard escape hatch.
-    function keyLine(eventId, accessKey) {
-        return `gkp:${eventId}:${accessKey}`;
+    // A master key uses the `gkporg:` prefix so the tabs can route it to the
+    // organizer workspace instead of the attendee unlock.
+    function keyLine(eventId, accessKey, role) {
+        return (role === "organizer" ? "gkporg:" : "gkp:") + `${eventId}:${accessKey}`;
     }
 
     function parseKeyLine(str) {
-        if (typeof str !== "string" || !str.startsWith("gkp:")) return null;
-        const rest = str.slice(4);
+        if (typeof str !== "string") return null;
+        const match = /^(gkporg:|gkp:)/.exec(str);
+        if (!match) return null;
+        const role = match[1] === "gkporg:" ? "organizer" : "attendee";
+        const rest = str.slice(match[1].length);
         const sep = rest.indexOf(":");
         if (sep <= 0 || sep === rest.length - 1) return null;
         const eventId = rest.slice(0, sep).trim();
         const accessKey = rest.slice(sep + 1).trim();
         if (!eventId || !accessKey) return null;
-        return { eventId, accessKey };
+        return { eventId, accessKey, role };
     }
 
     /* ----------------------------------------------------------

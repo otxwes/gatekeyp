@@ -189,6 +189,29 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
 - **Cross-connection visibility caveat (dev-only)**: after wiping rows via a second process against `keys.db`, the running server kept serving its pre-wipe snapshot until restarted. Production paths write+commit on the server's own connection and are self-consistent; just restart the server after any manual out-of-band DB surgery.
 - **Live-tested contract details**: settings are PUT-like — an omitted `passphrase` clears the gate (docstring: "empty/None clears the gate"); wrong passphrase → 400; the auto-approve dial approves while approved_count < N (a cap on currently-approved, not a total); honeypot submissions return a canned ack (`rsvp_id: null`) and bypass the per-IP limiter even when the window is full; content POST requires `event_id` in the body and returns the block under `id` (not `content_id`).
 
+### 4.4 Design decision — master (organizer) event card (2026-09-15)
+
+- **Master card = same stego channel, tagged payload, stamped face.** The
+  hidden payload gains a `organizer\n` role line (3 lines total; 2-line
+  payloads remain attendee invites, fully backwards compatible). The keyline
+  text form uses a `gkporg:` prefix (see `web/stego.js`). The card face gets a
+  paper-backed "MASTER CARD" stamp chip + keeper note (`web/invite_card.js`),
+  drawn on top of covers including full-bleed photos so it can never be
+  mistaken for an attendee invite.
+- **Routing is role-driven**: `routeInvitePayload()` in `web/app.js` sends
+  attendee payloads to the join unlock and organizer payloads to
+  `openOrganizerWorkspace()` (shared with the two-field reopen form). The
+  organize entry and join entry both accept pasted master cards /
+  `gkporg:` lines and route-card PNGs.
+- **Never re-display the raw master key on the card path** — the About-tab
+  "Master card" action hands `org.masterKey` straight to the cover picker; the
+  key stays client-side and hidden in pixels.
+- Rejected: URL deep-links with the key (history / shared-machine leaks, same
+  reason the join side dropped them), passkey/OPAQUE sessions (protocol
+  change, disproportionate). Did NOT bump the stego container version — the
+  role tag lives in the payload, so old decoders reading master cards would
+  still find valid id+key pairs (fail-open to attendee behavior is safe).
+
 ---
 
 ## 5. Self-Improvement Log

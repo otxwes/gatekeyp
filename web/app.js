@@ -218,8 +218,9 @@ function openModal({ title, body = "", confirmText = "Confirm", cancelText = "Ca
  *  When `cardOpts` (event metadata for the invite card) is given, also offers
  *  "Also make an invite card" for the fresh key. */
 function openKeyModal(label, keyValue, cardOpts = null) {
+    const isMaster = Boolean(cardOpts && cardOpts.organizer);
     const cardButton = cardOpts
-        ? `<button class="btn btn-secondary btn-block" type="button" id="key-card-btn">Also make an invite card</button>`
+        ? `<button class="btn btn-secondary btn-block" type="button" id="key-card-btn">${isMaster ? "Also make a master card" : "Also make an invite card"}</button>`
         : "";
     const cardHint = cardOpts
         ? `<p class="field-hint">Send the card as a file or attachment, not a photo — re-encoding it in a chat destroys the hidden key, and there is no fallback: the pixels are the key.</p>`
@@ -398,6 +399,57 @@ function endAllSessions() {
  * Organize entry (create / open)
  * ------------------------------------------------------------------ */
 function bindOrganizeEntry() {
+    // Paste a master key line (gkporg:) or master card image while the
+    // organize entry is showing — reopening without the two-field form.
+    document.addEventListener("paste", async (event) => {
+        const view = $("#view-organize");
+        const workspace = $("#organize-workspace");
+        if (!view || view.hidden || !workspace || !workspace.hidden) return;
+        const items = event.clipboardData && event.clipboardData.items;
+        if (items) {
+            for (const item of items) {
+                if (item.type && item.type.startsWith("image/")) {
+                    const file = item.getAsFile && item.getAsFile();
+                    if (file) {
+                        event.preventDefault();
+                        const bytes = new Uint8Array(await file.arrayBuffer());
+                        if (window.gkpStego.classifyInvite(bytes) !== "png") break; // not ours
+                        const payload = await window.gkpStego.extract(bytes);
+                        const parsed = payload !== null ? window.gkpStego.parsePayload(payload) : null;
+                        if (parsed && parsed.role === "organizer") {
+                            try {
+                                await openOrganizerWorkspace(parsed.eventId, parsed.accessKey);
+                                toast("Workspace restored from your master card.", "ok", "Welcome back");
+                            } catch (err) {
+                                toast(err.message, "error", "Could not read the card");
+                            }
+                        } else {
+                            toast(
+                                parsed
+                                    ? "That is an attendee invite — attendee cards belong on the Join tab."
+                                    : "No event found in that image.",
+                                "error",
+                                "Could not read the card"
+                            );
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+        const text = event.clipboardData && event.clipboardData.getData("text");
+        const parsed = text ? window.gkpStego.parseKeyLine(text.trim()) : null;
+        if (parsed && parsed.role === "organizer") {
+            event.preventDefault();
+            try {
+                await openOrganizerWorkspace(parsed.eventId, parsed.accessKey);
+                toast("Workspace restored from your key.", "ok", "Welcome back");
+            } catch (err) {
+                toast(err.message, "error", "Could not open the workspace");
+            }
+        }
+    });
+
     const createForm = $("#create-event-form");
     createForm.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -426,7 +478,10 @@ function bindOrganizeEntry() {
             createForm.reset();
             saveSession();
             goWorkspace();
-            openKeyModal("Master key — save it", created.master_key);
+            openKeyModal("Master key — save it", created.master_key, {
+                ...inviteCardOpts(),
+                organizer: true,
+            });
             toast("Event created. Share access keys, never this master key.", "ok", "Ready");
         } catch (err) {
             note(noteEl, err.message, "error");
@@ -448,22 +503,10 @@ function bindOrganizeEntry() {
         }
         btnBusy(btn, true, "Opening…");
         try {
-            const details = await api(`/api/events/${encodeURIComponent(eventId)}${qs({ master_key: masterKey })}`);
-            const eventInfo = details.event || {};
-            org = {
-                eventId,
-                masterKey,
-                title: eventInfo.title || "Untitled event",
-                meta: {
-                    description: eventInfo.description || "",
-                    locationData: eventInfo.location_data || "",
-                    createdAt: eventInfo.created_at || "",
-                },
-            };
+            await openOrganizerWorkspace(eventId, masterKey);
             openForm.reset();
-            saveSession();
-            goWorkspace();
             toast("Workspace restored from your key.", "ok", "Welcome back");
+            btnBusy(btn, false);
         } catch (err) {
             note(noteEl, err.message, "error");
             btnBusy(btn, false);
@@ -599,6 +642,8 @@ async function wsContent(main) {
         (event.location_data ? factRow("Location", event.location_data) : "") +
         factRow("Created", fmtDate(event.created_at)) +
         `</div>` +
+        `<p><button class="btn btn-secondary btn-sm" type="button" id="ws-master-card">Master card</button>` +
+        ` — a stamped copy of this master key, hidden in the pixels. Drop it on the join tab to reopen this workspace.</p>` +
         `</section>` +
         `<section class="card">` +
         `<h3 class="card-title">Content blocks</h3>` +
@@ -619,6 +664,17 @@ async function wsContent(main) {
         `</form>` +
         `<datalist id="block-types">${Object.keys(CONTENT_TYPE_LABELS).map((t) => `<option value="${esc(t)}">`).join("")}</datalist>` +
         `</section>`;
+
+    $("#ws-master-card").addEventListener("click", () => {
+        if (!org || !org.masterKey) return;
+        // Never re-display the raw master key — hand it straight to the card
+        // maker, which keeps it client-side and hidden in the pixels.
+        openCardCoverModal({
+            ...inviteCardOpts(),
+            accessKey: org.masterKey,
+            organizer: true,
+        });
+    });
 
     $("#add-block-form").addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -1033,7 +1089,7 @@ function openCardCoverModal(card) {
         `<div class="card-preview-wrap"><canvas id="card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>`;
 
     openModal({
-        title: "Make an invite card",
+        title: card.organizer ? "Make a master card" : "Make an invite card",
         body,
         confirmText: "Download card",
         cancelText: "Cancel",
@@ -1043,7 +1099,13 @@ function openCardCoverModal(card) {
                 cover,
                 coverImage: cover.image || null,
             });
-            toast("Invite card downloaded — the key is hidden in its pixels.", "ok", "Card ready");
+            toast(
+                card.organizer
+                    ? "Master card downloaded — it reopens the event on this tab."
+                    : "Invite card downloaded — the key is hidden in its pixels.",
+                "ok",
+                "Card ready"
+            );
         },
     });
 
@@ -1394,6 +1456,41 @@ function openDecommissionModal() {
     if (input) window.setTimeout(() => input.focus(), 0);
 }
 
+/**
+ * Restore the organizer workspace for an event from its master key.
+ * Shared by the two-field form and the master card / gkporg: keyline
+ * decoders — the master key travels the same way in all three.
+ */
+async function openOrganizerWorkspace(eventId, masterKey) {
+    const details = await api(`/api/events/${encodeURIComponent(eventId)}${qs({ master_key: masterKey })}`);
+    const eventInfo = details.event || {};
+    org = {
+        eventId,
+        masterKey,
+        title: eventInfo.title || "Untitled event",
+        meta: {
+            description: eventInfo.description || "",
+            locationData: eventInfo.location_data || "",
+            createdAt: eventInfo.created_at || "",
+        },
+    };
+    saveSession();
+    goWorkspace();
+}
+
+/**
+ * Route an invite payload where its role says: attendee keys unlock the event
+ * page on this tab; organizer (master) payloads restore the workspace.
+ */
+async function routeInvitePayload(parsed) {
+    if (parsed.role === "organizer") {
+        await openOrganizerWorkspace(parsed.eventId, parsed.accessKey);
+        toast("Workspace restored from your master card.", "ok", "Welcome back");
+        return;
+    }
+    await unlockEvent(parsed.eventId, parsed.accessKey);
+}
+
 /* ------------------------------------------------------------------
  * Door: invite-card drop / paste / choose (Phase 3.6)
  * ------------------------------------------------------------------ */
@@ -1432,7 +1529,9 @@ async function handleInvitePng(file) {
         // Honest, specific rejection instead of a generic failure.
         if (!parsed) throw new Error(window.gkpStego.inviteRejectReason(kind));
 
-        await unlockEvent(parsed.eventId, parsed.accessKey);
+        // The payload's role routes it: attendee keys unlock the event page,
+        // organizer master cards restore the workspace.
+        await routeInvitePayload(parsed);
     } catch (err) {
         toast(err.message, "error", "Could not read the card");
     } finally {
@@ -1475,7 +1574,8 @@ function bindJoinDrop() {
             fileInput.value = "";
         });
     }
-    // Paste anywhere while the join entry is visible: an image card or gkp: text.
+    // Paste anywhere while the join entry is visible: an invite card, master
+    // card, or gkp: / gkporg: text — each routed by the payload's role.
     document.addEventListener("paste", async (event) => {
         const entry = $("#join-entry");
         if (!entry || entry.hidden) return;
@@ -1496,7 +1596,11 @@ function bindJoinDrop() {
         const parsed = text ? window.gkpStego.parseKeyLine(text.trim()) : null;
         if (parsed) {
             event.preventDefault();
-            await unlockEvent(parsed.eventId, parsed.accessKey);
+            try {
+                await routeInvitePayload(parsed);
+            } catch (err) {
+                toast(err.message, "error", parsed.role === "organizer" ? "Could not open the workspace" : "Could not unlock");
+            }
         }
     });
 }

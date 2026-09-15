@@ -242,6 +242,59 @@ window.gkpInviteCard = (function () {
         });
     }
 
+    /* ----------------------------------------------------------
+     * Master-card markings (Phase 3.8)
+     *
+     * An organizer master card is the same paper, but stamped: a
+     * paper-backed chip reading "MASTER CARD" (letterspaced serif caps,
+     * double keyline border — the stamp motif) sits under the top keyhole,
+     * and classic cards get a keeper note above the bottom keyhole. The chip
+     * is drawn on top of any cover, including full-bleed photos, so the card
+     * can never be mistaken for an attendee invite.
+     * ---------------------------------------------------------- */
+    function drawSpacedCaps(ctx, text, cx, baseline, spacing) {
+        const chars = [...text];
+        const widths = chars.map((ch) => ctx.measureText(ch).width);
+        const total = widths.reduce((sum, w) => sum + w, 0) + spacing * (chars.length - 1);
+        let x = cx - total / 2;
+        chars.forEach((ch, i) => {
+            ctx.fillText(ch, x, baseline);
+            x += widths[i] + spacing;
+        });
+    }
+
+    function drawMasterChip(ctx) {
+        ctx.save();
+        const cx = CARD_W / 2;
+        const cy = 130;
+        ctx.font = "600 21px Georgia, 'Times New Roman', serif";
+        const chipW = Math.ceil(ctx.measureText("MASTER CARD").width) + 9 * 10 + 48;
+        const chipH = 46;
+        const x = cx - chipW / 2;
+        const y = cy - chipH / 2;
+        ctx.fillStyle = PAPER;
+        ctx.fillRect(x, y, chipW, chipH);
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, chipW, chipH);
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 4, y + 4, chipW - 8, chipH - 8);
+        ctx.fillStyle = INK;
+        ctx.textBaseline = "middle";
+        drawSpacedCaps(ctx, "MASTER CARD", cx, cy + 1, 9);
+        ctx.restore();
+    }
+
+    function drawMasterNote(ctx) {
+        ctx.save();
+        ctx.fillStyle = INK;
+        ctx.globalAlpha = 0.72;
+        ctx.font = "italic 400 17px Georgia, 'Times New Roman', serif";
+        ctx.textAlign = "center";
+        ctx.fillText("The one key this event answers to — keep it private.", CARD_W / 2, CARD_H - 128);
+        ctx.restore();
+    }
+
     /** Draw the card onto `canvas`. Pure and deterministic (testable). */
     function render(canvas, opts) {
         const o = opts || {};
@@ -290,6 +343,13 @@ window.gkpInviteCard = (function () {
         // Bottom ornament: a single keyhole, centered. Full-bleed photo cards
         // skip it — the art runs edge to edge.
         if (!fullBleed) drawKeyhole(ctx, CARD_W / 2, CARD_H - 70, 12);
+
+        // Master-card stamp (drawn on top of any cover, including full-bleed
+        // photos — the chip carries its own paper ground so it always reads).
+        if (o.organizer) {
+            drawMasterChip(ctx);
+            if (!fullBleed) drawMasterNote(ctx);
+        }
     }
 
     function safeFileName(title) {
@@ -300,13 +360,15 @@ window.gkpInviteCard = (function () {
     /**
      * Draw, embed the invite payload and trigger a download of the stego PNG.
      *
-     * opts: { eventId, accessKey, title, cover, coverImage, scale }
-     * Returns the Blob (for tests / preview) after downloading.
+     * opts: { eventId, accessKey, title, cover, coverImage, scale, organizer }
+     * `organizer: true` makes a MASTER card — same viewport, stamped face,
+     * the hidden payload tagged `organizer` (see stego.js). Returns the Blob
+     * (for tests / preview) after downloading.
      */
     async function download(opts) {
         const o = opts || {};
         const coverImage = o.cover && o.cover.type === "image" ? await loadCoverImage(o.cover) : null;
-        const payload = window.gkpStego.makePayload(o.eventId, o.accessKey);
+        const payload = window.gkpStego.makePayload(o.eventId, o.accessKey, o.organizer ? "organizer" : undefined);
         const canvas = document.createElement("canvas");
         render(canvas, { ...o, coverImage });
         const png = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
@@ -314,7 +376,7 @@ window.gkpInviteCard = (function () {
         const url = URL.createObjectURL(stegoBlob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `${safeFileName(opts.title)}-invite.png`;
+        a.download = `${safeFileName(opts.title)}-${o.organizer ? "master-card" : "invite"}.png`;
         document.body.appendChild(a);
         a.click();
         a.remove();
