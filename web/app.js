@@ -596,7 +596,7 @@ async function wsContent(main) {
         `<div class="fact-list">` +
         factRow("Title", event.title) +
         factRow("Event ID", fmtId(event.id)) +
-        (event.location_data ? factRow("Where", event.location_data) : "") +
+        (event.location_data ? factRow("Location", event.location_data) : "") +
         factRow("Created", fmtDate(event.created_at)) +
         `</div>` +
         `</section>` +
@@ -1975,7 +1975,7 @@ async function renderLiteEvent() {
             `${flyer}` +
             (evt.description ? `<p>${esc(evt.description)}</p>` : "") +
             (data.when ? `<p><strong>When:</strong> ${esc(fmtDate(data.when))}</p>` : "") +
-            (data.where ? `<p><strong>Where:</strong> ${esc(data.where)}</p>` : "") +
+            (data.where ? `<p><strong>Location:</strong> ${esc(data.where)}</p>` : "") +
             `<p class="form-note">This page wipes itself ` +
             `${esc(fmtDate(data.expires_at))}.</p>`;
     } catch (err) {
