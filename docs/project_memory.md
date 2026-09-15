@@ -56,6 +56,15 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
 - **Fetch MCP server** provides web content fetching.
 - **Cline user-level MCP config lives at `~/.cline/data/settings/cline_mcp_settings.json`** (not the legacy `globalStorage/saoudrizwan.claude-dev` path). Format: `{"mcpServers": {"<name>": {"transport": {"type": "stdio", "command", "args", "env"}}}}`. Remote servers use `"type": "streamableHttp"` + `"url"`.
 - **`spawn -- ENOENT` means the config literally sets `"command": "--"`** — Cline tried to execute a program named `--`. The real executable had been misplaced in `args`. `command` must be the executable, `args` the arguments.
+
+### 1.6.1 Project folder rename `setup` → `gatekeyp` (2026-09-14)
+
+- The project folder was renamed `/Users/jackhuang/projects/setup` → `/Users/jackhuang/projects/gatekeyp`. Consequences fixed on record:
+  - **`.venv` shebangs embedded the absolute old path** (`/Users/jackhuang/projects/setup/…`), so the venv silently stopped working after the move. Any absolute-path reference (venv scripts, generated configs, registries) breaks on rename — prefer `Path(__file__).resolve().parents[N]` over hardcoded `/Users/...` paths.
+  - **`.venv` contained an x86_64 `cryptography` build whose `libssl.3.dylib` pointed at a nonexistent `/usr/local/opt/openssl@3`**. Rebuilt cleanly with `arch -arm64 uv sync` on an arm64 CPython 3.11; full suite (294 tests) passes.
+- **`uv` must be invoked as `arch -arm64 ~/.local/bin/uv`** on this machine (Rosetta x86_64 shell, arm64 Homebrew toolchain). Use the `.venv/bin` tools directly under `arch -arm64` (e.g. `arch -arm64 .venv/bin/pytest -q`) when the shell itself is x86.
+- **`~/.cline/kanban/workspaces/index.json`** records the workspace folder path — update it whenever the repo moves. Until then the kanban board handed agents a stale path.
+- Git history, remotes, and tags survive a folder rename untouched (`remote = github.com/otxwes/gatekeyp`); only path-dependent artifacts need fixing.
 - **GUI-launched VS Code / Cline have a minimal `PATH`** (Homebrew dirs like `/usr/local/opt/*/bin` and `/usr/local/bin` are missing). Fix: use absolute paths for `command` **and** set `"env": {"PATH": "/usr/local/opt/node/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"}` on the transport.
 - **npx still needs `node` on PATH** even when invoked via an absolute node + npx-cli path — npm resolves the package's `#!/usr/bin/env node` bin through PATH. Add the node bin dir to the transport `env.PATH`, and pass `-y` so npx never blocks on an install prompt. Working pattern: `command: "/usr/local/opt/node/bin/node"`, `args: ["/usr/local/opt/node/libexec/lib/node_modules/npm/bin/npx-cli.js", "-y", "<pkg>"]`.
 - **Homebrew `node` was installed but never linked** (no `node`/`npm`/`npx` in `/usr/local/bin`); the keg path `/usr/local/opt/node/bin/*` and `npx-cli.js` are stable regardless of symlinks.
