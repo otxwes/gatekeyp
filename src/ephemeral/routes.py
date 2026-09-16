@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.db.database_handler import DecryptionError
 from src.ephemeral.lxmf_delivery import LXMF_DEST_RE, get_deliverer
@@ -107,10 +107,14 @@ def _render_live_page(
 
 
 class DeliverKeyRequest(BaseModel):
-    """Body for mesh (LXMF) master-key delivery."""
+    """Body for mesh (LXMF) organizer-key delivery."""
 
     destination: str
-    master_key: str
+    organizer_key: str = Field(
+        ...,
+        min_length=1,
+        max_length=2048,
+    )
 
 
 def build_ephemeral_router(  # noqa: C901, PLR0915 - many routes
@@ -134,7 +138,7 @@ def build_ephemeral_router(  # noqa: C901, PLR0915 - many routes
         """
         Create an ephemeral lite event (organizer funnel, no login).
 
-        Returns the event id, the master key (shown exactly once) and ready
+        Returns the event id, the organizer key (shown exactly once) and ready
         to share organizer/public URLs. Rate limited per client IP.
         """
         client_id = request.client.host if request.client else "unknown"
@@ -165,7 +169,7 @@ def build_ephemeral_router(  # noqa: C901, PLR0915 - many routes
 
         base_url = str(request.base_url).rstrip("/")
         result["organizer_url"] = (
-            f"{base_url}/#/organizer/{result['event_id']}?k={result['master_key']}"
+            f"{base_url}/#/organizer/{result['event_id']}?k={result['organizer_key']}"
         )
         result["public_url"] = f"{base_url}/i/{result['event_id']}"
         result["mesh_delivery_available"] = mesh.available()
@@ -214,8 +218,8 @@ def build_ephemeral_router(  # noqa: C901, PLR0915 - many routes
             raise HTTPException(status_code=400, detail=str(err)) from err
 
     @router.post("/api/lite/events/{event_id}/deliver")
-    def deliver_master_key(event_id: str, body: DeliverKeyRequest, request: Request) -> dict:
-        """Opt-in mesh delivery: relay the master key to an LXMF address.
+    def deliver_organizer_key(event_id: str, body: DeliverKeyRequest, request: Request) -> dict:
+        """Opt-in mesh delivery: relay the organizer key to an LXMF address.
 
         The key must match the event's stored HMAC (the same check the
         attendee unlock uses), so the endpoint only ever relays a key that
@@ -243,7 +247,7 @@ def build_ephemeral_router(  # noqa: C901, PLR0915 - many routes
                 detail="LXMF address must be 32 hex characters",
             )
         try:
-            view = service.get_keyed_view(key=body.master_key, event_id=event_id)
+            view = service.get_keyed_view(key=body.organizer_key, event_id=event_id)
         except LiteNotFoundError as err:
             raise HTTPException(status_code=404, detail="Event not found") from err
         except LiteGoneError as err:
@@ -253,10 +257,10 @@ def build_ephemeral_router(  # noqa: C901, PLR0915 - many routes
                 status_code=400,
                 detail=f"This key does not grant access to event {event_id}",
             ) from err
-        result = mesh.send_master_key(
+        result = mesh.send_organizer_key(
             address,
             title=view["event"]["title"],
-            master_key=body.master_key,
+            organizer_key=body.organizer_key,
             share_url=f"{str(request.base_url).rstrip('/')}/i/{event_id}",
             expires_at=_fmt_utc(view["expires_at"]),
         )

@@ -16,17 +16,17 @@ from src.core.key_manager import KeyManager
 from src.db.database_handler import DatabaseHandler
 
 # Generate a valid Fernet key for tests
-TEST_MASTER_KEY = Fernet.generate_key().decode()
+TEST_ORGANIZER_KEY = Fernet.generate_key().decode()
 TEST_HMAC_SECRET = "test-hmac-secret-for-unit-tests-only-1234567890"
 
-os.environ.setdefault("GATEKEYP_MASTER_KEY", TEST_MASTER_KEY)
+os.environ.setdefault("GATEKEYP_ORGANIZER_KEY", TEST_ORGANIZER_KEY)
 os.environ.setdefault("GATEKEYP_HMAC_SECRET", TEST_HMAC_SECRET)
 
 
 @pytest.fixture
 def db():
     """Create an in-memory database for testing."""
-    handler = DatabaseHandler(db_path=":memory:", master_key=TEST_MASTER_KEY)
+    handler = DatabaseHandler(db_path=":memory:", organizer_key=TEST_ORGANIZER_KEY)
     yield handler
     handler.close()
 
@@ -66,8 +66,8 @@ def created_event(lifecycle):
 
 
 class TestCreateEvent:
-    def test_create_event_returns_master_key(self, lifecycle):
-        """Creating an event returns a master key."""
+    def test_create_event_returns_organizer_key(self, lifecycle):
+        """Creating an event returns a organizer key."""
         result = lifecycle.create_event(
             title="My Event",
             description="Event description",
@@ -77,8 +77,8 @@ class TestCreateEvent:
         assert result["event_id"].startswith("event_")
         assert result["title"] == "My Event"
         assert result["organizer_id"] == "@user:test"
-        assert result["master_key"].startswith("local:")
-        assert result["master_key_hash"]
+        assert result["organizer_key"].startswith("local:")
+        assert result["organizer_key_hash"]
         assert result["expires_at"]
 
     def test_create_event_stores_event_in_db(self, lifecycle, db):
@@ -93,15 +93,15 @@ class TestCreateEvent:
         assert event is not None
         assert event["title"] == "Persisted Event"
 
-    def test_create_event_links_master_key(self, lifecycle, db):
-        """The master key is linked to the event."""
+    def test_create_event_links_organizer_key(self, lifecycle, db):
+        """The organizer key is linked to the event."""
         result = lifecycle.create_event(
             title="Linked Event",
             description="Key should be linked",
             organizer_id="@user:test",
         )
 
-        content_ids = db.get_content_ids_for_key(result["master_key_hash"])
+        content_ids = db.get_content_ids_for_key(result["organizer_key_hash"])
         assert any(c["content_id"] == result["event_id"] for c in content_ids)
 
     def test_create_event_empty_title_raises(self, lifecycle):
@@ -139,9 +139,9 @@ class TestCreateEvent:
 
 class TestAddContentBlock:
     def test_add_content_block_success(self, lifecycle, created_event):
-        """Adding a content block with the master key succeeds."""
+        """Adding a content block with the organizer key succeeds."""
         result = lifecycle.add_content_block(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
             content_type="description",
             payload="This is the event description",
@@ -155,7 +155,7 @@ class TestAddContentBlock:
         """Adding content with an invalid key raises an error."""
         with pytest.raises(EventLifecycleError, match="does not exist"):
             lifecycle.add_content_block(
-                master_key="local:invalid-key-1234567890",
+                organizer_key="local:invalid-key-1234567890",
                 event_id=created_event["event_id"],
                 content_type="description",
                 payload="Should fail",
@@ -172,7 +172,7 @@ class TestAddContentBlock:
 
         with pytest.raises(EventLifecycleError, match="does not grant"):
             lifecycle.add_content_block(
-                master_key=created_event["master_key"],
+                organizer_key=created_event["organizer_key"],
                 event_id=other_event["event_id"],
                 content_type="description",
                 payload="Should fail",
@@ -181,20 +181,20 @@ class TestAddContentBlock:
     def test_get_event_details_returns_content(self, lifecycle, created_event):
         """Getting event details returns all content blocks."""
         lifecycle.add_content_block(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
             content_type="description",
             payload="Event description",
         )
         lifecycle.add_content_block(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
             content_type="schedule",
             payload="Day 1: Registration",
         )
 
         details = lifecycle.get_event_details(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
         )
 
@@ -213,7 +213,7 @@ class TestAccessKeys:
     def test_generate_access_key(self, lifecycle, created_event):
         """Generating an access key returns a valid key."""
         result = lifecycle.generate_access_key(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
             days=7,
             owner_id="@attendee:test",
@@ -224,11 +224,11 @@ class TestAccessKeys:
         assert result["event_id"] == created_event["event_id"]
         assert result["expires_at"]
 
-    def test_generate_access_key_invalid_master(self, lifecycle, created_event):
-        """Generating an access key with an invalid master key fails."""
+    def test_generate_access_key_invalid_organizer(self, lifecycle, created_event):
+        """Generating an access key with an invalid organizer key fails."""
         with pytest.raises(EventLifecycleError, match="does not exist"):
             lifecycle.generate_access_key(
-                master_key="local:bad-master-key-1234567890",
+                organizer_key="local:bad-organizer-key-1234567890",
                 event_id=created_event["event_id"],
             )
 
@@ -242,15 +242,15 @@ class TestAccessKeys:
 
         with pytest.raises(EventLifecycleError, match="does not grant"):
             lifecycle.generate_access_key(
-                master_key=created_event["master_key"],
+                organizer_key=created_event["organizer_key"],
                 event_id=other_event["event_id"],
             )
 
     def test_access_key_can_access_content(self, lifecycle, created_event):
         """An access key can access the event's content."""
-        # Add content with the master key
+        # Add content with the organizer key
         lifecycle.add_content_block(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
             content_type="description",
             payload="Secret content",
@@ -258,7 +258,7 @@ class TestAccessKeys:
 
         # Generate an access key
         access = lifecycle.generate_access_key(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
         )
 
@@ -269,18 +269,18 @@ class TestAccessKeys:
     def test_list_access_keys(self, lifecycle, created_event):
         """Listing access keys returns all generated keys."""
         lifecycle.generate_access_key(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
             owner_id="@alice:test",
         )
         lifecycle.generate_access_key(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
             owner_id="@bob:test",
         )
 
         keys = lifecycle.list_access_keys(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
         )
 
@@ -290,7 +290,7 @@ class TestAccessKeys:
     def test_revoke_access_key(self, lifecycle, created_event):
         """Revoking an access key makes it invalid."""
         access = lifecycle.generate_access_key(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
         )
 
@@ -300,7 +300,7 @@ class TestAccessKeys:
 
         # Revoke it
         revoked = lifecycle.revoke_access_key(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
             access_key=access["access_key"],
         )
@@ -318,33 +318,33 @@ class TestAccessKeys:
 
 
 class TestDecommission:
-    def test_decommission_revokes_master_key(self, lifecycle, created_event):
-        """Decommissioning revokes the master key."""
+    def test_decommission_revokes_organizer_key(self, lifecycle, created_event):
+        """Decommissioning revokes the organizer key."""
         result = lifecycle.decommission_event(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
         )
 
         assert result["event_id"] == created_event["event_id"]
-        assert result["master_key_revoked"] is True
+        assert result["organizer_key_revoked"] is True
 
-        # Master key is now invalid
-        validation = lifecycle.key_manager.validate_key(created_event["master_key"])
+        # Organizer key is now invalid
+        validation = lifecycle.key_manager.validate_key(created_event["organizer_key"])
         assert validation["status"] == "invalid"
 
     def test_decommission_revokes_access_keys(self, lifecycle, created_event):
         """Decommissioning revokes all access keys."""
         access1 = lifecycle.generate_access_key(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
         )
         access2 = lifecycle.generate_access_key(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
         )
 
         result = lifecycle.decommission_event(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=created_event["event_id"],
         )
 
@@ -358,7 +358,7 @@ class TestDecommission:
         """Decommissioning wipes the event and leaves an ended tombstone."""
         event_id = created_event["event_id"]
         lifecycle.decommission_event(
-            master_key=created_event["master_key"],
+            organizer_key=created_event["organizer_key"],
             event_id=event_id,
         )
 
@@ -368,16 +368,16 @@ class TestDecommission:
         assert db.get_tombstone(event_id) is not None
         assert db.list_rsvps(event_id) == []
 
-    def test_decommission_invalid_master(self, lifecycle, created_event):
-        """Decommissioning with an invalid master key fails."""
+    def test_decommission_invalid_organizer(self, lifecycle, created_event):
+        """Decommissioning with an invalid organizer key fails."""
         with pytest.raises(EventLifecycleError, match="does not exist"):
             lifecycle.decommission_event(
-                master_key="local:bad-master-key-1234567890",
+                organizer_key="local:bad-organizer-key-1234567890",
                 event_id=created_event["event_id"],
             )
 
     def test_decommission_wrong_event(self, lifecycle, created_event):
-        """Decommissioning a different event with the wrong master key fails."""
+        """Decommissioning a different event with the wrong organizer key fails."""
         other_event = lifecycle.create_event(
             title="Other Event",
             description="Different event",
@@ -386,6 +386,6 @@ class TestDecommission:
 
         with pytest.raises(EventLifecycleError, match="does not grant"):
             lifecycle.decommission_event(
-                master_key=created_event["master_key"],
+                organizer_key=created_event["organizer_key"],
                 event_id=other_event["event_id"],
             )

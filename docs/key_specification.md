@@ -6,8 +6,8 @@ The "Key" is the primary mechanism for gatekeeping content in gatekeyp. It allow
 ## 2. Key Types
 - **Public Keys:** Used for identification but not for direct decryption/access of secret data (if applicable).
 - **Access Keys:** Unique identifiers used to unlock specific content blocks or sections of the application.
-- **Master Keys:** Administrative keys with elevated privileges.
-- **Event Master Keys:** Created when an event is created (365-day default lifetime). Grants full access to all event content.
+- **Organizer Keys:** Administrative keys with elevated privileges.
+- **Event Organizer Keys:** Created when an event is created (365-day default lifetime). Grants full access to all event content.
 - **Attendee Access Keys:** Generated for attendees (30-day default lifetime). Grant access to event content blocks, media, bulletins, and comments.
 
 ## 3. Generation Logic

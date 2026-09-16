@@ -1,9 +1,9 @@
 # Copyright (c) 2026 gatekeyp contributors
 
-"""Optional LXMF (Reticulum) delivery of event master keys.
+"""Optional LXMF (Reticulum) delivery of event organizer keys.
 
 Prototype for mesh key distribution. The organizer's browser posts the
-master key it was just shown plus the attendee's LXMF address (a
+organizer key it was just shown plus the attendee's LXMF address (a
 32-character destination hash, as displayed by Sideband or Nomad Network)
 to ``POST /api/lite/events/{event_id}/deliver``. The route verifies the key
 against the event's stored HMAC first, so the endpoint can only relay a key
@@ -51,18 +51,18 @@ def _mesh_deps_available() -> bool:
     return True
 
 
-def compose_key_message(*, title: str, master_key: str, share_url: str, expires_at: str) -> str:
+def compose_key_message(*, title: str, organizer_key: str, share_url: str, expires_at: str) -> str:
     """Compose the plaintext body sent inside the encrypted LXMF payload."""
     return (
         f"{title}\n\n"
-        f"Master key: {master_key}\n"
+        f"Organizer key: {organizer_key}\n"
         f"Share link: {share_url}\n\n"
         f"This page wipes itself {expires_at}."
     )
 
 
 class LXMFKeyDeliverer:
-    """Relays event master keys to attendee LXMF addresses over Reticulum.
+    """Relays event organizer keys to attendee LXMF addresses over Reticulum.
 
     Bound to env config at construction (enabled flag, state directory and
     an optional RNS config directory). One instance per process — RNS allows
@@ -112,8 +112,8 @@ class LXMFKeyDeliverer:
             self._startup_error = str(err)
         return self._startup_error is None
 
-    def send_master_key(
-        self, destination: str, *, title: str, master_key: str, share_url: str, expires_at: str
+    def send_organizer_key(
+        self, destination: str, *, title: str, organizer_key: str, share_url: str, expires_at: str
     ) -> dict[str, str]:
         """Queue the key for an LXMF destination hash (32 hex chars).
 
@@ -154,7 +154,7 @@ class LXMFKeyDeliverer:
                     source=self._source,
                     content=compose_key_message(
                         title=title,
-                        master_key=master_key,
+                        organizer_key=organizer_key,
                         share_url=share_url,
                         expires_at=expires_at,
                     ),

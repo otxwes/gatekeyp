@@ -1,6 +1,6 @@
 import unittest
 
-from helpers import TEST_MASTER_KEY
+from helpers import TEST_ORGANIZER_KEY
 
 from src.api.gateway import Gateway, RateLimiter
 from src.core.key_manager import KeyManager
@@ -14,7 +14,7 @@ class TestGatewayIntegration(unittest.TestCase):
 
     def setUp(self):
         # Use an in-memory database for isolation
-        self.db = DatabaseHandler(":memory:", master_key=TEST_MASTER_KEY)
+        self.db = DatabaseHandler(":memory:", organizer_key=TEST_ORGANIZER_KEY)
         self.km = KeyManager(db=self.db, hmac_secret=TEST_HMAC_SECRET)
         self.gateway = Gateway(db=self.db, key_manager=self.km)
 
@@ -189,7 +189,7 @@ class TestGatewayRateLimiting(unittest.TestCase):
     """Integration tests for gateway rate limiting."""
 
     def setUp(self):
-        self.db = DatabaseHandler(":memory:", master_key=TEST_MASTER_KEY)
+        self.db = DatabaseHandler(":memory:", organizer_key=TEST_ORGANIZER_KEY)
         self.km = KeyManager(db=self.db, hmac_secret=TEST_HMAC_SECRET)
         self.limiter = RateLimiter(max_attempts=3, window_seconds=60.0)
         self.gateway = Gateway(db=self.db, key_manager=self.km, rate_limiter=self.limiter)

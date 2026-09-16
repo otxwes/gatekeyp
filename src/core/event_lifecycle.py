@@ -10,11 +10,11 @@ from src.db.database_handler import DatabaseHandler
 # Default key lifetime for access keys (30 days)
 DEFAULT_ACCESS_KEY_DAYS = 30
 
-# Default key lifetime for master keys (365 days)
-DEFAULT_MASTER_KEY_DAYS = 365
+# Default key lifetime for organizer keys (365 days)
+DEFAULT_ORGANIZER_KEY_DAYS = 365
 
-# Error message for master key not granting access to an event
-_ACCESS_DENIED_MSG = "Master key does not grant access to this event"
+# Error message for organizer key not granting access to an event
+_ACCESS_DENIED_MSG = "Organizer key does not grant access to this event"
 
 
 class EventLifecycleError(ValueError):
@@ -71,12 +71,12 @@ class EventLifecycleManager:
         organizer_id: str,
         location_data: str | None = None,
         *,
-        master_key_days: int = DEFAULT_MASTER_KEY_DAYS,
+        organizer_key_days: int = DEFAULT_ORGANIZER_KEY_DAYS,
     ) -> dict:
         """
-        Create a new event with a master key.
+        Create a new event with a organizer key.
 
-        The master key grants full access to all event content and
+        The organizer key grants full access to all event content and
         can be used to generate attendee access keys.
 
         Args:
@@ -84,10 +84,10 @@ class EventLifecycleManager:
             description: Event description.
             organizer_id: Identifier of the organizer (e.g., @user:instance).
             location_data: Optional location data (e.g., coordinates).
-            master_key_days: Lifetime of the master key in days.
+            organizer_key_days: Lifetime of the organizer key in days.
 
         Returns:
-            Event metadata including the master key (shown once).
+            Event metadata including the organizer key (shown once).
         """
         # Validate inputs
         if not title or not title.strip():
@@ -112,28 +112,28 @@ class EventLifecycleManager:
             location_data=location_data,
         )
 
-        # Generate a master key for this event
-        master_key = self.key_manager.generate_key()
-        master_hash = self.key_manager.hash_key(master_key)
-        expires_at = (datetime.now(UTC) + timedelta(days=master_key_days)).isoformat()
+        # Generate a organizer key for this event
+        organizer_key = self.key_manager.generate_key()
+        organizer_hash = self.key_manager.hash_key(organizer_key)
+        expires_at = (datetime.now(UTC) + timedelta(days=organizer_key_days)).isoformat()
 
         self.db.add_key(
-            hash_key=master_hash,
-            key_type="master",
+            hash_key=organizer_hash,
+            key_type="organizer",
             expires_at=expires_at,
             owner_id=organizer_id,
         )
 
-        # Link the master key to the event
-        self.db.add_key_content_link(master_hash, event_id, "event")
+        # Link the organizer key to the event
+        self.db.add_key_content_link(organizer_hash, event_id, "event")
 
         return {
             "event_id": event_id,
             "title": title,
             "description": description,
             "organizer_id": organizer_id,
-            "master_key": f"local:{master_key}",
-            "master_key_hash": master_hash,
+            "organizer_key": f"local:{organizer_key}",
+            "organizer_key_hash": organizer_hash,
             "expires_at": expires_at,
         }
 
@@ -143,7 +143,7 @@ class EventLifecycleManager:
 
     def add_content_block(
         self,
-        master_key: str,
+        organizer_key: str,
         event_id: str,
         content_type: str,
         payload: str,
@@ -152,7 +152,7 @@ class EventLifecycleManager:
         Add a content block (description, location, schedule, etc.) to an event.
 
         Args:
-            master_key: The event's master key.
+            organizer_key: The event's organizer key.
             event_id: The event ID.
             content_type: Type of content (e.g., "description", "schedule").
             payload: The content payload.
@@ -160,10 +160,10 @@ class EventLifecycleManager:
         Returns:
             The created content block metadata.
         """
-        # Verify the master key grants access to the event
-        validation = self.key_manager.validate_key(master_key)
+        # Verify the organizer key grants access to the event
+        validation = self.key_manager.validate_key(organizer_key)
         if validation["status"] != "valid":
-            message = validation.get("message", "Invalid master key")
+            message = validation.get("message", "Invalid organizer key")
             raise EventLifecycleError(message)
 
         key_hash = validation["hash"]
@@ -189,21 +189,21 @@ class EventLifecycleManager:
             "content_type": content_type,
         }
 
-    def get_event_details(self, master_key: str, event_id: str) -> dict:
+    def get_event_details(self, organizer_key: str, event_id: str) -> dict:
         """
         Retrieve full event details including all content blocks.
 
         Args:
-            master_key: The event's master key.
+            organizer_key: The event's organizer key.
             event_id: The event ID.
 
         Returns:
             Event details with all content blocks.
         """
-        # Verify the master key grants access to the event
-        validation = self.key_manager.validate_key(master_key)
+        # Verify the organizer key grants access to the event
+        validation = self.key_manager.validate_key(organizer_key)
         if validation["status"] != "valid":
-            message = validation.get("message", "Invalid master key")
+            message = validation.get("message", "Invalid organizer key")
             raise EventLifecycleError(message)
 
         key_hash = validation["hash"]
@@ -235,7 +235,7 @@ class EventLifecycleManager:
 
     def generate_access_key(
         self,
-        master_key: str,
+        organizer_key: str,
         event_id: str,
         *,
         days: int = DEFAULT_ACCESS_KEY_DAYS,
@@ -247,7 +247,7 @@ class EventLifecycleManager:
         The access key grants access to all content linked to the event.
 
         Args:
-            master_key: The event's master key (must be valid).
+            organizer_key: The event's organizer key (must be valid).
             event_id: The event ID.
             days: Lifetime of the access key in days.
             owner_id: Optional identifier of the key owner.
@@ -255,10 +255,10 @@ class EventLifecycleManager:
         Returns:
             The generated access key (shown once).
         """
-        # Verify the master key grants access to the event
-        validation = self.key_manager.validate_key(master_key)
+        # Verify the organizer key grants access to the event
+        validation = self.key_manager.validate_key(organizer_key)
         if validation["status"] != "valid":
-            message = validation.get("message", "Invalid master key")
+            message = validation.get("message", "Invalid organizer key")
             raise EventLifecycleError(message)
 
         key_hash = validation["hash"]
@@ -291,23 +291,23 @@ class EventLifecycleManager:
 
     def list_access_keys(
         self,
-        master_key: str,
+        organizer_key: str,
         event_id: str,
     ) -> list[dict]:
         """
         List all access keys for an event.
 
         Args:
-            master_key: The event's master key.
+            organizer_key: The event's organizer key.
             event_id: The event ID.
 
         Returns:
             List of access key metadata (no raw keys).
         """
-        # Verify the master key grants access to the event
-        validation = self.key_manager.validate_key(master_key)
+        # Verify the organizer key grants access to the event
+        validation = self.key_manager.validate_key(organizer_key)
         if validation["status"] != "valid":
-            message = validation.get("message", "Invalid master key")
+            message = validation.get("message", "Invalid organizer key")
             raise EventLifecycleError(message)
 
         key_hash = validation["hash"]
@@ -328,7 +328,7 @@ class EventLifecycleManager:
 
     def revoke_access_key(
         self,
-        master_key: str,
+        organizer_key: str,
         event_id: str,
         access_key: str,
     ) -> bool:
@@ -336,17 +336,17 @@ class EventLifecycleManager:
         Revoke an attendee access key.
 
         Args:
-            master_key: The event's master key.
+            organizer_key: The event's organizer key.
             event_id: The event ID.
             access_key: The raw access key to revoke.
 
         Returns:
             True if the key was revoked.
         """
-        # Verify the master key grants access to the event
-        validation = self.key_manager.validate_key(master_key)
+        # Verify the organizer key grants access to the event
+        validation = self.key_manager.validate_key(organizer_key)
         if validation["status"] != "valid":
-            message = validation.get("message", "Invalid master key")
+            message = validation.get("message", "Invalid organizer key")
             raise EventLifecycleError(message)
 
         key_hash = validation["hash"]
@@ -363,7 +363,7 @@ class EventLifecycleManager:
 
     def decommission_event(
         self,
-        master_key: str,
+        organizer_key: str,
         event_id: str,
     ) -> dict:
         """
@@ -372,16 +372,16 @@ class EventLifecycleManager:
         event (public view reports "ended"; RSVP submissions are refused).
 
         Args:
-            master_key: The event's master key.
+            organizer_key: The event's organizer key.
             event_id: The event ID.
 
         Returns:
             Summary of the decommissioning.
         """
-        # Verify the master key grants access to the event
-        validation = self.key_manager.validate_key(master_key)
+        # Verify the organizer key grants access to the event
+        validation = self.key_manager.validate_key(organizer_key)
         if validation["status"] != "valid":
-            message = validation.get("message", "Invalid master key")
+            message = validation.get("message", "Invalid organizer key")
             raise EventLifecycleError(message)
 
         key_hash = validation["hash"]
@@ -389,7 +389,7 @@ class EventLifecycleManager:
         if not any(c["content_id"] == event_id for c in content_ids):
             raise EventLifecycleError(_ACCESS_DENIED_MSG)
 
-        # Revoke the master key
+        # Revoke the organizer key
         self.db.revoke_key(key_hash)
 
         # Revoke all access keys linked to this event's content
@@ -409,7 +409,7 @@ class EventLifecycleManager:
 
         return {
             "event_id": event_id,
-            "master_key_revoked": True,
+            "organizer_key_revoked": True,
             "access_keys_revoked": revoked_count,
             "wiped": wiped,
             "decommissioned_at": datetime.now(UTC).isoformat(),

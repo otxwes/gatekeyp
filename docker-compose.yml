@@ -10,7 +10,7 @@ services:
     restart: unless-stopped
     environment:
       # Fail-secure: these MUST be provided. The app refuses to start without them.
-      GATEKEYP_MASTER_KEY: ${GATEKEYP_MASTER_KEY:?GATEKEYP_MASTER_KEY is required}
+      GATEKEYP_ORGANIZER_KEY: ${GATEKEYP_ORGANIZER_KEY:?GATEKEYP_ORGANIZER_KEY is required}
       GATEKEYP_HMAC_SECRET: ${GATEKEYP_HMAC_SECRET:?GATEKEYP_HMAC_SECRET is required}
     ports:
       - "8000:8000"

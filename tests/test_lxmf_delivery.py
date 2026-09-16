@@ -1,5 +1,5 @@
 # Copyright (c) 2026 gatekeyp contributors
-"""Tests for the optional LXMF (mesh) master-key delivery prototype.
+"""Tests for the optional LXMF (mesh) organizer-key delivery prototype.
 
 Covers the message composer, address validation, the deliverer's off and
 failure states and the HTTP contract of POST /api/lite/events/{id}/deliver
@@ -29,10 +29,10 @@ from src.ephemeral.lxmf_delivery import (
     compose_key_message,
 )
 
-TEST_MASTER_KEY = Fernet.generate_key().decode()
+TEST_ORGANIZER_KEY = Fernet.generate_key().decode()
 TEST_HMAC_SECRET = "test-hmac-secret-for-unit-tests-only-1234567890"
 
-os.environ.setdefault("GATEKEYP_MASTER_KEY", TEST_MASTER_KEY)
+os.environ.setdefault("GATEKEYP_ORGANIZER_KEY", TEST_ORGANIZER_KEY)
 os.environ.setdefault("GATEKEYP_HMAC_SECRET", TEST_HMAC_SECRET)
 
 ATTENDEE_ADDRESS = "0123456789abcdef0123456789abcdef"
@@ -49,14 +49,14 @@ class StubDeliverer:
     def available(self) -> bool:
         return self._available
 
-    def send_master_key(
-        self, destination: str, *, title: str, master_key: str, share_url: str, expires_at: str
+    def send_organizer_key(
+        self, destination: str, *, title: str, organizer_key: str, share_url: str, expires_at: str
     ) -> dict[str, str]:
         self.calls.append(
             {
                 "destination": destination,
                 "title": title,
-                "master_key": master_key,
+                "organizer_key": organizer_key,
                 "share_url": share_url,
                 "expires_at": expires_at,
             }
@@ -79,7 +79,7 @@ def _build_app(db, key_manager, content_manager, lifecycle, deliverer):
 @pytest.fixture
 def db():
     """Create an in-memory database for testing."""
-    db = DatabaseHandler(db_path=":memory:", master_key=TEST_MASTER_KEY)
+    db = DatabaseHandler(db_path=":memory:", organizer_key=TEST_ORGANIZER_KEY)
     yield db
     db.close()
 
@@ -136,12 +136,12 @@ class TestComposeMessage:
     def test_message_contains_key_link_and_expiry(self):
         text = compose_key_message(
             title="Mesh Night",
-            master_key="fernet-key-value",
+            organizer_key="fernet-key-value",
             share_url="https://host/i/event1",
             expires_at="Sep 16, 2026 08:00 UTC",
         )
         assert "Mesh Night" in text
-        assert "Master key: fernet-key-value" in text
+        assert "Organizer key: fernet-key-value" in text
         assert "Share link: https://host/i/event1" in text
         assert "wipes itself Sep 16, 2026 08:00 UTC" in text
 
@@ -165,10 +165,10 @@ class TestDelivererStates:
         monkeypatch.delenv("GATEKEYP_LXMF_ENABLED", raising=False)
         deliverer = LXMFKeyDeliverer(enabled=False)
         assert deliverer.available() is False
-        result = deliverer.send_master_key(
+        result = deliverer.send_organizer_key(
             ATTENDEE_ADDRESS,
             title="T",
-            master_key="k",
+            organizer_key="k",
             share_url="https://x/i/e",
             expires_at="soon",
         )
@@ -197,7 +197,7 @@ class TestDeliverRoute:
             _create_event(client)
             resp = client.post(
                 "/api/lite/events/x/deliver",
-                json={"destination": ATTENDEE_ADDRESS, "master_key": "k"},
+                json={"destination": ATTENDEE_ADDRESS, "organizer_key": "k"},
             )
         assert resp.status_code == 503
 
@@ -205,7 +205,7 @@ class TestDeliverRoute:
         _create_event(lite_client)
         resp = lite_client.post(
             "/api/lite/events/whatever/deliver",
-            json={"destination": "0123", "master_key": "k"},
+            json={"destination": "0123", "organizer_key": "k"},
         )
         assert resp.status_code == 400
         assert "32 hex" in resp.json()["detail"]
@@ -213,7 +213,7 @@ class TestDeliverRoute:
     def test_unknown_event_is_404(self, lite_client):
         resp = lite_client.post(
             "/api/lite/events/missing/deliver",
-            json={"destination": ATTENDEE_ADDRESS, "master_key": "k"},
+            json={"destination": ATTENDEE_ADDRESS, "organizer_key": "k"},
         )
         assert resp.status_code == 404
 
@@ -223,7 +223,7 @@ class TestDeliverRoute:
             f"/api/lite/events/{created['event_id']}/deliver",
             json={
                 "destination": ATTENDEE_ADDRESS,
-                "master_key": Fernet.generate_key().decode(),
+                "organizer_key": Fernet.generate_key().decode(),
             },
         )
         assert resp.status_code == 400
@@ -236,14 +236,14 @@ class TestDeliverRoute:
             f"/api/lite/events/{created['event_id']}/deliver",
             json={
                 "destination": ATTENDEE_ADDRESS.upper(),
-                "master_key": created["master_key"],
+                "organizer_key": created["organizer_key"],
             },
         )
         assert resp.status_code == 200
         assert resp.json() == {"status": "queued", "detail": "queued by stub"}
         call = stub_deliverer.calls[-1]
         assert call["destination"] == ATTENDEE_ADDRESS  # normalised to lowercase
-        assert call["master_key"] == created["master_key"]
+        assert call["organizer_key"] == created["organizer_key"]
         assert call["title"] == "Mesh Night"
         assert call["share_url"].endswith(f"/i/{created['event_id']}")
         assert call["expires_at"]  # human-readable wipe stamp
@@ -255,7 +255,7 @@ class TestDeliverRoute:
             created = _create_event(client)
             resp = client.post(
                 f"/api/lite/events/{created['event_id']}/deliver",
-                json={"destination": ATTENDEE_ADDRESS, "master_key": created["master_key"]},
+                json={"destination": ATTENDEE_ADDRESS, "organizer_key": created["organizer_key"]},
             )
         assert resp.status_code == 502
         assert resp.json()["detail"] == "no path yet"
@@ -269,6 +269,6 @@ class TestDeliverRoute:
             _create_event(client)
             resp = client.post(
                 "/api/lite/events/missing/deliver",
-                json={"destination": ATTENDEE_ADDRESS, "master_key": "k"},
+                json={"destination": ATTENDEE_ADDRESS, "organizer_key": "k"},
             )
         assert resp.status_code == 503

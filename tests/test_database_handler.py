@@ -1,13 +1,13 @@
 import unittest
 
-from helpers import TEST_MASTER_KEY
+from helpers import TEST_ORGANIZER_KEY
 
 from src.db.database_handler import DatabaseHandler
 
 
 class TestDatabaseHandler(unittest.TestCase):
     def setUp(self):
-        self.db = DatabaseHandler(":memory:", master_key=TEST_MASTER_KEY)
+        self.db = DatabaseHandler(":memory:", organizer_key=TEST_ORGANIZER_KEY)
 
     def tearDown(self):
         self.db.close()
@@ -96,18 +96,18 @@ class TestDatabaseHandler(unittest.TestCase):
         key = self.db.get_key("hash_1")
         self.assertEqual(key["owner_id"], "@org:instance")
 
-    def test_missing_master_key_raises(self):
-        """DatabaseHandler must fail-secure without a master key."""
+    def test_missing_organizer_key_raises(self):
+        """DatabaseHandler must fail-secure without a organizer key."""
         import os
 
-        old = os.environ.get("GATEKEYP_MASTER_KEY")
-        os.environ.pop("GATEKEYP_MASTER_KEY", None)
+        old = os.environ.get("GATEKEYP_ORGANIZER_KEY")
+        os.environ.pop("GATEKEYP_ORGANIZER_KEY", None)
         try:
             with self.assertRaises(ValueError):
                 DatabaseHandler(":memory:")
         finally:
             if old:
-                os.environ["GATEKEYP_MASTER_KEY"] = old
+                os.environ["GATEKEYP_ORGANIZER_KEY"] = old
 
 
 if __name__ == "__main__":

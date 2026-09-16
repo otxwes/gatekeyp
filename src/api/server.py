@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
+from fastapi import FastAPI, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -44,7 +44,11 @@ class CreateEventRequest(BaseModel):
 class AddContentRequest(BaseModel):
     """Request to add a content block to an event."""
 
-    master_key: str = Field(..., min_length=1, max_length=2048)
+    organizer_key: str = Field(
+        ...,
+        min_length=1,
+        max_length=2048,
+    )
     event_id: str = Field(..., min_length=1, max_length=256)
     content_type: str = Field(..., min_length=1, max_length=64)
     payload: str = Field(..., min_length=1, max_length=65536)
@@ -53,7 +57,11 @@ class AddContentRequest(BaseModel):
 class GenerateAccessKeyRequest(BaseModel):
     """Request to generate an attendee access key."""
 
-    master_key: str = Field(..., min_length=1, max_length=2048)
+    organizer_key: str = Field(
+        ...,
+        min_length=1,
+        max_length=2048,
+    )
     event_id: str = Field(..., min_length=1, max_length=256)
     days: int = Field(default=30, ge=1, le=365)
     owner_id: str | None = Field(default=None, max_length=256)
@@ -62,7 +70,11 @@ class GenerateAccessKeyRequest(BaseModel):
 class RevokeAccessKeyRequest(BaseModel):
     """Request to revoke an attendee access key."""
 
-    master_key: str = Field(..., min_length=1, max_length=2048)
+    organizer_key: str = Field(
+        ...,
+        min_length=1,
+        max_length=2048,
+    )
     event_id: str = Field(..., min_length=1, max_length=256)
     access_key: str = Field(..., min_length=1, max_length=2048)
 
@@ -70,7 +82,11 @@ class RevokeAccessKeyRequest(BaseModel):
 class DecommissionEventRequest(BaseModel):
     """Request to decommission an event."""
 
-    master_key: str = Field(..., min_length=1, max_length=2048)
+    organizer_key: str = Field(
+        ...,
+        min_length=1,
+        max_length=2048,
+    )
     event_id: str = Field(..., min_length=1, max_length=256)
 
 
@@ -229,7 +245,7 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
     # Event Lifecycle
     @app.post("/api/events")
     def create_event(request: CreateEventRequest) -> dict:
-        """Create a new event with a master key."""
+        """Create a new event with a organizer key."""
         try:
             return lifecycle.create_event(
                 title=request.title,
@@ -245,7 +261,7 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
         """Add a content block to an event."""
         try:
             return lifecycle.add_content_block(
-                master_key=request.master_key,
+                organizer_key=request.organizer_key,
                 event_id=event_id,
                 content_type=request.content_type,
                 payload=request.payload,
@@ -254,10 +270,15 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             raise HTTPException(status_code=400, detail=str(err)) from err
 
     @app.get("/api/events/{event_id}")
-    def get_event_details(event_id: str, master_key: str) -> dict:
+    def get_event_details(
+        event_id: str,
+        organizer_key: str | None = Query(default=None, min_length=1, max_length=2048),
+    ) -> dict:
         """Get full event details including all content blocks."""
+        if not organizer_key:
+            raise HTTPException(status_code=422, detail="organizer_key is required")
         try:
-            return lifecycle.get_event_details(master_key=master_key, event_id=event_id)
+            return lifecycle.get_event_details(organizer_key=organizer_key, event_id=event_id)
         except EventLifecycleError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err
 
@@ -266,7 +287,7 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
         """Generate an attendee access key for an event."""
         try:
             return lifecycle.generate_access_key(
-                master_key=request.master_key,
+                organizer_key=request.organizer_key,
                 event_id=event_id,
                 days=request.days,
                 owner_id=request.owner_id,
@@ -275,10 +296,15 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             raise HTTPException(status_code=400, detail=str(err)) from err
 
     @app.get("/api/events/{event_id}/access-keys")
-    def list_access_keys(event_id: str, master_key: str) -> list[dict]:
+    def list_access_keys(
+        event_id: str,
+        organizer_key: str | None = Query(default=None, min_length=1, max_length=2048),
+    ) -> list[dict]:
         """List all access keys for an event."""
+        if not organizer_key:
+            raise HTTPException(status_code=422, detail="organizer_key is required")
         try:
-            return lifecycle.list_access_keys(master_key=master_key, event_id=event_id)
+            return lifecycle.list_access_keys(organizer_key=organizer_key, event_id=event_id)
         except EventLifecycleError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err
 
@@ -287,7 +313,7 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
         """Revoke an attendee access key."""
         try:
             revoked = lifecycle.revoke_access_key(
-                master_key=request.master_key,
+                organizer_key=request.organizer_key,
                 event_id=event_id,
                 access_key=request.access_key,
             )
@@ -301,7 +327,7 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
         """Decommission an event: revoke all keys."""
         try:
             return lifecycle.decommission_event(
-                master_key=request.master_key,
+                organizer_key=request.organizer_key,
                 event_id=event_id,
             )
         except EventLifecycleError as err:

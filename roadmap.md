@@ -37,10 +37,10 @@
 ### Database
 - [x] Add `created_at`, `location_data` columns to schema.
 - [x] Add `key_content_links` join table (many-to-many key ↔ content mapping).
-- [x] Add encryption-at-rest for sensitive payloads (Fernet/AES-GCM with master key).
+- [x] Add encryption-at-rest for sensitive payloads (Fernet/AES-GCM with organizer key).
 - [x] Add federation fields (owner identifier prefix) to schema.
 - [x] Add key revocation fields (`revoked`, `revoked_at`).
-- [x] Fail-secure: require `GATEKEYP_MASTER_KEY` env var; refuse to start without it.
+- [x] Fail-secure: require `GATEKEYP_ORGANIZER_KEY` env var; refuse to start without it.
 - [x] Add schema migration for backward compatibility with existing databases.
 
 ### Gateway
@@ -74,10 +74,10 @@
 
 ### Event Lifecycle Management
 - [x] Implement `EventLifecycleManager` for end-to-end event orchestration.
-- [x] Event creation with master key generation (365-day default lifetime).
+- [x] Event creation with organizer key generation (365-day default lifetime).
 - [x] Attendee access key generation (30-day default lifetime), listing, and revocation.
 - [x] Content block management (descriptions, schedules, etc.).
-- [x] Event decommissioning (revokes master key and all access keys).
+- [x] Event decommissioning (revokes organizer key and all access keys).
 
 ### FastAPI Server & Web UI
 - [x] Implement FastAPI HTTP server with RESTful endpoints for all features.
@@ -94,9 +94,9 @@
 
 Delivered as `web/app.js` — a hash-routed, dependency-free SPA that drives the
 repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
-- Organizer desk: create / open events (one-time master-key modal), then a
+- Organizer desk: create / open events (one-time organizer-key modal), then a
   four-tab workspace — Content, Bulletin board, Media, Access keys — plus a header
-  Decommission action, framed by a master-key banner.
+  Decommission action, framed by a organizer-key banner.
 - Attendee door: unlock an invite with an access key, then read content, post
   on the bulletin board, leave comments, and view media — no account needed.
 - Session keys live only in `sessionStorage` (dropped when the tab closes);
@@ -111,7 +111,7 @@ repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
 - [x] Typography + grid pass on `web/style.css` — tighten scale/measure/leading, impose a real grid on the desk & door surfaces, and tame the current "vibe-coded" looseness.
 - [x] Component + state unification — buttons/cards/badges/toasts/modals/empty/loading/error/focus/disabled consistent across both themes.
 - [x] Motion & micro-interactions — route/tab transitions, modal & toast entrances, button feedback (keep reduced-motion support).
-- [x] Build a small in-house motif/ornament set (stamps, hatches, key-art) reused by the UI and the Phase-3.6 invite cards. — **Done 2026-08-30.** Monochrome texture language (`web/style.css` §17): `--hatch-soft/-fill/-strong` fills, `.voided` composite + `--dot` paper tooth; wired into master banner, empty states, decommission modal, state badges, and toasts. Primitive classes (`hatch-*`, `.voided`) are the vocabulary Phase 3.6 invite cards build on. Documented as design-system §12.
+- [x] Build a small in-house motif/ornament set (stamps, hatches, key-art) reused by the UI and the Phase-3.6 invite cards. — **Done 2026-08-30.** Monochrome texture language (`web/style.css` §17): `--hatch-soft/-fill/-strong` fills, `.voided` composite + `--dot` paper tooth; wired into organizer banner, empty states, decommission modal, state badges, and toasts. Primitive classes (`hatch-*`, `.voided`) are the vocabulary Phase 3.6 invite cards build on. Documented as design-system §12.
 - [x] Accessibility + responsive review (WCAG AA in both themes, 44px targets) and a light/dark x mobile/desktop x owner/attendee QA matrix. — **Done 2026-08-30.** Grayscale ramp verified AA/AAA (ink 18.9:1 light / 18.0:1 dark; faint 5.3:1 / 7.0:1; chips ≥ 8:1 worst case); icon-btn raised 38→44px, tabs ≥ 40px; non-color status glyphs (`⚠`/`✓`) added to form notes; full matrix in `docs/qa_matrix.md`.
 
 ## Phase 3.6: Steganographic Invite Keys (Key-Distribution UX)
@@ -152,13 +152,13 @@ repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
 *Full engineering detail: `docs/project_memory.md` → "Phase A: ephemeral ('lite') events landed" (2026-09-08).*
 
 - [x] Schema — `events` gained `mode` + `expires_at` (additive `_ensure_column` migration so pre-existing DBs upgrade on open; verified against a backup copy before touching `keys.db`); new `event_tombstones` table; `wipe_event()` single-transaction wipe of event + blocks + media + links + now-orphaned keys, leaving an honest tombstone. — **Done 2026-09-08.**
-- [x] `src/ephemeral/` — `EphemeralService` (TTL 1–336 h, fail-closed expiry check, injectable clock, `sweep_expired()`, dedicated fixed-window rate limiter) plus routes: `POST /api/lite/events`, `GET /i/{event_id}` OG page, public flyer bytes (`nosniff`), keyed attendee view. Master keys get ceil(TTL/24)+1 days so they outlive the event. — **Done 2026-09-08.**
+- [x] `src/ephemeral/` — `EphemeralService` (TTL 1–336 h, fail-closed expiry check, injectable clock, `sweep_expired()`, dedicated fixed-window rate limiter) plus routes: `POST /api/lite/events`, `GET /i/{event_id}` OG page, public flyer bytes (`nosniff`), keyed attendee view. Organizer keys get ceil(TTL/24)+1 days so they outlive the event. — **Done 2026-09-08.**
 - [x] Server profiles — `create_app(profile=…)`, `GATEKEYP_PROFILE` (full|lite; unknown → ValueError); the lite profile mounts only funnel routes + `/health` + static UI; startup sweep wipes events whose TTL elapsed while the process was down. `make serve-lite` added. — **Done 2026-09-08.**
-- [x] Frontend — `#/flyer` creation funnel (title; gated description/when/where; optional public flyer upload; TTL) → one-shot master key with copyable share/organizer links; `#/e/{event_id}` attendee page with `?k=` unlock and an honest "Event ended" state. — **Done 2026-09-08.**
+- [x] Frontend — `#/flyer` creation funnel (title; gated description/when/where; optional public flyer upload; TTL) → one-shot organizer key with copyable share/organizer links; `#/e/{event_id}` attendee page with `?k=` unlock and an honest "Event ended" state. — **Done 2026-09-08.**
 - [x] Tests — 36 in `tests/test_ephemeral.py` (schema migration incl. a legacy-DB fixture, wipe semantics incl. shared-key preservation, views/expiry with an injectable clock, HTTP surface incl. OG-page leak checks and 429 on the sixth creation) + `TestEphemeralSecurityAudit` (gated content + flyer encrypted at rest; wipe leaves no plaintext in any table; tombstone records nothing sensitive). Suite: 217 passing. — **Done 2026-09-08.**
-- [x] Live QA (browser, lite profile on :8775) — funnel fill + flyer upload → one-shot master key panel; OG page shows title + flyer + wipe deadline and **no gated content**; `?k=` attendee unlock renders when/where + flyer; expired OG page → "Event ended" tombstone; keyed attendee page → "Event ended — All data for this event was wiped."; `sweep_expired()` wiped event + media + blocks from the live DB, leaving the tombstone only. — **Done 2026-09-08.**
+- [x] Live QA (browser, lite profile on :8775) — funnel fill + flyer upload → one-shot organizer key panel; OG page shows title + flyer + wipe deadline and **no gated content**; `?k=` attendee unlock renders when/where + flyer; expired OG page → "Event ended" tombstone; keyed attendee page → "Event ended — All data for this event was wiped."; `sweep_expired()` wiped event + media + blocks from the live DB, leaving the tombstone only. — **Done 2026-09-08.**
 - [x] De-caption pass (design-system §3.4) — live QA also caught the funnel reintroducing helper prose/captions ("No account, gone by itself", `key holders only` ×3, two-sentence key hints, "This page is temporary…" notices) — the exact pattern the 2026-08-30 de-chrome pass had removed. Stripped back to the stripped baseline: noun-phrase card titles, no paragraphs under titles, single-word `.opt` tags, canonical one-shot-key line only; rule codified in §3.4 so new views can't regress. — **Done 2026-09-08.**
-- [x] Simplification + dark-only pass (2026-09-08) — lite expiry anchored to the event time: a timestamp `when` makes the wipe deadline `event time + ttl hours` (past event times → 400; free text keeps creation-anchored expiry; master-key lifetime now computed from the real deadline); flyer label "Gone after (hours after the event)" + live computed wipe note; OG page states an absolute wipe moment. Copy trims: browser title is just `gatekeyp`; "An event and a key.", "Attendee door"/"Unlock an invite", the join key-hint sentence, "Lite events"/"Fly a short-lived event" removed; all field placeholders removed (design §3.4); join page is the invite upload alone (manual key card removed, card read unlocks immediately). Organizer handle field removed from the create form (display-only metadata; API contract unchanged). UI is dark-only — light theme + topbar toggle removed, dark tokens promoted to `:root`. — **Done 2026-09-08.**
+- [x] Simplification + dark-only pass (2026-09-08) — lite expiry anchored to the event time: a timestamp `when` makes the wipe deadline `event time + ttl hours` (past event times → 400; free text keeps creation-anchored expiry; organizer-key lifetime now computed from the real deadline); flyer label "Gone after (hours after the event)" + live computed wipe note; OG page states an absolute wipe moment. Copy trims: browser title is just `gatekeyp`; "An event and a key.", "Attendee door"/"Unlock an invite", the join key-hint sentence, "Lite events"/"Fly a short-lived event" removed; all field placeholders removed (design §3.4); join page is the invite upload alone (manual key card removed, card read unlocks immediately). Organizer handle field removed from the create form (display-only metadata; API contract unchanged). UI is dark-only — light theme + topbar toggle removed, dark tokens promoted to `:root`. — **Done 2026-09-08.**
 - [x] Known cosmetic gap (favicon) — resolved in the 2026-09-08 simplification pass: the OG pages now carry an inline data-URI key mark (dark-ground friendly), so no favicon route is needed and `GET /favicon.ico` noise is gone on those pages.
 - [ ] Phase A+ (next, proposed — not yet scoped): embeddable surface — `<script>`/iframe widget so the flyer can live anywhere, richer OG/Twitter card tags, embed-ready share links; scope the embed-hosting boundary in `docs/threat_model.md` before building.
 
@@ -220,7 +220,7 @@ repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
 - `EventLifecycleManager` requires shared `DatabaseHandler`, `KeyManager`, and `ContentManager` instances.
 - FastAPI server (`src/api/server.py`) wires all services together and serves the static web UI.
 - **Required environment variables:**
-  - `GATEKEYP_MASTER_KEY`: Fernet-compatible master key for encryption-at-rest (fail-secure).
+  - `GATEKEYP_ORGANIZER_KEY`: Fernet-compatible organizer key for encryption-at-rest (fail-secure).
   - `GATEKEYP_HMAC_SECRET`: Per-instance secret for HMAC keyed hashing (fail-secure).
 - **Test setup:** `pytest.ini` configures `pythonpath = . tests`; `tests/helpers.py` provides shared test constants.
 - **Dependencies:** `cryptography`, `argon2-cffi`, `fastapi`, `python-multipart`, `uvicorn`, `pytest`, `hypothesis`.

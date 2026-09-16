@@ -12,6 +12,13 @@
 - Invoke the matching approach explicitly when asked: "security audit", "audit dependencies",
   "design the UI", "test the web app", etc.
 
+## Process hygiene (mandatory)
+- Long/leaky process risks: see **TOP RULES → "Process hygiene"** at the top of
+  `docs/project_memory.md`. In short: every `start_process`/`start_search` must be drained
+  and terminated before finishing a task; run `list_sessions` + `list_processes` as a
+  cleanup audit at end of session; close Playwright/Chromium tabs (`browser_close`) after
+  browser debugging; never write loops without a proven exit condition.
+
 ## Quality gates (run manually or via pre-commit — no MCP server behind these)
 - Vulnerabilities: `uv run pip-audit`
 - Lint: `uv run ruff check src/ tests/` and `uv run ruff format src/ tests/`

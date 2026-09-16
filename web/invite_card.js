@@ -243,10 +243,10 @@ window.gkpInviteCard = (function () {
     }
 
     /* ----------------------------------------------------------
-     * Master-card markings (Phase 3.8)
+     * Organizer card markings (Phase 3.8)
      *
-     * An organizer master card is the same paper, but stamped: a
-     * paper-backed chip reading "MASTER CARD" (letterspaced serif caps,
+     * An organizer organizer card is the same paper, but stamped: a
+     * paper-backed chip reading "ORGANIZER CARD" (letterspaced serif caps,
      * double keyline border — the stamp motif) sits under the top keyhole,
      * and classic cards get a keeper note above the bottom keyhole. The chip
      * is drawn on top of any cover, including full-bleed photos, so the card
@@ -263,12 +263,12 @@ window.gkpInviteCard = (function () {
         });
     }
 
-    function drawMasterChip(ctx) {
+    function drawOrganizerChip(ctx) {
         ctx.save();
         const cx = CARD_W / 2;
         const cy = 130;
         ctx.font = "600 21px Georgia, 'Times New Roman', serif";
-        const chipW = Math.ceil(ctx.measureText("MASTER CARD").width) + 9 * 10 + 48;
+        const chipW = Math.ceil(ctx.measureText("ORGANIZER CARD").width) + 9 * 10 + 48;
         const chipH = 46;
         const x = cx - chipW / 2;
         const y = cy - chipH / 2;
@@ -281,11 +281,11 @@ window.gkpInviteCard = (function () {
         ctx.strokeRect(x + 4, y + 4, chipW - 8, chipH - 8);
         ctx.fillStyle = INK;
         ctx.textBaseline = "middle";
-        drawSpacedCaps(ctx, "MASTER CARD", cx, cy + 1, 9);
+        drawSpacedCaps(ctx, "ORGANIZER CARD", cx, cy + 1, 9);
         ctx.restore();
     }
 
-    function drawMasterNote(ctx) {
+    function drawOrganizerNote(ctx) {
         ctx.save();
         ctx.fillStyle = INK;
         ctx.globalAlpha = 0.72;
@@ -344,11 +344,11 @@ window.gkpInviteCard = (function () {
         // skip it — the art runs edge to edge.
         if (!fullBleed) drawKeyhole(ctx, CARD_W / 2, CARD_H - 70, 12);
 
-        // Master-card stamp (drawn on top of any cover, including full-bleed
+        // Organizer card stamp (drawn on top of any cover, including full-bleed
         // photos — the chip carries its own paper ground so it always reads).
         if (o.organizer) {
-            drawMasterChip(ctx);
-            if (!fullBleed) drawMasterNote(ctx);
+            drawOrganizerChip(ctx);
+            if (!fullBleed) drawOrganizerNote(ctx);
         }
     }
 
@@ -361,7 +361,7 @@ window.gkpInviteCard = (function () {
      * Draw, embed the invite payload and trigger a download of the stego PNG.
      *
      * opts: { eventId, accessKey, title, cover, coverImage, scale, organizer }
-     * `organizer: true` makes a MASTER card — same viewport, stamped face,
+     * `organizer: true` makes a ORGANIZER card — same viewport, stamped face,
      * the hidden payload tagged `organizer` (see stego.js). Returns the Blob
      * (for tests / preview) after downloading.
      */
@@ -376,7 +376,7 @@ window.gkpInviteCard = (function () {
         const url = URL.createObjectURL(stegoBlob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `${safeFileName(opts.title)}-${o.organizer ? "master-card" : "invite"}.png`;
+        a.download = `${safeFileName(opts.title)}-${o.organizer ? "organizer card" : "invite"}.png`;
         document.body.appendChild(a);
         a.click();
         a.remove();

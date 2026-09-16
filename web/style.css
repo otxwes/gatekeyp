@@ -749,9 +749,9 @@ p {
     min-width: 0;
 }
 
-/* Master-key banner — a stamped notice: hairline hatch ground,
+/* Organizer-key banner — a stamped notice: hairline hatch ground,
    bold keyline edge. Texture replaces the old amber wash. */
-.master-banner {
+.organizer-banner {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);
@@ -763,7 +763,7 @@ p {
     padding: var(--space-4) var(--space-5);
 }
 
-/* Key value display (master key, access key) */
+/* Key value display (organizer key, access key) */
 .keycode {
     font-family: var(--font-mono);
     font-size: var(--text-sm);
@@ -1509,7 +1509,7 @@ p {
         justify-content: flex-end;
     }
 
-    .master-banner .btn {
+    .organizer-banner .btn {
         width: 100%;
     }
 

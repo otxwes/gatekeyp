@@ -240,7 +240,7 @@ carry status and emphasis that hue used to carry. All motif fills are theme-awar
 | Motif | Definition | Used for |
 |---|---|---|
 | **Hatch, soft** `--hatch-soft` | 45° hairline, 10px period | revoked badges, decommission modal (`voided` composite) |
-| **Hatch, fill** `--hatch-fill` | 45° `surface`/`surface-2` weave | empty states ("ticket stub"), master banner ground |
+| **Hatch, fill** `--hatch-fill` | 45° `surface`/`surface-2` weave | empty states ("ticket stub"), organizer banner ground |
 | **Hatch, strong** `--hatch-strong` | −45° `line-strong`, 5px period | reserved for the loudest voided moments |
 | **Stamp** | dashed / double keylines (`border-style`) | warn badges (dashed), revoked + decommission (double) |
 | **Dot tooth** `--dot` | 1px grid on the page ground | the paper's texture (body background) |

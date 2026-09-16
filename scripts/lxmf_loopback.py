@@ -1,13 +1,13 @@
 # Copyright (c) 2026 gatekeyp contributors
 
-"""Loopback demo: deliver an event master key over LXMF, end to end.
+"""Loopback demo: deliver an event organizer key over LXMF, end to end.
 
 Spawns two independent Reticulum instances in separate processes, connected
 through a local TCP interface pair:
 
 - the attendee receiver registers an LXMF delivery identity, announces its
   address (32 hex chars) and decrypts whatever arrives;
-- the gatekeyp sender waits for the path, then relays a master key with
+- the gatekeyp sender waits for the path, then relays a organizer key with
   ``LXMF.DIRECT`` exactly as ``LXMFKeyDeliverer`` does inside
   ``POST /api/lite/events/{id}/deliver``;
 - the parent asserts the receiver decrypted the key text.
@@ -33,10 +33,10 @@ from src.ephemeral.lxmf_delivery import compose_key_message
 
 WORK_DIR = REPO_ROOT / "tmp" / "lxmf_demo"
 PORT = 4965
-MASTER_KEY = "demo-master-key-goes-to-the-attendee-over-mesh"
+ORGANIZER_KEY = "demo-organizer-key-goes-to-the-attendee-over-mesh"
 KEY_TEXT = compose_key_message(
     title="Mesh Night",
-    master_key=MASTER_KEY,
+    organizer_key=ORGANIZER_KEY,
     share_url="https://demo.invalid/i/demoevent",
     expires_at="Sep 16, 2026 08:00 UTC",
 )
@@ -114,7 +114,7 @@ def _gatekeyp(address_hex: str, state: dict, port: int) -> None:  # pragma: no c
         destination=destination,
         source=source,
         content=KEY_TEXT,
-        title="Event master key",
+        title="Event organizer key",
         desired_method=LXMF.LXMessage.DIRECT,
     )
     router.handle_outbound(message)
@@ -158,11 +158,11 @@ def main() -> int:
             print(f"FAIL - {state['error']}")
             return 1
         content = state.get("content", "")
-        if MASTER_KEY not in content:
-            print("FAIL - the attendee never decrypted the master key")
+        if ORGANIZER_KEY not in content:
+            print("FAIL - the attendee never decrypted the organizer key")
             return 1
         print(f"sent state: {state.get('sent_state')}")
-        print("PASS - master key delivered and decrypted over LXMF")
+        print("PASS - organizer key delivered and decrypted over LXMF")
         print(f"received: {content!r}")
         return 0
 

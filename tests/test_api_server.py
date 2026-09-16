@@ -25,17 +25,17 @@ from src.core.key_manager import KeyManager
 from src.db.database_handler import DatabaseHandler
 
 # Generate a valid Fernet key for tests
-TEST_MASTER_KEY = Fernet.generate_key().decode()
+TEST_ORGANIZER_KEY = Fernet.generate_key().decode()
 TEST_HMAC_SECRET = "test-hmac-secret-for-unit-tests-only-1234567890"
 
-os.environ.setdefault("GATEKEYP_MASTER_KEY", TEST_MASTER_KEY)
+os.environ.setdefault("GATEKEYP_ORGANIZER_KEY", TEST_ORGANIZER_KEY)
 os.environ.setdefault("GATEKEYP_HMAC_SECRET", TEST_HMAC_SECRET)
 
 
 @pytest.fixture
 def client():
     """Create a TestClient backed by an in-memory database."""
-    db = DatabaseHandler(db_path=":memory:", master_key=TEST_MASTER_KEY)
+    db = DatabaseHandler(db_path=":memory:", organizer_key=TEST_ORGANIZER_KEY)
     key_manager = KeyManager(db=db, hmac_secret=TEST_HMAC_SECRET)
     content_manager = ContentManager(db=db, key_manager=key_manager)
     lifecycle = EventLifecycleManager(
@@ -76,18 +76,18 @@ def created_event(client):
 
 
 class TestEventApi:
-    def test_create_event_returns_master_key(self, created_event):
-        """POST /api/events creates an event with a master key."""
+    def test_create_event_returns_organizer_key(self, created_event):
+        """POST /api/events creates an event with a organizer key."""
         assert created_event["event_id"].startswith("event_")
         assert created_event["title"] == "Open Mic Night"
-        assert created_event["master_key"].startswith("local:")
+        assert created_event["organizer_key"].startswith("local:")
         assert created_event["expires_at"]
 
-    def test_get_event_details_with_master_key(self, client, created_event):
-        """Organizers can read full details with the master key."""
+    def test_get_event_details_with_organizer_key(self, client, created_event):
+        """Organizers can read full details with the organizer key."""
         response = client.get(
             f"/api/events/{created_event['event_id']}",
-            params={"master_key": created_event["master_key"]},
+            params={"organizer_key": created_event["organizer_key"]},
         )
         assert response.status_code == 200
         details = response.json()
@@ -98,7 +98,7 @@ class TestEventApi:
         """An invalid key is rejected (fail-secure)."""
         response = client.get(
             f"/api/events/{created_event['event_id']}",
-            params={"master_key": "local:invalid-key-0000000000000000"},
+            params={"organizer_key": "local:invalid-key-0000000000000000"},
         )
         assert response.status_code == 400
 
@@ -108,7 +108,7 @@ class TestEventApi:
         add = client.post(
             f"/api/events/{event_id}/content",
             json={
-                "master_key": created_event["master_key"],
+                "organizer_key": created_event["organizer_key"],
                 "event_id": event_id,
                 "content_type": "schedule",
                 "payload": "Doors 7pm · sets 8pm",
@@ -119,24 +119,24 @@ class TestEventApi:
 
         details = client.get(
             f"/api/events/{event_id}",
-            params={"master_key": created_event["master_key"]},
+            params={"organizer_key": created_event["organizer_key"]},
         ).json()
         assert any(b["id"] == block_id for b in details["content_blocks"])
 
     def test_event_decommission(self, client, created_event):
-        """Decommissioning revokes the master key."""
+        """Decommissioning revokes the organizer key."""
         event_id = created_event["event_id"]
         response = client.post(
             f"/api/events/{event_id}/decommission",
-            json={"master_key": created_event["master_key"], "event_id": event_id},
+            json={"organizer_key": created_event["organizer_key"], "event_id": event_id},
         )
         assert response.status_code == 200
-        assert response.json()["master_key_revoked"] is True
+        assert response.json()["organizer_key_revoked"] is True
 
-        # Master key no longer grants access after decommission
+        # Organizer key no longer grants access after decommission
         after = client.get(
             f"/api/events/{event_id}",
-            params={"master_key": created_event["master_key"]},
+            params={"organizer_key": created_event["organizer_key"]},
         )
         assert after.status_code == 400
 
@@ -153,7 +153,7 @@ class TestAccessKeyApi:
         generated = client.post(
             f"/api/events/{event_id}/access-keys",
             json={
-                "master_key": created_event["master_key"],
+                "organizer_key": created_event["organizer_key"],
                 "event_id": event_id,
                 "days": 14,
                 "owner_id": "@sam:nyc",
@@ -165,7 +165,7 @@ class TestAccessKeyApi:
 
         listed = client.get(
             f"/api/events/{event_id}/access-keys",
-            params={"master_key": created_event["master_key"]},
+            params={"organizer_key": created_event["organizer_key"]},
         )
         assert listed.status_code == 200
         assert any(k["owner_id"] == "@sam:nyc" for k in listed.json())
@@ -176,7 +176,7 @@ class TestAccessKeyApi:
         generated = client.post(
             f"/api/events/{event_id}/access-keys",
             json={
-                "master_key": created_event["master_key"],
+                "organizer_key": created_event["organizer_key"],
                 "event_id": event_id,
                 "days": 7,
             },
@@ -185,7 +185,7 @@ class TestAccessKeyApi:
 
         response = client.get(
             f"/api/events/{event_id}",
-            params={"master_key": access_key},
+            params={"organizer_key": access_key},
         )
         assert response.status_code == 200
         assert response.json()["event"]["title"] == "Open Mic Night"
@@ -196,7 +196,7 @@ class TestAccessKeyApi:
         generated = client.post(
             f"/api/events/{event_id}/access-keys",
             json={
-                "master_key": created_event["master_key"],
+                "organizer_key": created_event["organizer_key"],
                 "event_id": event_id,
                 "days": 30,
             },
@@ -206,7 +206,7 @@ class TestAccessKeyApi:
         revoked = client.post(
             f"/api/events/{event_id}/access-keys/revoke",
             json={
-                "master_key": created_event["master_key"],
+                "organizer_key": created_event["organizer_key"],
                 "event_id": event_id,
                 "access_key": access_key,
             },
@@ -216,7 +216,7 @@ class TestAccessKeyApi:
 
         after = client.get(
             f"/api/events/{event_id}",
-            params={"master_key": access_key},
+            params={"organizer_key": access_key},
         )
         assert after.status_code == 400
 
@@ -230,12 +230,12 @@ class TestCommunicationBoard:
     def test_create_list_and_read_bulletin(self, client, created_event):
         """Bulletins can be created, listed, and read with a body."""
         event_id = created_event["event_id"]
-        master_key = created_event["master_key"]
+        organizer_key = created_event["organizer_key"]
 
         created = client.post(
             f"/api/events/{event_id}/bulletins",
             json={
-                "key": master_key,
+                "key": organizer_key,
                 "event_id": event_id,
                 "title": "Set list",
                 "body": "1. Ruby — 20min\n2. The Usual — 25min",
@@ -247,14 +247,14 @@ class TestCommunicationBoard:
 
         listed = client.get(
             f"/api/events/{event_id}/bulletins",
-            params={"key": master_key},
+            params={"key": organizer_key},
         )
         assert listed.status_code == 200
         assert any(b["id"] == bulletin_id for b in listed.json())
 
         single = client.get(
             f"/api/bulletins/{bulletin_id}",
-            params={"key": master_key},
+            params={"key": organizer_key},
         )
         assert single.status_code == 200
         assert "Ruby" in single.json()["body"]
@@ -265,7 +265,7 @@ class TestCommunicationBoard:
         created = client.post(
             f"/api/events/{event_id}/bulletins",
             json={
-                "key": created_event["master_key"],
+                "key": created_event["organizer_key"],
                 "event_id": event_id,
                 "title": "Secret board",
                 "body": "Never read without a key",
@@ -282,11 +282,11 @@ class TestCommunicationBoard:
     def test_comments_thread_and_delete(self, client, created_event):
         """Comments can be posted, read, and deleted."""
         event_id = created_event["event_id"]
-        master_key = created_event["master_key"]
+        organizer_key = created_event["organizer_key"]
         bulletin_id = client.post(
             f"/api/events/{event_id}/bulletins",
             json={
-                "key": master_key,
+                "key": organizer_key,
                 "event_id": event_id,
                 "title": "Thread",
                 "body": "Start here",
@@ -297,7 +297,7 @@ class TestCommunicationBoard:
         first = client.post(
             f"/api/bulletins/{bulletin_id}/comments",
             json={
-                "key": master_key,
+                "key": organizer_key,
                 "bulletin_id": bulletin_id,
                 "author_id": "@sam:nyc",
                 "body": "I'm in",
@@ -308,29 +308,29 @@ class TestCommunicationBoard:
 
         comments = client.get(
             f"/api/bulletins/{bulletin_id}/comments",
-            params={"key": master_key},
+            params={"key": organizer_key},
         )
         assert comments.status_code == 200
         assert any(c["id"] == comment_id and c["body"] == "I'm in" for c in comments.json())
 
-        deleted = client.delete(f"/api/comments/{comment_id}", params={"key": master_key})
+        deleted = client.delete(f"/api/comments/{comment_id}", params={"key": organizer_key})
         assert deleted.status_code == 200
         assert deleted.json()["deleted"] is True
 
         remaining = client.get(
             f"/api/bulletins/{bulletin_id}/comments",
-            params={"key": master_key},
+            params={"key": organizer_key},
         ).json()
         assert all(c["id"] != comment_id for c in remaining)
 
     def test_delete_bulletin(self, client, created_event):
         """A bulletin can be deleted with its comments."""
         event_id = created_event["event_id"]
-        master_key = created_event["master_key"]
+        organizer_key = created_event["organizer_key"]
         bulletin_id = client.post(
             f"/api/events/{event_id}/bulletins",
             json={
-                "key": master_key,
+                "key": organizer_key,
                 "event_id": event_id,
                 "title": "Temporary",
                 "body": "To be removed",
@@ -338,7 +338,7 @@ class TestCommunicationBoard:
             },
         ).json()["id"]
 
-        deleted = client.delete(f"/api/bulletins/{bulletin_id}", params={"key": master_key})
+        deleted = client.delete(f"/api/bulletins/{bulletin_id}", params={"key": organizer_key})
         assert deleted.status_code == 200
         assert deleted.json()["deleted"] is True
 
@@ -352,11 +352,11 @@ class TestMediaApi:
     def test_upload_list_and_delete_media(self, client, created_event):
         """Media can be uploaded, listed, and deleted with a key."""
         event_id = created_event["event_id"]
-        master_key = created_event["master_key"]
+        organizer_key = created_event["organizer_key"]
 
         uploaded = client.post(
             f"/api/events/{event_id}/media",
-            params={"key": master_key},
+            params={"key": organizer_key},
             files={"file": ("flyer.png", b"\x89PNG\r\n\x1a\nfake-image-bytes", "image/png")},
         )
         assert uploaded.status_code == 200
@@ -365,17 +365,17 @@ class TestMediaApi:
 
         listed = client.get(
             f"/api/events/{event_id}/media",
-            params={"key": master_key},
+            params={"key": organizer_key},
         )
         assert listed.status_code == 200
         assert any(a["id"] == asset_id for a in listed.json())
 
         # Retrieving an asset returns its raw bytes with the right MIME type
-        retrieved = client.get(f"/api/media/{asset_id}", params={"key": master_key})
+        retrieved = client.get(f"/api/media/{asset_id}", params={"key": organizer_key})
         assert retrieved.status_code == 200
         assert retrieved.headers["content-type"] == "image/png"
         assert retrieved.content == b"\x89PNG\r\n\x1a\nfake-image-bytes"
 
-        deleted = client.delete(f"/api/media/{asset_id}", params={"key": master_key})
+        deleted = client.delete(f"/api/media/{asset_id}", params={"key": organizer_key})
         assert deleted.status_code == 200
         assert deleted.json()["deleted"] is True

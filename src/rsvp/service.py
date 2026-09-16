@@ -176,22 +176,22 @@ class RsvpService:
             self.db.add_key_content_link(key_hash, bulletin["id"], "bulletin")
         return 1
 
-    def _verify_organizer(self, master_key: str | None, event_id: str) -> dict:
+    def _verify_organizer(self, organizer_key: str | None, event_id: str) -> dict:
         """Check the presented key is valid and grants access to this event."""
-        if not isinstance(master_key, str):
-            message = "Invalid master key"
+        if not isinstance(organizer_key, str):
+            message = "Invalid organizer key"
             raise RsvpValidationError(message)
         try:
-            validation = self.key_manager.validate_key(master_key)
+            validation = self.key_manager.validate_key(organizer_key)
         except InvalidKeyFormatError as err:
-            message = "Invalid master key"
+            message = "Invalid organizer key"
             raise RsvpValidationError(message) from err
         if validation["status"] != "valid":
-            message = validation.get("message", "Invalid master key")
+            message = validation.get("message", "Invalid organizer key")
             raise RsvpValidationError(message)
         content_ids = self.db.get_content_ids_for_key(validation["hash"])
         if not any(content["content_id"] == event_id for content in content_ids):
-            message = "Master key does not grant access to this event"
+            message = "Organizer key does not grant access to this event"
             raise RsvpValidationError(message)
         return validation
 
@@ -277,7 +277,7 @@ class RsvpService:
 
     def decide(
         self,
-        master_key: str | None,
+        organizer_key: str | None,
         event_id: str,
         rsvp_id: str,
         decision: str,
@@ -295,7 +295,7 @@ class RsvpService:
             RsvpValidationError: On bad input or an unauthorized key.
             RsvpNotFoundError: When the RSVP is unknown for this event.
         """
-        self._verify_organizer(master_key, event_id)
+        self._verify_organizer(organizer_key, event_id)
         rsvp = self.db.get_rsvp(rsvp_id)
         if rsvp is None or rsvp["event_id"] != event_id:
             message = f"RSVP not found: {rsvp_id}"
@@ -321,9 +321,9 @@ class RsvpService:
 
     # -- Settings & organizer listing --------------------------------------
 
-    def get_rsvp_settings(self, master_key: str | None, event_id: str) -> dict:
+    def get_rsvp_settings(self, organizer_key: str | None, event_id: str) -> dict:
         """Return the event's RSVP gate settings (organizer-gated)."""
-        self._verify_organizer(master_key, event_id)
+        self._verify_organizer(organizer_key, event_id)
         event = self.db.get_event(event_id)
         return {
             "passphrase_required": bool(event and event.get("rsvp_passphrase_hash")),
@@ -332,7 +332,7 @@ class RsvpService:
 
     def update_rsvp_settings(
         self,
-        master_key: str | None,
+        organizer_key: str | None,
         event_id: str,
         *,
         passphrase: str | None = None,
@@ -350,7 +350,7 @@ class RsvpService:
         Raises:
             RsvpValidationError: On bad input or an unauthorized key.
         """
-        self._verify_organizer(master_key, event_id)
+        self._verify_organizer(organizer_key, event_id)
         clean_passphrase = self._validate_text(passphrase, "passphrase", MAX_CONTACT_LENGTH)
         passphrase_hash = self.key_manager.hash_key(clean_passphrase) if clean_passphrase else None
         if auto_approve is None:
@@ -370,9 +370,9 @@ class RsvpService:
             "auto_approve": dial,
         }
 
-    def list_rsvps_for_event(self, master_key: str | None, event_id: str) -> list[dict]:
+    def list_rsvps_for_event(self, organizer_key: str | None, event_id: str) -> list[dict]:
         """List RSVP rows for the organizer tab (contacts decrypted server-side)."""
-        self._verify_organizer(master_key, event_id)
+        self._verify_organizer(organizer_key, event_id)
         return self.db.list_rsvps(event_id)
 
     # -- Public view -------------------------------------------------------

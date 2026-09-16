@@ -112,7 +112,7 @@ Exploitation: Attacker forges JWTs using 'default', gains unauthorized access
 ## Examples
 
 - *User:* "Review our key manager's secret handling."
-- *Assistant (in Insecure Defaults mode):* "I found `master_key = os.environ.get('MASTER_KEY', 'default-key')` in `key_manager.py`. This is fail-open: if `MASTER_KEY` is not set, the app runs with a known weak key. This is CRITICAL for encryption-at-rest. I recommend using `os.environ['MASTER_KEY']` so the app crashes if the key is missing."
+- *Assistant (in Insecure Defaults mode):* "I found `organizer_key = os.environ.get('ORGANIZER_KEY', 'default-key')` in `key_manager.py`. This is fail-open: if `ORGANIZER_KEY` is not set, the app runs with a known weak key. This is CRITICAL for encryption-at-rest. I recommend using `os.environ['ORGANIZER_KEY']` so the app crashes if the key is missing."
 
 - *User:* "Check the gateway's rate limiting config."
 - *Assistant (in Insecure Defaults mode):* "I see `RATE_LIMIT_ENABLED = os.environ.get('RATE_LIMIT_ENABLED', 'false')`. This defaults to disabled, which is fail-open for a security control. The default should be `'true'` so rate limiting is on unless explicitly disabled."

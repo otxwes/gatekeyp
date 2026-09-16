@@ -13,12 +13,12 @@ _EVENT_RPH_MIN_COLS = 8  # events.rsvp_passphrase_hash lives at column index 8
 _EVENT_RAA_MIN_COLS = 9  # events.rsvp_auto_approve lives at column index 9
 
 
-class MissingMasterKeyError(ValueError):
-    """Raised when no master key is available for encryption-at-rest."""
+class MissingOrganizerKeyError(ValueError):
+    """Raised when no organizer key is available for encryption-at-rest."""
 
     def __init__(self) -> None:
         super().__init__(
-            "GATEKEYP_MASTER_KEY environment variable must be set "
+            "GATEKEYP_ORGANIZER_KEY environment variable must be set "
             "for encryption-at-rest. Refusing to start with unencrypted storage."
         )
 
@@ -37,25 +37,30 @@ class DatabaseHandler:
     Implements encryption-at-rest for sensitive payloads (Fernet/AES-GCM).
     """
 
-    def __init__(self, db_path: str = "keys.db", master_key: str | None = None) -> None:
+    def __init__(
+        self,
+        db_path: str = "keys.db",
+        organizer_key: str | None = None,
+    ) -> None:
         """
         Initialize the database handler.
 
-        Fail-secure: requires a master key for encryption-at-rest.
-        The master key can be provided directly or via the GATEKEYP_MASTER_KEY
+        Fail-secure: requires a organizer key for encryption-at-rest.
+        The organizer key can be provided directly or via the GATEKEYP_ORGANIZER_KEY
         environment variable. If neither is available, the application refuses
         to start rather than running with unencrypted storage.
 
         Args:
             db_path: Path to the SQLite database file. Use ':memory:' for tests.
-            master_key: Fernet-compatible master key (base64-encoded 32-byte key).
-                        If None, reads from GATEKEYP_MASTER_KEY env var.
+            organizer_key: Fernet-compatible organizer key (base64-encoded 32-byte key).
+                        If None, reads from GATEKEYP_ORGANIZER_KEY env var.
         """
-        if master_key is None:
-            master_key = os.environ.get("GATEKEYP_MASTER_KEY")
-        if master_key is None:
-            raise MissingMasterKeyError
-        self.fernet = Fernet(master_key.encode() if isinstance(master_key, str) else master_key)
+        if organizer_key is None:
+            organizer_key = os.environ.get("GATEKEYP_ORGANIZER_KEY")
+        if organizer_key is None:
+            raise MissingOrganizerKeyError
+        raw = organizer_key.encode() if isinstance(organizer_key, str) else organizer_key
+        self.fernet = Fernet(raw)
         self.connection = sqlite3.connect(db_path, check_same_thread=False)
         self.cursor = self.connection.cursor()
         self._initialize_tables()

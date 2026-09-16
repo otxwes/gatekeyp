@@ -1,7 +1,7 @@
 import unittest
 from datetime import UTC, datetime, timedelta
 
-from helpers import TEST_MASTER_KEY
+from helpers import TEST_ORGANIZER_KEY
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -13,7 +13,7 @@ TEST_HMAC_SECRET = "test-hmac-secret-for-unit-tests-only-1234567890"
 
 class TestKeyManager(unittest.TestCase):
     def setUp(self):
-        self.db = DatabaseHandler(":memory:", master_key=TEST_MASTER_KEY)
+        self.db = DatabaseHandler(":memory:", organizer_key=TEST_ORGANIZER_KEY)
         self.km = KeyManager(db=self.db, hmac_secret=TEST_HMAC_SECRET)
 
     def tearDown(self):
@@ -254,7 +254,7 @@ class TestKeyManagerPropertyBased(unittest.TestCase):
     """Property-based tests for key generation, hashing, and federation."""
 
     def setUp(self):
-        self.db = DatabaseHandler(":memory:", master_key=TEST_MASTER_KEY)
+        self.db = DatabaseHandler(":memory:", organizer_key=TEST_ORGANIZER_KEY)
         self.km = KeyManager(db=self.db, hmac_secret=TEST_HMAC_SECRET)
 
     def tearDown(self):

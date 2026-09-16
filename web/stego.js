@@ -70,10 +70,10 @@ window.gkpStego = (function () {
      * Payload helpers
      *
      * The attendee payload is unchanged since Phase 3.6: `event_id` +
-     * "\n" + `access_key`. A master (organizer) card carries the same two
+     * "\n" + `access_key`. A organizer (organizer) card carries the same two
      * facts but is TAGGED — the payload gains a `organizer\n` role line
      * (3 lines total), so old cards keep decoding and no decoder ever
-     * mistakes the master key for an attendee key.
+     * mistakes the organizer key for an attendee key.
      * ---------------------------------------------------------- */
     function makePayload(eventId, accessKey, role) {
         if (role === "organizer") return `organizer\n${eventId}\n${accessKey}`;
@@ -102,7 +102,7 @@ window.gkpStego = (function () {
     // travel as a printed QR on the card; the QR is gone (Phase B: a scannable
     // key is a secrecy downgrade — anything photographable can be harvested
     // en masse), but the same text survives as the clipboard escape hatch.
-    // A master key uses the `gkporg:` prefix so the tabs can route it to the
+    // A organizer key uses the `gkporg:` prefix so the tabs can route it to the
     // organizer workspace instead of the attendee unlock.
     function keyLine(eventId, accessKey, role) {
         return (role === "organizer" ? "gkporg:" : "gkp:") + `${eventId}:${accessKey}`;
@@ -334,6 +334,12 @@ window.gkpStego = (function () {
         const rng = makeRng();
         const seen = new Set();
         return function nextPos() {
+            // Degenerate-carrier guard: an image with fewer pixels than the
+            // bitstream can never yield distinct positions. Once every
+            // capacity slot is seen, reuse positions (extract reads garbage
+            // and honestly rejects; embed throws on capacity before reaching
+            // here) instead of busy-looping the tab frozen.
+            if (seen.size >= capacity) return Number(rng() % BigInt(capacity));
             for (;;) {
                 const p = Number(rng() % BigInt(capacity));
                 if (!seen.has(p)) { seen.add(p); return p; }

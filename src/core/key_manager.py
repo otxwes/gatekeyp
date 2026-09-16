@@ -13,7 +13,7 @@ from src.db.database_handler import DatabaseHandler
 
 # Constants for Key Types
 KEY_TYPE_ACCESS = "access"
-KEY_TYPE_MASTER = "master"
+KEY_TYPE_ORGANIZER = "organizer"
 
 # Minimum entropy requirement: 128 bits (16 bytes) of randomness
 MIN_KEY_ENTROPY_BYTES = 16

@@ -35,10 +35,10 @@ from src.ephemeral import (
     LiteValidationError,
 )
 
-TEST_MASTER_KEY = Fernet.generate_key().decode()
+TEST_ORGANIZER_KEY = Fernet.generate_key().decode()
 TEST_HMAC_SECRET = "test-hmac-secret-for-unit-tests-only-1234567890"
 
-os.environ.setdefault("GATEKEYP_MASTER_KEY", TEST_MASTER_KEY)
+os.environ.setdefault("GATEKEYP_ORGANIZER_KEY", TEST_ORGANIZER_KEY)
 os.environ.setdefault("GATEKEYP_HMAC_SECRET", TEST_HMAC_SECRET)
 
 
@@ -73,7 +73,7 @@ class _FakeClock:
 @pytest.fixture
 def db():
     """Create an in-memory database for testing."""
-    db = DatabaseHandler(db_path=":memory:", master_key=TEST_MASTER_KEY)
+    db = DatabaseHandler(db_path=":memory:", organizer_key=TEST_ORGANIZER_KEY)
     yield db
     db.close()
 
@@ -184,12 +184,13 @@ class TestSchemaMigration:
             " VALUES ('legacy_event', 'Old', 'Old desc', 'org_1', NULL, '2020-01-01T00:00:00')"
         )
         conn.execute(
-            "INSERT INTO keys (hash_key, type, expires_at) VALUES ('legacy_hash', 'master', NULL)"
+            "INSERT INTO keys (hash_key, type, expires_at) "
+            "VALUES ('legacy_hash', 'organizer', NULL)"
         )
         conn.commit()
         conn.close()
 
-        db = DatabaseHandler(db_path=str(legacy), master_key=TEST_MASTER_KEY)
+        db = DatabaseHandler(db_path=str(legacy), organizer_key=TEST_ORGANIZER_KEY)
         try:
             db.cursor.execute("PRAGMA table_info(events)")
             columns = [row[1] for row in db.cursor.fetchall()]
@@ -217,21 +218,21 @@ class TestWipeEvent:
     def _event_with_content(self, content_manager, lifecycle):
         created = lifecycle.create_event("Wipe me", "desc", "org_1")
         event_id = created["event_id"]
-        master = created["master_key"]
-        lifecycle.add_content_block(master, event_id, "description", "very secret payload")
+        organizer = created["organizer_key"]
+        lifecycle.add_content_block(organizer, event_id, "description", "very secret payload")
         content_manager.upload_media(
-            input_key=master,
+            input_key=organizer,
             event_id=event_id,
             filename="flyer.png",
             mime_type="image/png",
             data=_FLYER,
         )
-        return event_id, master
+        return event_id, organizer
 
     def test_wipe_removes_every_trace(self, db, content_manager, key_manager, lifecycle):
         """Event, blocks, media, links and orphaned keys all disappear."""
-        event_id, master = self._event_with_content(content_manager, lifecycle)
-        master_hash = key_manager.hash_key(master.removeprefix("local:"))
+        event_id, organizer = self._event_with_content(content_manager, lifecycle)
+        organizer_hash = key_manager.hash_key(organizer.removeprefix("local:"))
 
         counts = db.wipe_event(event_id)
 
@@ -243,8 +244,8 @@ class TestWipeEvent:
         assert db.get_event(event_id) is None
         assert db.list_content_blocks_for_event(event_id) == []
         assert db.list_media_assets(event_id) == []
-        # The master key existed solely for this event -> deleted
-        assert db.get_key(master_hash) is None
+        # The organizer key existed solely for this event -> deleted
+        assert db.get_key(organizer_hash) is None
         # Tombstone left behind
         tombstone = db.get_tombstone(event_id)
         assert tombstone is not None
@@ -303,7 +304,7 @@ class TestEphemeralService:
         """A lite event is a standard event flagged ephemeral with a deadline."""
         result = ephemeral.create_lite_event("Rooftop set", when="Friday 9pm", where="The roof")
         assert result["event_id"].startswith("event_")
-        assert result["master_key"].startswith("local:")
+        assert result["organizer_key"].startswith("local:")
         assert result["flyer_asset_id"] is None
         event = ephemeral.db.get_event(result["event_id"])
         assert event["mode"] == "ephemeral"
@@ -349,12 +350,12 @@ class TestEphemeralService:
         with pytest.raises(LiteNotFoundError):
             ephemeral.get_public_view(created["event_id"])
 
-    def test_keyed_view_with_master_key(self, ephemeral):
-        """The master key unlocks description, when and where."""
+    def test_keyed_view_with_organizer_key(self, ephemeral):
+        """The organizer key unlocks description, when and where."""
         result = ephemeral.create_lite_event(
             "Keyed", description="secret desc", when="Sat 8pm", where="Corner"
         )
-        view = ephemeral.get_keyed_view(key=result["master_key"], event_id=result["event_id"])
+        view = ephemeral.get_keyed_view(key=result["organizer_key"], event_id=result["event_id"])
         assert view["event"]["description"] == "secret desc"
         assert view["when"] == "Sat 8pm"
         assert view["where"] == "Corner"
@@ -372,7 +373,7 @@ class TestEphemeralService:
         clock.advance(hours=2)
         assert ephemeral.get_public_view(result["event_id"])["status"] == "expired"
         with pytest.raises(LiteGoneError):
-            ephemeral.get_keyed_view(key=result["master_key"], event_id=result["event_id"])
+            ephemeral.get_keyed_view(key=result["organizer_key"], event_id=result["event_id"])
 
     def test_event_time_anchors_expiry(self, ephemeral):
         """An ISO event time anchors the wipe deadline to the event, not creation."""
@@ -414,7 +415,7 @@ class TestEphemeralService:
         view = ephemeral.get_public_view(result["event_id"])
         assert view["status"] == "ended"
         with pytest.raises(LiteGoneError):
-            ephemeral.get_keyed_view(key=result["master_key"], event_id=result["event_id"])
+            ephemeral.get_keyed_view(key=result["organizer_key"], event_id=result["event_id"])
 
 
 class TestLiteRateLimiter:
@@ -461,18 +462,18 @@ class TestLiteRoutes:
         assert resp.status_code == 201
         body = resp.json()
         assert body["event_id"].startswith("event_")
-        assert body["master_key"].startswith("local:")
+        assert body["organizer_key"].startswith("local:")
         assert body["public_url"].endswith(f"/i/{body['event_id']}")
         assert "#/organizer/" in body["organizer_url"]
-        assert f"k={body['master_key']}" in body["organizer_url"]
+        assert f"k={body['organizer_key']}" in body["organizer_url"]
 
-    def test_master_key_never_leaks_to_public_page(self, client):
+    def test_organizer_key_never_leaks_to_public_page(self, client):
         """The OG page shows the title only - never keys or description."""
         body = _create_lite(client, description="private description").json()
         page = client.get(f"/i/{body['event_id']}")
         assert page.status_code == 200
         assert 'property="og:title"' in page.text
-        assert body["master_key"] not in page.text
+        assert body["organizer_key"] not in page.text
         assert "private description" not in page.text
 
     def test_event_time_anchors_expiry_over_http(self, client):
@@ -520,11 +521,11 @@ class TestLiteRoutes:
         resp = client.get(f"/api/lite/events/{body['event_id']}/flyer")
         assert resp.status_code == 404
 
-    def test_keyed_view_with_master_key(self, client):
-        """Keyed attendee view returns when/where with a valid master key."""
+    def test_keyed_view_with_organizer_key(self, client):
+        """Keyed attendee view returns when/where with a valid organizer key."""
         body = _create_lite(client).json()
         resp = client.get(
-            f"/api/lite/events/{body['event_id']}", params={"key": body["master_key"]}
+            f"/api/lite/events/{body['event_id']}", params={"key": body["organizer_key"]}
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -537,7 +538,7 @@ class TestLiteRoutes:
         body = _create_lite(client).json()
         resp = client.post(
             f"/api/events/{body['event_id']}/access-keys",
-            json={"master_key": body["master_key"], "event_id": body["event_id"], "days": 1},
+            json={"organizer_key": body["organizer_key"], "event_id": body["event_id"], "days": 1},
         )
         assert resp.status_code == 200
         access_key = resp.json()["access_key"]
@@ -576,7 +577,9 @@ class TestLiteRoutes:
             json={"title": "Standard", "description": "d", "organizer_id": "org_1"},
         ).json()
         assert client.get(f"/i/{std['event_id']}").status_code == 404
-        keyed = client.get(f"/api/lite/events/{std['event_id']}", params={"key": std["master_key"]})
+        keyed = client.get(
+            f"/api/lite/events/{std['event_id']}", params={"key": std["organizer_key"]}
+        )
         assert keyed.status_code == 404
 
     def test_creation_validation_errors(self, client):

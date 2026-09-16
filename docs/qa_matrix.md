@@ -48,7 +48,7 @@ bonus, not the sole carrier of meaning.
 | State | Motif (shape/pattern) | Glyph / word |
 |---|---|---|
 | Active | solid ink fill (badge-active) | "Active" label |
-| Warn | dashed keyline + wash (badge-warn, master "Master" badge) | label + underlined key emphasis |
+| Warn | dashed keyline + wash (badge-warn, organizer "Organizer" badge) | label + underlined key emphasis |
 | Revoked / destructive | hatched + double keyline (badge-revoked, danger zone) | "Revoked" label, "⚠" form notes |
 | Empty / quiet | hatched "ticket stub" fill + dashed keyline (`.empty`) | title + sub copy |
 | Ok / error toasts | shaded error body + left bar; ok left bar only | `✓` / `✕` icon + text |
@@ -75,7 +75,7 @@ Cells: ✅ code-audited this pass · 👁 needs a human visual pass (light + dar
 |---|---|---|---|---|
 | **Owner — entry** (create / open forms, notes, buttons) | ✅ | ✅ | ✅ | ✅ |
 | **Owner — workspace tabs** (four tabs, header actions) | ✅ | ✅ | ✅ | ✅ |
-| **Owner — master-key modal + banner** (keycode, stamp banner) | ✅ | ✅ | ✅ | ✅ |
+| **Owner — organizer-key modal + banner** (keycode, stamp banner) | ✅ | ✅ | ✅ | ✅ |
 | **Owner — empty states, badges, toasts** | ✅ | ✅ | ✅ | ✅ |
 | **Owner — decommission modal + verify prompt** | ✅ | ✅ | ✅ | ✅ |
 | **Attendee — door** (unlock form, key hint) | ✅ | ✅ | ✅ | ✅ |

@@ -2,7 +2,7 @@ import os
 import unittest
 from datetime import UTC, datetime, timedelta
 
-from helpers import TEST_MASTER_KEY
+from helpers import TEST_ORGANIZER_KEY
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -28,7 +28,7 @@ class TestSecurityAudit(unittest.TestCase):
     """
 
     def setUp(self):
-        self.db = DatabaseHandler(":memory:", master_key=TEST_MASTER_KEY)
+        self.db = DatabaseHandler(":memory:", organizer_key=TEST_ORGANIZER_KEY)
         self.km = KeyManager(db=self.db, hmac_secret=TEST_HMAC_SECRET)
         self.gateway = Gateway(db=self.db, key_manager=self.km)
 
@@ -96,16 +96,16 @@ class TestSecurityAudit(unittest.TestCase):
         self.assertNotIn("40.7128", raw)
         self.assertNotIn("-74.0060", raw)
 
-    def test_master_key_required(self):
-        """DatabaseHandler fails-secure without a master key."""
-        old = os.environ.get("GATEKEYP_MASTER_KEY")
-        os.environ.pop("GATEKEYP_MASTER_KEY", None)
+    def test_organizer_key_required(self):
+        """DatabaseHandler fails-secure without a organizer key."""
+        old = os.environ.get("GATEKEYP_ORGANIZER_KEY")
+        os.environ.pop("GATEKEYP_ORGANIZER_KEY", None)
         try:
             with self.assertRaises(ValueError):
                 DatabaseHandler(":memory:")
         finally:
             if old:
-                os.environ["GATEKEYP_MASTER_KEY"] = old
+                os.environ["GATEKEYP_ORGANIZER_KEY"] = old
 
     # ------------------------------------------------------------------
     # 3. Rate limiting on all key-validation endpoints
@@ -217,7 +217,7 @@ class TestEncryptionPropertyBased(unittest.TestCase):
     """Property-based tests for encryption-at-rest roundtrip."""
 
     def setUp(self):
-        self.db = DatabaseHandler(":memory:", master_key=TEST_MASTER_KEY)
+        self.db = DatabaseHandler(":memory:", organizer_key=TEST_ORGANIZER_KEY)
 
     def tearDown(self):
         self.db.close()
@@ -272,7 +272,7 @@ class TestEphemeralSecurityAudit(unittest.TestCase):
     TEST_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
     def setUp(self):
-        self.db = DatabaseHandler(":memory:", master_key=TEST_MASTER_KEY)
+        self.db = DatabaseHandler(":memory:", organizer_key=TEST_ORGANIZER_KEY)
         self.km = KeyManager(db=self.db, hmac_secret=TEST_HMAC_SECRET)
         self.cm = ContentManager(db=self.db, key_manager=self.km)
         self.lifecycle = EventLifecycleManager(
@@ -312,8 +312,8 @@ class TestEphemeralSecurityAudit(unittest.TestCase):
     def test_wipe_removes_all_plaintext_traces(self):
         """After a wipe, no remaining row contains the secrets or the raw key."""
         result = self._lite_event()
-        master = result["master_key"]
-        secrets = ["Secret Rooftop", "Friday 9pm", "-74.0060", master]
+        organizer = result["organizer_key"]
+        secrets = ["Secret Rooftop", "Friday 9pm", "-74.0060", organizer]
 
         self.db.wipe_event(result["event_id"])
 
@@ -331,11 +331,11 @@ class TestEphemeralSecurityAudit(unittest.TestCase):
                     for secret in secrets:
                         self.assertNotIn(secret, text or "")
 
-    def test_wiped_master_key_no_longer_validates(self):
-        """The wiped event's master key no longer resolves to anything."""
+    def test_wiped_organizer_key_no_longer_validates(self):
+        """The wiped event's organizer key no longer resolves to anything."""
         result = self._lite_event()
         self.db.wipe_event(result["event_id"])
-        self.assertEqual(self.km.validate_key(result["master_key"])["status"], "invalid")
+        self.assertEqual(self.km.validate_key(result["organizer_key"])["status"], "invalid")
 
     def test_tombstone_records_no_event_data(self):
         """The tombstone stores only the id and the ended-at timestamp."""

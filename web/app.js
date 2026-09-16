@@ -1,7 +1,7 @@
 /* gatekeyp — browser app for the organizer desk and the attendee door.
  *
  * Hash-routed, no framework. Talks to the same JSON API the server exposes.
- * Keys never leave this tab: the master key and attendee keys live in
+ * Keys never leave this tab: the organizer key and attendee keys live in
  * sessionStorage (cleared when the tab closes), and the raw key is only ever
  * shown once, in a modal, at generation time.
  */
@@ -73,7 +73,7 @@ async function copyText(text) {
 /* ------------------------------------------------------------------
  * Session state
  * ------------------------------------------------------------------ */
-// Organizer workspace: { eventId, masterKey, title }
+// Organizer workspace: { eventId, organizerKey, title }
 let org = null;
 // Attendee session: { eventId, accessKey, event: { ...event dict } }
 let attendee = null;
@@ -142,7 +142,7 @@ function qs(params) {
 
 /** A media asset's retrieval URL, keyed for the current session. */
 function mediaUrl(assetId) {
-    const key = (org && org.masterKey) || (attendee && attendee.accessKey) || "";
+    const key = (org && org.organizerKey) || (attendee && attendee.accessKey) || "";
     return `/api/media/${encodeURIComponent(assetId)}${qs({ key })}`;
 }
 
@@ -218,9 +218,9 @@ function openModal({ title, body = "", confirmText = "Confirm", cancelText = "Ca
  *  When `cardOpts` (event metadata for the invite card) is given, also offers
  *  "Also make an invite card" for the fresh key. */
 function openKeyModal(label, keyValue, cardOpts = null) {
-    const isMaster = Boolean(cardOpts && cardOpts.organizer);
+    const isOrganizer = Boolean(cardOpts && cardOpts.organizer);
     const cardButton = cardOpts
-        ? `<button class="btn btn-secondary btn-block" type="button" id="key-card-btn">${isMaster ? "Also make a master card" : "Also make an invite card"}</button>`
+        ? `<button class="btn btn-secondary btn-block" type="button" id="key-card-btn">${isOrganizer ? "Also make a organizer card" : "Also make an invite card"}</button>`
         : "";
     const cardHint = cardOpts
         ? `<p class="field-hint">Send the card as a file or attachment, not a photo — re-encoding it in a chat destroys the hidden key, and there is no fallback: the pixels are the key.</p>`
@@ -399,7 +399,7 @@ function endAllSessions() {
  * Organize entry (create / open)
  * ------------------------------------------------------------------ */
 function bindOrganizeEntry() {
-    // Paste a master key line (gkporg:) or master card image while the
+    // Paste a organizer key line (gkporg:) or organizer card image while the
     // organize entry is showing — reopening without the two-field form.
     document.addEventListener("paste", async (event) => {
         const view = $("#view-organize");
@@ -419,7 +419,7 @@ function bindOrganizeEntry() {
                         if (parsed && parsed.role === "organizer") {
                             try {
                                 await openOrganizerWorkspace(parsed.eventId, parsed.accessKey);
-                                toast("Workspace restored from your master card.", "ok", "Welcome back");
+                                toast("Workspace restored from your organizer card.", "ok", "Welcome back");
                             } catch (err) {
                                 toast(err.message, "error", "Could not read the card");
                             }
@@ -471,18 +471,18 @@ function bindOrganizeEntry() {
             });
             org = {
                 eventId: created.event_id,
-                masterKey: created.master_key,
+                organizerKey: created.organizer_key,
                 title: created.title || title,
                 meta: { description, locationData: location_data },
             };
             createForm.reset();
             saveSession();
             goWorkspace();
-            openKeyModal("Master key — save it", created.master_key, {
+            openKeyModal("Organizer key — save it", created.organizer_key, {
                 ...inviteCardOpts(),
                 organizer: true,
             });
-            toast("Event created. Share access keys, never this master key.", "ok", "Ready");
+            toast("Event created. Share access keys, never this organizer key.", "ok", "Ready");
         } catch (err) {
             note(noteEl, err.message, "error");
             btnBusy(btn, false);
@@ -496,14 +496,14 @@ function bindOrganizeEntry() {
         const btn = $("#open-btn");
         note(noteEl, "");
         const eventId = getField(openForm, "event_id");
-        const masterKey = getField(openForm, "master_key");
-        if (!eventId || !masterKey) {
-            note(noteEl, "Both the event ID and master key are required.", "error");
+        const organizerKey = getField(openForm, "organizer_key");
+        if (!eventId || !organizerKey) {
+            note(noteEl, "Both the event ID and organizer key are required.", "error");
             return;
         }
         btnBusy(btn, true, "Opening…");
         try {
-            await openOrganizerWorkspace(eventId, masterKey);
+            await openOrganizerWorkspace(eventId, organizerKey);
             openForm.reset();
             toast("Workspace restored from your key.", "ok", "Welcome back");
             btnBusy(btn, false);
@@ -560,7 +560,7 @@ const WS_LOADERS = {
 };
 
 async function fetchEventDetails() {
-    return api(`/api/events/${encodeURIComponent(org.eventId)}${qs({ master_key: org.masterKey })}`);
+    return api(`/api/events/${encodeURIComponent(org.eventId)}${qs({ organizer_key: org.organizerKey })}`);
 }
 
 function renderWorkspace() {
@@ -577,9 +577,9 @@ function renderWorkspace() {
         `<button class="btn btn-danger" type="button" id="ws-decommission">Decommission</button>` +
         `</div>` +
         `</header>` +
-        `<div class="master-banner" role="note">` +
-        `<span class="badge badge-warn">Master</span>` +
-        `<button class="btn btn-secondary btn-sm" type="button" id="ws-copy-key">Copy master key</button>` +
+        `<div class="organizer-banner" role="note">` +
+        `<span class="badge badge-warn">Organizer</span>` +
+        `<button class="btn btn-secondary btn-sm" type="button" id="ws-copy-key">Copy organizer key</button>` +
         `</div>` +
         `<nav class="tabs" role="tablist" aria-label="Workspace sections">` +
         WS_TABS.map(([id, label]) =>
@@ -595,11 +595,11 @@ function renderWorkspace() {
         saveSession();
         location.hash = "#/organize";
         renderOrganize();
-        toast("Workspace closed. Master key discarded from this tab.", "info", "Signed out");
+        toast("Workspace closed. Organizer key discarded from this tab.", "info", "Signed out");
     });
     $("#ws-copy-key").addEventListener("click", async () => {
-        const ok = await copyText(org.masterKey);
-        toast(ok ? "Master key copied to clipboard." : "Copy blocked.", ok ? "ok" : "error", "Copy");
+        const ok = await copyText(org.organizerKey);
+        toast(ok ? "Organizer key copied to clipboard." : "Copy blocked.", ok ? "ok" : "error", "Copy");
     });
     $$(".tab", root).forEach((tab) => {
         tab.addEventListener("click", () => {
@@ -642,8 +642,8 @@ async function wsContent(main) {
         (event.location_data ? factRow("Location", event.location_data) : "") +
         factRow("Created", fmtDate(event.created_at)) +
         `</div>` +
-        `<p><button class="btn btn-secondary btn-sm" type="button" id="ws-master-card">Master card</button>` +
-        ` — a stamped copy of this master key, hidden in the pixels. Drop it on the join tab to reopen this workspace.</p>` +
+        `<p><button class="btn btn-secondary btn-sm" type="button" id="ws-organizer-card">Organizer card</button>` +
+        ` — a stamped copy of this organizer key, hidden in the pixels. Drop it on the join tab to reopen this workspace.</p>` +
         `</section>` +
         `<section class="card">` +
         `<h3 class="card-title">Content blocks</h3>` +
@@ -665,13 +665,13 @@ async function wsContent(main) {
         `<datalist id="block-types">${Object.keys(CONTENT_TYPE_LABELS).map((t) => `<option value="${esc(t)}">`).join("")}</datalist>` +
         `</section>`;
 
-    $("#ws-master-card").addEventListener("click", () => {
-        if (!org || !org.masterKey) return;
-        // Never re-display the raw master key — hand it straight to the card
+    $("#ws-organizer-card").addEventListener("click", () => {
+        if (!org || !org.organizerKey) return;
+        // Never re-display the raw organizer key — hand it straight to the card
         // maker, which keeps it client-side and hidden in the pixels.
         openCardCoverModal({
             ...inviteCardOpts(),
-            accessKey: org.masterKey,
+            accessKey: org.organizerKey,
             organizer: true,
         });
     });
@@ -687,7 +687,7 @@ async function wsContent(main) {
         try {
             await api(`/api/events/${encodeURIComponent(org.eventId)}/content`, {
                 method: "POST",
-                body: { master_key: org.masterKey, event_id: org.eventId, content_type, payload },
+                body: { organizer_key: org.organizerKey, event_id: org.eventId, content_type, payload },
             });
             toast("Content block added.", "ok", "Saved");
             await wsContent(main);
@@ -748,7 +748,7 @@ async function bindBulletinCard(card, manage) {
         if (loaded) return;
         commentsBox.innerHTML = `<span class="badge badge-neutral">Loading…</span>`;
         try {
-            const theKey = (org && org.masterKey) || (attendee && attendee.accessKey) || "";
+            const theKey = (org && org.organizerKey) || (attendee && attendee.accessKey) || "";
             const [detail, comments] = await Promise.all([
                 api(`/api/bulletins/${encodeURIComponent(card.dataset.bid)}${qs({ key: theKey })}`),
                 api(`/api/bulletins/${encodeURIComponent(card.dataset.bid)}/comments${qs({ key: theKey })}`),
@@ -778,7 +778,7 @@ async function bindBulletinCard(card, manage) {
                 confirmText: "Delete",
                 danger: true,
                 onConfirm: async () => {
-                    await api(`/api/bulletins/${encodeURIComponent(card.dataset.bid)}${qs({ key: org.masterKey })}`, { method: "DELETE" });
+                    await api(`/api/bulletins/${encodeURIComponent(card.dataset.bid)}${qs({ key: org.organizerKey })}`, { method: "DELETE" });
                     card.remove();
                     toast("Bulletin deleted.", "ok", "Removed");
                 },
@@ -832,7 +832,7 @@ function renderComments(box, comments, manage) {
         delBtn.addEventListener("click", async () => {
             const row = delBtn.closest(".comment");
             try {
-                await api(`/api/comments/${encodeURIComponent(row.dataset.cid)}${qs({ key: org.masterKey })}`, { method: "DELETE" });
+                await api(`/api/comments/${encodeURIComponent(row.dataset.cid)}${qs({ key: org.organizerKey })}`, { method: "DELETE" });
                 row.remove();
                 toast("Comment deleted.", "ok", "Removed");
             } catch (err) {
@@ -846,7 +846,7 @@ function renderComments(box, comments, manage) {
  * Workspace: Bulletin board tab
  * ------------------------------------------------------------------ */
 async function wsBulletins(main) {
-    const bulletins = await api(`/api/events/${encodeURIComponent(org.eventId)}/bulletins${qs({ key: org.masterKey })}`);
+    const bulletins = await api(`/api/events/${encodeURIComponent(org.eventId)}/bulletins${qs({ key: org.organizerKey })}`);
     main.innerHTML =
         `<section class="card">` +
         `<h3 class="card-title">Bulletin board</h3>` +
@@ -879,7 +879,7 @@ async function wsBulletins(main) {
         try {
             await api(`/api/events/${encodeURIComponent(org.eventId)}/bulletins`, {
                 method: "POST",
-                body: { key: org.masterKey, event_id: org.eventId, title, body, author_id: "organizer" },
+                body: { key: org.organizerKey, event_id: org.eventId, title, body, author_id: "organizer" },
             });
             toast("Bulletin posted.", "ok", "Board updated");
             await wsBulletins(main);
@@ -940,7 +940,7 @@ function bindMediaTiles(root) {
                     confirmText: "Delete",
                     danger: true,
                     onConfirm: async () => {
-                        await api(`/api/media/${encodeURIComponent(assetId)}${qs({ key: org.masterKey })}`, { method: "DELETE" });
+                        await api(`/api/media/${encodeURIComponent(assetId)}${qs({ key: org.organizerKey })}`, { method: "DELETE" });
                         tile.remove();
                         toast("Media deleted.", "ok", "Removed");
                     },
@@ -951,7 +951,7 @@ function bindMediaTiles(root) {
 }
 
 async function wsMedia(main) {
-    const assets = await api(`/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.masterKey })}`);
+    const assets = await api(`/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.organizerKey })}`);
     main.innerHTML =
         `<section class="card">` +
         `<h3 class="card-title">Media library</h3>` +
@@ -977,7 +977,7 @@ async function wsMedia(main) {
         const fd = new FormData();
         fd.append("file", input.files[0]);
         btnBusy(btn, true, "Uploading…");
-        const url = `/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.masterKey })}`;
+        const url = `/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.organizerKey })}`;
         let response;
         try {
             response = await fetch(url, { method: "POST", body: fd });
@@ -1089,7 +1089,7 @@ function openCardCoverModal(card) {
         `<div class="card-preview-wrap"><canvas id="card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>`;
 
     openModal({
-        title: card.organizer ? "Make a master card" : "Make an invite card",
+        title: card.organizer ? "Make a organizer card" : "Make an invite card",
         body,
         confirmText: "Download card",
         cancelText: "Cancel",
@@ -1101,7 +1101,7 @@ function openCardCoverModal(card) {
             });
             toast(
                 card.organizer
-                    ? "Master card downloaded — it reopens the event on this tab."
+                    ? "Organizer card downloaded — it reopens the event on this tab."
                     : "Invite card downloaded — the key is hidden in its pixels.",
                 "ok",
                 "Card ready"
@@ -1190,7 +1190,7 @@ function keyRowHTML(key) {
 }
 
 async function wsKeys(main) {
-    const keys = await api(`/api/events/${encodeURIComponent(org.eventId)}/access-keys${qs({ master_key: org.masterKey })}`);
+    const keys = await api(`/api/events/${encodeURIComponent(org.eventId)}/access-keys${qs({ organizer_key: org.organizerKey })}`);
     main.innerHTML =
         `<section class="card">` +
         `<h3 class="card-title">Access keys</h3>` +
@@ -1235,7 +1235,7 @@ async function wsKeys(main) {
         try {
             const key = await api(`/api/events/${encodeURIComponent(org.eventId)}/access-keys`, {
                 method: "POST",
-                body: { master_key: org.masterKey, event_id: org.eventId, days, owner_id },
+                body: { organizer_key: org.organizerKey, event_id: org.eventId, days, owner_id },
             });
             openKeyModal("Access key — share it", key.access_key, inviteCardOpts());
             toast("Access key generated.", "ok", "New key");
@@ -1256,7 +1256,7 @@ async function wsKeys(main) {
         try {
             await api(`/api/events/${encodeURIComponent(org.eventId)}/access-keys/revoke`, {
                 method: "POST",
-                body: { master_key: org.masterKey, event_id: org.eventId, access_key },
+                body: { organizer_key: org.organizerKey, event_id: org.eventId, access_key },
             });
             toast("Access key revoked.", "ok", "Done");
             await wsKeys(main);
@@ -1299,8 +1299,8 @@ function rsvpRowHTML(rsvp) {
 async function wsRsvps(main) {
     const eventId = encodeURIComponent(org.eventId);
     const [rsvps, settings] = await Promise.all([
-        api(`/api/events/${eventId}/rsvp/list${qs({ key: org.masterKey })}`),
-        api(`/api/events/${eventId}/rsvp/settings${qs({ key: org.masterKey })}`),
+        api(`/api/events/${eventId}/rsvp/list${qs({ key: org.organizerKey })}`),
+        api(`/api/events/${eventId}/rsvp/settings${qs({ key: org.organizerKey })}`),
     ]);
     const shareUrl = `${location.href.split("#")[0]}#/rsvp/${org.eventId}`;
     const pending = rsvps.filter((r) => r.status === "pending").length;
@@ -1358,7 +1358,7 @@ async function wsRsvps(main) {
             try {
                 await api(`/api/events/${eventId}/rsvp/decide`, {
                     method: "POST",
-                    body: { master_key: org.masterKey, rsvp_id: btn.dataset.rsvp, decision },
+                    body: { organizer_key: org.organizerKey, rsvp_id: btn.dataset.rsvp, decision },
                 });
                 toast(
                     decision === "approve"
@@ -1405,7 +1405,7 @@ async function wsRsvps(main) {
             await api(`/api/events/${eventId}/rsvp/settings`, {
                 method: "POST",
                 body: {
-                    master_key: org.masterKey,
+                    organizer_key: org.organizerKey,
                     passphrase: passOn && passValue ? passValue : null,
                     auto_approve: auto,
                 },
@@ -1443,7 +1443,7 @@ function openDecommissionModal() {
             }
             await api(`/api/events/${encodeURIComponent(org.eventId)}/decommission`, {
                 method: "POST",
-                body: { master_key: org.masterKey, event_id: org.eventId },
+                body: { organizer_key: org.organizerKey, event_id: org.eventId },
             });
             org = null;
             saveSession();
@@ -1457,16 +1457,16 @@ function openDecommissionModal() {
 }
 
 /**
- * Restore the organizer workspace for an event from its master key.
- * Shared by the two-field form and the master card / gkporg: keyline
- * decoders — the master key travels the same way in all three.
+ * Restore the organizer workspace for an event from its organizer key.
+ * Shared by the two-field form and the organizer card / gkporg: keyline
+ * decoders — the organizer key travels the same way in all three.
  */
-async function openOrganizerWorkspace(eventId, masterKey) {
-    const details = await api(`/api/events/${encodeURIComponent(eventId)}${qs({ master_key: masterKey })}`);
+async function openOrganizerWorkspace(eventId, organizerKey) {
+    const details = await api(`/api/events/${encodeURIComponent(eventId)}${qs({ organizer_key: organizerKey })}`);
     const eventInfo = details.event || {};
     org = {
         eventId,
-        masterKey,
+        organizerKey,
         title: eventInfo.title || "Untitled event",
         meta: {
             description: eventInfo.description || "",
@@ -1480,12 +1480,12 @@ async function openOrganizerWorkspace(eventId, masterKey) {
 
 /**
  * Route an invite payload where its role says: attendee keys unlock the event
- * page on this tab; organizer (master) payloads restore the workspace.
+ * page on this tab; organizer (organizer) payloads restore the workspace.
  */
 async function routeInvitePayload(parsed) {
     if (parsed.role === "organizer") {
         await openOrganizerWorkspace(parsed.eventId, parsed.accessKey);
-        toast("Workspace restored from your master card.", "ok", "Welcome back");
+        toast("Workspace restored from your organizer card.", "ok", "Welcome back");
         return;
     }
     await unlockEvent(parsed.eventId, parsed.accessKey);
@@ -1503,8 +1503,8 @@ function setDropBusy(drop, busy, label) {
         if (title) title.textContent = label || "Reading…";
     } else {
         drop.classList.remove("is-busy");
-        if (title) title.textContent = "Drop your invite here";
-        if (sub) sub.textContent = "or paste it with ⌘V";
+        if (title) title.textContent = drop.dataset.resetTitle || "Drop your invite here";
+        if (sub) sub.textContent = drop.dataset.resetSub || "or paste it with ⌘V";
     }
 }
 
@@ -1530,12 +1530,80 @@ async function handleInvitePng(file) {
         if (!parsed) throw new Error(window.gkpStego.inviteRejectReason(kind));
 
         // The payload's role routes it: attendee keys unlock the event page,
-        // organizer master cards restore the workspace.
+        // organizer organizer cards restore the workspace.
         await routeInvitePayload(parsed);
     } catch (err) {
         toast(err.message, "error", "Could not read the card");
     } finally {
         setDropBusy(drop, false);
+    }
+}
+
+/**
+ * Organizer card drop / paste / choose on the organize entry: organizer
+ * payloads restore the workspace; anything else gets a clear rejection.
+ */
+async function handleOrganizerCardFile(file) {
+    if (!file) return;
+    const drop = $("#org-drop");
+    const noteEl = $("#open-note");
+    if (noteEl) note(noteEl, "");
+    setDropBusy(drop, true, "Reading the card…");
+    try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const kind = window.gkpStego.classifyInvite(bytes);
+        let parsed = null;
+        if (kind === "png") {
+            const payload = await window.gkpStego.extract(bytes);
+            parsed = payload !== null ? window.gkpStego.parsePayload(payload) : null;
+        }
+        if (!parsed) throw new Error(window.gkpStego.inviteRejectReason(kind));
+        if (parsed.role !== "organizer") {
+            throw new Error("That is an attendee invite — attendee cards belong on the Join tab.");
+        }
+        await openOrganizerWorkspace(parsed.eventId, parsed.accessKey);
+        toast("Workspace restored from your organizer card.", "ok", "Welcome back");
+    } catch (err) {
+        toast(err.message, "error", "Could not read the card");
+    } finally {
+        setDropBusy(drop, false);
+    }
+}
+
+function bindOrgDrop() {
+    const drop = $("#org-drop");
+    const fileInput = $("#org-drop-file");
+    if (!drop) return;
+    drop.addEventListener("click", () => {
+        if (fileInput) fileInput.click();
+    });
+    drop.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            if (fileInput) fileInput.click();
+        }
+    });
+    ["dragenter", "dragover"].forEach((type) => {
+        drop.addEventListener(type, (event) => {
+            event.preventDefault();
+            drop.classList.add("is-drag");
+        });
+    });
+    ["dragleave", "drop"].forEach((type) => {
+        drop.addEventListener(type, (event) => {
+            event.preventDefault();
+            drop.classList.remove("is-drag");
+        });
+    });
+    drop.addEventListener("drop", (event) => {
+        const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+        handleOrganizerCardFile(file);
+    });
+    if (fileInput) {
+        fileInput.addEventListener("change", () => {
+            handleOrganizerCardFile(fileInput.files && fileInput.files[0]);
+            fileInput.value = "";
+        });
     }
 }
 
@@ -1574,7 +1642,7 @@ function bindJoinDrop() {
             fileInput.value = "";
         });
     }
-    // Paste anywhere while the join entry is visible: an invite card, master
+    // Paste anywhere while the join entry is visible: an invite card, organizer
     // card, or gkp: / gkporg: text — each routed by the payload's role.
     document.addEventListener("paste", async (event) => {
         const entry = $("#join-entry");
@@ -1911,8 +1979,8 @@ async function loadAttendeeMedia() {
  * Lite events (ephemeral flyer funnel)
  * ------------------------------------------------------------------ */
 
-/** Ask the instance to relay the master key to an attendee's LXMF address. */
-async function deliverByMesh(eventId, masterKey, statusEl) {
+/** Ask the instance to relay the organizer key to an attendee's LXMF address. */
+async function deliverByMesh(eventId, organizerKey, statusEl) {
     const address = prompt(
         "LXMF address of the attendee (32 hex characters, e.g. from Sideband):"
     );
@@ -1921,7 +1989,7 @@ async function deliverByMesh(eventId, masterKey, statusEl) {
     try {
         const body = await api(
             `/api/lite/events/${encodeURIComponent(eventId)}/deliver`,
-            { body: { destination: address.trim(), master_key: masterKey }, method: "POST" }
+            { body: { destination: address.trim(), organizer_key: organizerKey }, method: "POST" }
         );
         statusEl.textContent = body.detail || "Queued over mesh.";
     } catch (err) {
@@ -1933,7 +2001,7 @@ async function deliverByMesh(eventId, masterKey, statusEl) {
 function showFlyerDone(done, body) {
     const publicUrl = body.public_url || `${location.origin}/i/${body.event_id}`;
     const eventHref =
-        `#/e/${encodeURIComponent(body.event_id)}?k=${encodeURIComponent(body.master_key)}`;
+        `#/e/${encodeURIComponent(body.event_id)}?k=${encodeURIComponent(body.organizer_key)}`;
     const meshPanel = body.mesh_delivery_available
         ? `<div class="item"><button type="button" class="btn" id="mesh-deliver-btn">` +
           `Send key over mesh (LXMF)</button>` +
@@ -1942,10 +2010,10 @@ function showFlyerDone(done, body) {
     done.innerHTML =
         `<header class="view-head"><h2 class="view-title">Your event is live</h2></header>` +
         `<div class="card form-card">` +
-        `<h3 class="card-title">Master key</h3>` +
+        `<h3 class="card-title">Organizer key</h3>` +
         `<p class="key-hint">Copy this key now — it is shown only once and cannot be ` +
         `recovered later.</p>` +
-        `<code class="key-hint">${esc(body.master_key)}</code>` +
+        `<code class="key-hint">${esc(body.organizer_key)}</code>` +
         `<div class="field"><label>Share link</label>` +
         `<div class="item"><code>${esc(publicUrl)}</code></div></div>` +
         meshPanel +
@@ -1958,7 +2026,7 @@ function showFlyerDone(done, body) {
         meshBtn.addEventListener("click", () => {
             deliverByMesh(
                 body.event_id,
-                body.master_key,
+                body.organizer_key,
                 document.getElementById("mesh-deliver-status")
             );
         });
@@ -2024,7 +2092,7 @@ async function renderFlyer() {
             entry.hidden = true;
             showFlyerDone(done, body);
             done.hidden = false;
-            toast("Copy the master key before leaving this page.", "ok", "Event is live");
+            toast("Copy the organizer key before leaving this page.", "ok", "Event is live");
         } catch (err) {
             note.textContent = err.message;
         } finally {
@@ -2097,6 +2165,7 @@ async function renderLiteEvent() {
 function init() {
     loadSession();
     bindOrganizeEntry();
+    bindOrgDrop();
     bindJoinDrop();
     window.addEventListener("hashchange", route);
     route();

@@ -7,7 +7,7 @@ can request an invite, subject to a per-client rate limit and an optional
 shared passphrase. Every submission pre-mints its access key server-side; the
 raw key is returned exactly once and stays grant-free until the organizer (or
 the auto-approve dial) approves it. Organizer endpoints require the event's
-master key.
+organizer key.
 """
 
 from __future__ import annotations
@@ -48,7 +48,11 @@ class RsvpSubmissionRequest(BaseModel):
 class RsvpDecisionRequest(BaseModel):
     """Organizer decision on a pending RSVP."""
 
-    master_key: str = Field(..., min_length=1, max_length=2048)
+    organizer_key: str = Field(
+        ...,
+        min_length=1,
+        max_length=2048,
+    )
     rsvp_id: str = Field(..., min_length=1, max_length=256)
     decision: str = Field(..., min_length=1, max_length=16)
 
@@ -56,7 +60,11 @@ class RsvpDecisionRequest(BaseModel):
 class RsvpSettingsRequest(BaseModel):
     """Update the RSVP gate for an event (organizer-gated)."""
 
-    master_key: str = Field(..., min_length=1, max_length=2048)
+    organizer_key: str = Field(
+        ...,
+        min_length=1,
+        max_length=2048,
+    )
     passphrase: str | None = Field(default=None, max_length=MAX_CONTACT_LENGTH)
     auto_approve: int | None = Field(default=None, ge=0, le=MAX_AUTO_APPROVE)
 
@@ -112,7 +120,7 @@ def build_rsvp_router(  # noqa: C901 - many routes
     def decide_rsvp(event_id: str, body: RsvpDecisionRequest) -> dict:
         """Approve or deny an RSVP (organizer-gated)."""
         try:
-            return service.decide(body.master_key, event_id, body.rsvp_id, body.decision)
+            return service.decide(body.organizer_key, event_id, body.rsvp_id, body.decision)
         except RsvpValidationError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err
         except RsvpNotFoundError as err:
@@ -131,7 +139,7 @@ def build_rsvp_router(  # noqa: C901 - many routes
         """Set the RSVP gate: optional passphrase + auto-approve dial."""
         try:
             return service.update_rsvp_settings(
-                body.master_key,
+                body.organizer_key,
                 event_id,
                 passphrase=body.passphrase,
                 auto_approve=body.auto_approve,

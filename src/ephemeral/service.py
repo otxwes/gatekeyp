@@ -207,7 +207,7 @@ class EphemeralService:
                 data is wiped after expiry.
 
         Returns:
-            Payload with event_id, master_key (shown once), expiry timestamps
+            Payload with event_id, organizer_key (shown once), expiry timestamps
             and the flyer asset id.
         """
         self._validate_text(title, "title", MAX_TITLE_LENGTH, required=True)
@@ -224,29 +224,29 @@ class EphemeralService:
             message = "The event time has already passed — pick a time in the future"
             raise LiteValidationError(message)
         expires_at = expiry_dt.isoformat()
-        # The master key must outlive the event (plus one day of grace)
-        master_key_days = max(1, math.ceil((expiry_dt - now).total_seconds() / 86400) + 1)
+        # The organizer key must outlive the event (plus one day of grace)
+        organizer_key_days = max(1, math.ceil((expiry_dt - now).total_seconds() / 86400) + 1)
 
         try:
             created = self.lifecycle.create_event(
                 title=title,
                 description=description or title,
                 organizer_id="lite:ephemeral",
-                master_key_days=master_key_days,
+                organizer_key_days=organizer_key_days,
             )
         except EventLifecycleError as err:
             message = f"Could not create lite event: {err}"
             raise LiteValidationError(message) from err
 
         event_id = created["event_id"]
-        master_key = created["master_key"]
+        organizer_key = created["organizer_key"]
         self.db.set_event_mode(event_id, "ephemeral", expires_at)
 
         flyer_asset_id = None
         if flyer is not None:
             try:
                 uploaded = self.content_manager.upload_media(
-                    input_key=master_key,
+                    input_key=organizer_key,
                     event_id=event_id,
                     filename=flyer["filename"],
                     mime_type=flyer["mime_type"],
@@ -266,14 +266,14 @@ class EphemeralService:
 
         if when:
             self.lifecycle.add_content_block(
-                master_key=master_key,
+                organizer_key=organizer_key,
                 event_id=event_id,
                 content_type="schedule",
                 payload=when,
             )
         if where:
             self.lifecycle.add_content_block(
-                master_key=master_key,
+                organizer_key=organizer_key,
                 event_id=event_id,
                 content_type="location",
                 payload=where,
@@ -282,8 +282,8 @@ class EphemeralService:
         return {
             "event_id": event_id,
             "title": title,
-            "master_key": master_key,
-            "master_key_expires_at": created["expires_at"],
+            "organizer_key": organizer_key,
+            "organizer_key_expires_at": created["expires_at"],
             "event_expires_at": expires_at,
             "flyer_asset_id": flyer_asset_id,
         }
@@ -330,7 +330,7 @@ class EphemeralService:
         """
         Return title, description and decrypted when/where for a key holder.
 
-        The key may be the master key or any access key linked to the event;
+        The key may be the organizer key or any access key linked to the event;
         access is verified through ContentManager's event-scope fallback.
         """
         ended = self.db.get_tombstone(event_id)

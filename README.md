@@ -19,7 +19,7 @@ gatekeyp is designed to help communities organize events while prioritizing:
   - Minimum key entropy enforcement (128 bits)
   - Constant-time comparison (`hmac.compare_digest`)
 - **Event Lifecycle Management**: Full event lifecycle orchestration
-  - Event creation with master key generation
+  - Event creation with organizer key generation
   - Attendee access key generation, listing, and revocation
   - Content block management (descriptions, schedules, etc.)
   - Event decommissioning (revokes all keys)
@@ -43,7 +43,7 @@ gatekeyp is designed to help communities organize events while prioritizing:
   - CORS support for development
 - **Web UI**: Mobile-first, privacy-preserving frontend (hash-routed SPA, no build step)
   - Organizer desk: create / open events, four-tab workspace (Content, Bulletin
-    board, Media, Access keys) with a header Decommission action + one-time master-key modal
+    board, Media, Access keys) with a header Decommission action + one-time organizer-key modal
   - Attendee door: unlock an invite with an access key, then read content,
     post on the bulletin board, comment, and view media — no account required
   - Invite cards (stego-only, Phase B): the access key is hidden in the
@@ -105,9 +105,9 @@ make setup
 gatekeyp uses **fail-secure** configuration: the application refuses to start if these are missing.
 
 ```bash
-# Fernet-compatible master key for encryption-at-rest
+# Fernet-compatible organizer key for encryption-at-rest
 # Generate with: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-export GATEKEYP_MASTER_KEY="your-fernet-key-here"
+export GATEKEYP_ORGANIZER_KEY="your-fernet-key-here"
 
 # Per-instance secret for HMAC keyed hashing
 export GATEKEYP_HMAC_SECRET="your-hmac-secret-here"
@@ -162,7 +162,7 @@ Hooks run: ruff lint + format, and general file checks (AST, JSON, TOML, YAML, d
 # Build the image
 make docker-build
 
-# Start services (requires GATEKEYP_MASTER_KEY and GATEKEYP_HMAC_SECRET in .env)
+# Start services (requires GATEKEYP_ORGANIZER_KEY and GATEKEYP_HMAC_SECRET in .env)
 make docker-up
 
 # Stop services

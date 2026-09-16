@@ -20,17 +20,17 @@ from src.core.key_manager import KeyManager
 from src.db.database_handler import DatabaseHandler
 
 # Generate a valid Fernet key for tests
-TEST_MASTER_KEY = Fernet.generate_key().decode()
+TEST_ORGANIZER_KEY = Fernet.generate_key().decode()
 TEST_HMAC_SECRET = "test-hmac-secret-for-unit-tests-only-1234567890"
 
-os.environ.setdefault("GATEKEYP_MASTER_KEY", TEST_MASTER_KEY)
+os.environ.setdefault("GATEKEYP_ORGANIZER_KEY", TEST_ORGANIZER_KEY)
 os.environ.setdefault("GATEKEYP_HMAC_SECRET", TEST_HMAC_SECRET)
 
 
 @pytest.fixture
 def db():
     """Create an in-memory database for testing."""
-    handler = DatabaseHandler(db_path=":memory:", master_key=TEST_MASTER_KEY)
+    handler = DatabaseHandler(db_path=":memory:", organizer_key=TEST_ORGANIZER_KEY)
     yield handler
     handler.close()
 

@@ -24,10 +24,10 @@ from src.rsvp.service import (
     RsvpValidationError,
 )
 
-TEST_MASTER_KEY = Fernet.generate_key().decode()
+TEST_ORGANIZER_KEY = Fernet.generate_key().decode()
 TEST_HMAC_SECRET = "test-hmac-secret-for-unit-tests-only-1234567890"
 
-os.environ.setdefault("GATEKEYP_MASTER_KEY", TEST_MASTER_KEY)
+os.environ.setdefault("GATEKEYP_ORGANIZER_KEY", TEST_ORGANIZER_KEY)
 os.environ.setdefault("GATEKEYP_HMAC_SECRET", TEST_HMAC_SECRET)
 
 
@@ -51,7 +51,7 @@ class _FakeClock:
 @pytest.fixture
 def db():
     """Create an in-memory database for testing."""
-    database = DatabaseHandler(db_path=":memory:", master_key=TEST_MASTER_KEY)
+    database = DatabaseHandler(db_path=":memory:", organizer_key=TEST_ORGANIZER_KEY)
     yield database
     database.close()
 
@@ -87,7 +87,7 @@ def rsvp(db, key_manager, lifecycle, clock):
 
 
 def _make_event(lifecycle: EventLifecycleManager, title: str = "Launch") -> dict:
-    """Create a standard event and return its metadata (master_key included)."""
+    """Create a standard event and return its metadata (organizer_key included)."""
     return lifecycle.create_event(title, "A test event", "org_1")
 
 
@@ -166,7 +166,7 @@ class TestSubmitRsvp:
     def test_passphrase_gate_fails_closed(self, rsvp, lifecycle):
         """With the gate on, missing or wrong passphrases never mint access."""
         created = _make_event(lifecycle)
-        rsvp.update_rsvp_settings(created["master_key"], created["event_id"], passphrase="pw")
+        rsvp.update_rsvp_settings(created["organizer_key"], created["event_id"], passphrase="pw")
         with pytest.raises(RsvpValidationError, match="passphrase"):
             rsvp.submit_rsvp(created["event_id"], "Ada")
         with pytest.raises(RsvpValidationError, match="not correct"):
@@ -181,7 +181,7 @@ class TestAutoApprove:
     def test_first_n_approved_then_pending(self, rsvp, lifecycle):
         """Dial of 1: the first submission is approved, later ones pending."""
         created = _make_event(lifecycle)
-        rsvp.update_rsvp_settings(created["master_key"], created["event_id"], auto_approve=1)
+        rsvp.update_rsvp_settings(created["organizer_key"], created["event_id"], auto_approve=1)
         first = rsvp.submit_rsvp(created["event_id"], "First")
         second = rsvp.submit_rsvp(created["event_id"], "Second")
         assert first["status"] == "approved"
@@ -190,8 +190,8 @@ class TestAutoApprove:
     def test_auto_approved_key_is_granted(self, rsvp, lifecycle):
         """An auto-approved RSVP's key is wired to the event and its content."""
         created = _make_event(lifecycle)
-        lifecycle.add_content_block(created["master_key"], created["event_id"], "location", "x")
-        rsvp.update_rsvp_settings(created["master_key"], created["event_id"], auto_approve=2)
+        lifecycle.add_content_block(created["organizer_key"], created["event_id"], "location", "x")
+        rsvp.update_rsvp_settings(created["organizer_key"], created["event_id"], auto_approve=2)
         first = rsvp.submit_rsvp(created["event_id"], "First")
         grants = rsvp.db.get_content_ids_for_key(_key_hash(rsvp, first["access_key"]))
         granted = {g["content_id"] for g in grants}
@@ -207,10 +207,10 @@ class TestDecide:
         """Approve stamps the row and grants the key to event and blocks."""
         created = _make_event(lifecycle)
         block = lifecycle.add_content_block(
-            created["master_key"], created["event_id"], "location", "x"
+            created["organizer_key"], created["event_id"], "location", "x"
         )
         result = rsvp.submit_rsvp(created["event_id"], "Ada")
-        rsvp.decide(created["master_key"], created["event_id"], result["rsvp_id"], "approve")
+        rsvp.decide(created["organizer_key"], created["event_id"], result["rsvp_id"], "approve")
 
         row = rsvp.db.get_rsvp(result["rsvp_id"])
         assert row["status"] == "approved"
@@ -223,15 +223,15 @@ class TestDecide:
         """Approving an approved RSVP changes nothing (links are ignored)."""
         created = _make_event(lifecycle)
         result = rsvp.submit_rsvp(created["event_id"], "Ada")
-        rsvp.decide(created["master_key"], created["event_id"], result["rsvp_id"], "approve")
-        rsvp.decide(created["master_key"], created["event_id"], result["rsvp_id"], "approve")
+        rsvp.decide(created["organizer_key"], created["event_id"], result["rsvp_id"], "approve")
+        rsvp.decide(created["organizer_key"], created["event_id"], result["rsvp_id"], "approve")
         assert rsvp.db.get_rsvp(result["rsvp_id"])["status"] == "approved"
 
     def test_deny_revokes_key(self, rsvp, lifecycle):
         """Deny stamps the row and voids the pre-minted key."""
         created = _make_event(lifecycle)
         result = rsvp.submit_rsvp(created["event_id"], "Ada")
-        rsvp.decide(created["master_key"], created["event_id"], result["rsvp_id"], "deny")
+        rsvp.decide(created["organizer_key"], created["event_id"], result["rsvp_id"], "deny")
 
         row = rsvp.db.get_rsvp(result["rsvp_id"])
         assert row["status"] == "denied"
@@ -243,15 +243,15 @@ class TestDecide:
         """A denied RSVP cannot be revived; a new submission mints a new key."""
         created = _make_event(lifecycle)
         result = rsvp.submit_rsvp(created["event_id"], "Ada")
-        rsvp.decide(created["master_key"], created["event_id"], result["rsvp_id"], "deny")
+        rsvp.decide(created["organizer_key"], created["event_id"], result["rsvp_id"], "deny")
         with pytest.raises(RsvpValidationError, match="denied"):
-            rsvp.decide(created["master_key"], created["event_id"], result["rsvp_id"], "approve")
+            rsvp.decide(created["organizer_key"], created["event_id"], result["rsvp_id"], "approve")
 
     def test_unknown_rsvp_is_not_found(self, rsvp, lifecycle):
         """Deciding an RSVP that does not exist (or belongs elsewhere) is 404."""
         created = _make_event(lifecycle)
         with pytest.raises(RsvpNotFoundError):
-            rsvp.decide(created["master_key"], created["event_id"], "rsvp_nope", "approve")
+            rsvp.decide(created["organizer_key"], created["event_id"], "rsvp_nope", "approve")
 
     def test_rsvp_from_another_event_is_not_found(self, rsvp, lifecycle):
         """An RSVP id for event A cannot be decided through event B's gate."""
@@ -259,22 +259,22 @@ class TestDecide:
         second = _make_event(lifecycle, "Second")
         result = rsvp.submit_rsvp(first["event_id"], "Ada")
         with pytest.raises(RsvpNotFoundError):
-            rsvp.decide(second["master_key"], second["event_id"], result["rsvp_id"], "approve")
+            rsvp.decide(second["organizer_key"], second["event_id"], result["rsvp_id"], "approve")
 
     def test_bad_decision_value_is_rejected(self, rsvp, lifecycle):
         """Anything but approve/deny fails validation."""
         created = _make_event(lifecycle)
         result = rsvp.submit_rsvp(created["event_id"], "Ada")
         with pytest.raises(RsvpValidationError, match="approve"):
-            rsvp.decide(created["master_key"], created["event_id"], result["rsvp_id"], "maybe")
+            rsvp.decide(created["organizer_key"], created["event_id"], result["rsvp_id"], "maybe")
 
-    def test_unauthorized_master_key_is_rejected(self, rsvp, lifecycle):
-        """A master key for another event cannot decide this event's RSVPs."""
+    def test_unauthorized_organizer_key_is_rejected(self, rsvp, lifecycle):
+        """A organizer key for another event cannot decide this event's RSVPs."""
         created = _make_event(lifecycle)
         other = _make_event(lifecycle, "Other")
         result = rsvp.submit_rsvp(created["event_id"], "Ada")
         with pytest.raises(RsvpValidationError, match="grant access"):
-            rsvp.decide(other["master_key"], created["event_id"], result["rsvp_id"], "approve")
+            rsvp.decide(other["organizer_key"], created["event_id"], result["rsvp_id"], "approve")
 
 
 class TestSettings:
@@ -283,34 +283,34 @@ class TestSettings:
     def test_defaults_are_off(self, rsvp, lifecycle):
         """A fresh event requires no passphrase and approves nothing."""
         created = _make_event(lifecycle)
-        settings = rsvp.get_rsvp_settings(created["master_key"], created["event_id"])
+        settings = rsvp.get_rsvp_settings(created["organizer_key"], created["event_id"])
         assert settings == {"passphrase_required": False, "auto_approve": None}
 
     def test_passphrase_is_stored_hashed(self, rsvp, lifecycle):
         """Setting a passphrase stores a hash that differs from the secret."""
         created = _make_event(lifecycle)
-        rsvp.update_rsvp_settings(created["master_key"], created["event_id"], passphrase="pw")
+        rsvp.update_rsvp_settings(created["organizer_key"], created["event_id"], passphrase="pw")
         raw = rsvp.db.cursor.execute(
             "SELECT rsvp_passphrase_hash FROM events WHERE event_id = ?",
             (created["event_id"],),
         ).fetchone()[0]
         assert raw != "pw"
-        settings = rsvp.get_rsvp_settings(created["master_key"], created["event_id"])
+        settings = rsvp.get_rsvp_settings(created["organizer_key"], created["event_id"])
         assert settings["passphrase_required"] is True
 
     def test_passphrase_can_be_cleared(self, rsvp, lifecycle):
         """An empty passphrase clears the gate."""
         created = _make_event(lifecycle)
-        rsvp.update_rsvp_settings(created["master_key"], created["event_id"], passphrase="pw")
-        rsvp.update_rsvp_settings(created["master_key"], created["event_id"], passphrase="")
-        settings = rsvp.get_rsvp_settings(created["master_key"], created["event_id"])
+        rsvp.update_rsvp_settings(created["organizer_key"], created["event_id"], passphrase="pw")
+        rsvp.update_rsvp_settings(created["organizer_key"], created["event_id"], passphrase="")
+        settings = rsvp.get_rsvp_settings(created["organizer_key"], created["event_id"])
         assert settings["passphrase_required"] is False
 
     def test_auto_approve_roundtrip(self, rsvp, lifecycle):
         """Integer dials are stored and read back."""
         created = _make_event(lifecycle)
-        rsvp.update_rsvp_settings(created["master_key"], created["event_id"], auto_approve=5)
-        settings = rsvp.get_rsvp_settings(created["master_key"], created["event_id"])
+        rsvp.update_rsvp_settings(created["organizer_key"], created["event_id"], auto_approve=5)
+        settings = rsvp.get_rsvp_settings(created["organizer_key"], created["event_id"])
         assert settings["auto_approve"] == 5
 
     def test_auto_approve_bounds(self, rsvp, lifecycle):
@@ -319,15 +319,15 @@ class TestSettings:
         for bad in (-1, 100001, True):
             with pytest.raises(RsvpValidationError):
                 rsvp.update_rsvp_settings(
-                    created["master_key"], created["event_id"], auto_approve=bad
+                    created["organizer_key"], created["event_id"], auto_approve=bad
                 )
 
-    def test_unauthorized_master_key_is_rejected(self, rsvp, lifecycle):
+    def test_unauthorized_organizer_key_is_rejected(self, rsvp, lifecycle):
         """Only a key granting access to the event can read its settings."""
         created = _make_event(lifecycle)
         other = _make_event(lifecycle, "Other")
         with pytest.raises(RsvpValidationError, match="grant access"):
-            rsvp.get_rsvp_settings(other["master_key"], created["event_id"])
+            rsvp.get_rsvp_settings(other["organizer_key"], created["event_id"])
 
 
 class TestWipe:
@@ -373,7 +373,7 @@ class TestPublicView:
     def test_passphrase_required_flag(self, rsvp, lifecycle):
         """Turning the passphrase gate on is visible to attendees."""
         created = _make_event(lifecycle)
-        rsvp.update_rsvp_settings(created["master_key"], created["event_id"], passphrase="pw")
+        rsvp.update_rsvp_settings(created["organizer_key"], created["event_id"], passphrase="pw")
         view = rsvp.get_public_view(created["event_id"])
         assert view["passphrase_required"] is True
 
@@ -432,7 +432,7 @@ class TestGatewayGate:
         """After approval the same pre-minted key opens the door."""
         created = _make_event(lifecycle)
         result = rsvp.submit_rsvp(created["event_id"], "Ada")
-        rsvp.decide(created["master_key"], created["event_id"], result["rsvp_id"], "approve")
+        rsvp.decide(created["organizer_key"], created["event_id"], result["rsvp_id"], "approve")
         response = gateway.process_request(
             {"key": result["access_key"], "content_id": created["event_id"]}
         )
@@ -443,7 +443,7 @@ class TestGatewayGate:
         """A denied RSVP's revoked key is rejected like any other dead key."""
         created = _make_event(lifecycle)
         result = rsvp.submit_rsvp(created["event_id"], "Ada")
-        rsvp.decide(created["master_key"], created["event_id"], result["rsvp_id"], "deny")
+        rsvp.decide(created["organizer_key"], created["event_id"], result["rsvp_id"], "deny")
         response = gateway.process_request(
             {"key": result["access_key"], "content_id": created["event_id"]}
         )
@@ -454,7 +454,7 @@ class TestGatewayGate:
         """The gate changes nothing for keys without RSVP bookkeeping."""
         created = _make_event(lifecycle)
         response = gateway.process_request(
-            {"key": created["master_key"], "content_id": created["event_id"]}
+            {"key": created["organizer_key"], "content_id": created["event_id"]}
         )
         assert response["status"] == "success"
 
@@ -567,7 +567,7 @@ class TestRoutes:
         created = _make_event(lifecycle)
         client.post(
             f"/api/events/{created['event_id']}/rsvp/settings",
-            json={"master_key": created["master_key"], "passphrase": "pw"},
+            json={"organizer_key": created["organizer_key"], "passphrase": "pw"},
         )
         response = client.post(
             f"/api/events/{created['event_id']}/rsvp", json={"display_name": "Ada"}
@@ -608,7 +608,7 @@ class TestRoutes:
         response = client.post(
             f"/api/events/{created['event_id']}/rsvp/decide",
             json={
-                "master_key": created["master_key"],
+                "organizer_key": created["organizer_key"],
                 "rsvp_id": rsvp_id,
                 "decision": "approve",
             },
@@ -625,13 +625,17 @@ class TestRoutes:
         url = f"/api/events/{created['event_id']}/rsvp/decide"
         bad_decision = client.post(
             url,
-            json={"master_key": created["master_key"], "rsvp_id": rsvp_id, "decision": "maybe"},
+            json={
+                "organizer_key": created["organizer_key"],
+                "rsvp_id": rsvp_id,
+                "decision": "maybe",
+            },
         )
         assert bad_decision.status_code == 400
         unknown = client.post(
             url,
             json={
-                "master_key": created["master_key"],
+                "organizer_key": created["organizer_key"],
                 "rsvp_id": "rsvp_nope",
                 "decision": "approve",
             },
@@ -639,7 +643,11 @@ class TestRoutes:
         assert unknown.status_code == 404
         unauthorized = client.post(
             url,
-            json={"master_key": "local:not-a-real-key", "rsvp_id": rsvp_id, "decision": "approve"},
+            json={
+                "organizer_key": "local:not-a-real-key",
+                "rsvp_id": rsvp_id,
+                "decision": "approve",
+            },
         )
         assert unauthorized.status_code == 400
 
@@ -648,7 +656,7 @@ class TestRoutes:
         created = _make_event(lifecycle)
         update = client.post(
             f"/api/events/{created['event_id']}/rsvp/settings",
-            json={"master_key": created["master_key"], "passphrase": "pw", "auto_approve": 3},
+            json={"organizer_key": created["organizer_key"], "passphrase": "pw", "auto_approve": 3},
         )
         assert update.status_code == 200
         assert update.json() == {
@@ -658,7 +666,7 @@ class TestRoutes:
         }
         read = client.get(
             f"/api/events/{created['event_id']}/rsvp/settings",
-            params={"key": created["master_key"]},
+            params={"key": created["organizer_key"]},
         )
         assert read.status_code == 200
         assert read.json() == {"passphrase_required": True, "auto_approve": 3}
@@ -681,7 +689,7 @@ class TestRoutes:
         )
         response = client.get(
             f"/api/events/{created['event_id']}/rsvp/list",
-            params={"key": created["master_key"]},
+            params={"key": created["organizer_key"]},
         )
         assert response.status_code == 200
         rows = response.json()
@@ -695,7 +703,7 @@ class TestRoutes:
         created = _make_event(lifecycle)
         client.post(
             f"/api/events/{created['event_id']}/rsvp/settings",
-            json={"master_key": created["master_key"], "auto_approve": 1},
+            json={"organizer_key": created["organizer_key"], "auto_approve": 1},
         )
         first = client.post(f"/api/events/{created['event_id']}/rsvp", json={"display_name": "A"})
         second = client.post(f"/api/events/{created['event_id']}/rsvp", json={"display_name": "B"})
@@ -720,7 +728,7 @@ class TestPendingQueueCap:
         created = _make_event(lifecycle)
         monkeypatch.setattr("src.rsvp.service.MAX_PENDING_RSVP_PER_EVENT", 1)
         first = rsvp.submit_rsvp(created["event_id"], "One")
-        rsvp.decide(created["master_key"], created["event_id"], first["rsvp_id"], "deny")
+        rsvp.decide(created["organizer_key"], created["event_id"], first["rsvp_id"], "deny")
         second = rsvp.submit_rsvp(created["event_id"], "Two")
         assert second["status"] == "pending"
 
@@ -731,9 +739,9 @@ class TestAutoApproveDialSemantics:
     def test_denied_approval_frees_the_dial_slot(self, rsvp, lifecycle):
         """dial=1: after denying the approved RSVP, the next one auto-approves."""
         created = _make_event(lifecycle)
-        rsvp.update_rsvp_settings(created["master_key"], created["event_id"], auto_approve=1)
+        rsvp.update_rsvp_settings(created["organizer_key"], created["event_id"], auto_approve=1)
         first = rsvp.submit_rsvp(created["event_id"], "One")
         assert first["status"] == "approved"
-        rsvp.decide(created["master_key"], created["event_id"], first["rsvp_id"], "deny")
+        rsvp.decide(created["organizer_key"], created["event_id"], first["rsvp_id"], "deny")
         second = rsvp.submit_rsvp(created["event_id"], "Two")
         assert second["status"] == "approved"

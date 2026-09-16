@@ -26,17 +26,17 @@ from src.core.key_manager import KeyManager
 from src.db.database_handler import DatabaseHandler
 from tests import stego_ref
 
-TEST_MASTER_KEY = Fernet.generate_key().decode()
+TEST_ORGANIZER_KEY = Fernet.generate_key().decode()
 TEST_HMAC_SECRET = "test-hmac-secret-for-unit-tests-only-1234567890"
 
-os.environ.setdefault("GATEKEYP_MASTER_KEY", TEST_MASTER_KEY)
+os.environ.setdefault("GATEKEYP_ORGANIZER_KEY", TEST_ORGANIZER_KEY)
 os.environ.setdefault("GATEKEYP_HMAC_SECRET", TEST_HMAC_SECRET)
 
 
 @pytest.fixture
 def client():
     """Create a TestClient backed by an in-memory database."""
-    db = DatabaseHandler(db_path=":memory:", master_key=TEST_MASTER_KEY)
+    db = DatabaseHandler(db_path=":memory:", organizer_key=TEST_ORGANIZER_KEY)
     key_manager = KeyManager(db=db, hmac_secret=TEST_HMAC_SECRET)
     content_manager = ContentManager(db=db, key_manager=key_manager)
     lifecycle = EventLifecycleManager(
@@ -89,12 +89,17 @@ def test_invite_card_loop_unlocks_event(client) -> None:
     # 1. Organizer creates an event.
     created = _create_event(client, "Garden Party", "@host")
     event_id = created["event_id"]
-    master_key = created["master_key"]
+    organizer_key = created["organizer_key"]
 
     # 2. Organizer generates an access key for an attendee.
     key_resp = client.post(
         f"/api/events/{event_id}/access-keys",
-        json={"master_key": master_key, "event_id": event_id, "days": 30, "owner_id": "@guest"},
+        json={
+            "organizer_key": organizer_key,
+            "event_id": event_id,
+            "days": 30,
+            "owner_id": "@guest",
+        },
     )
     assert key_resp.status_code == 200
     access_key = key_resp.json()["access_key"]
@@ -125,10 +130,10 @@ def test_revoked_card_key_no_longer_unlocks(client) -> None:
     # The property that must hold for cards is parity with revocation.
     created = _create_event(client, "Event A", "@a")
     event_id = created["event_id"]
-    master_key = created["master_key"]
+    organizer_key = created["organizer_key"]
     key_resp = client.post(
         f"/api/events/{event_id}/access-keys",
-        json={"master_key": master_key, "event_id": event_id, "days": 7, "owner_id": "@b"},
+        json={"organizer_key": organizer_key, "event_id": event_id, "days": 7, "owner_id": "@b"},
     )
     assert key_resp.status_code == 200
     access_key = key_resp.json()["access_key"]
@@ -145,7 +150,7 @@ def test_revoked_card_key_no_longer_unlocks(client) -> None:
     # Revoke: the same card now fails at the door — no server-side change.
     revoke = client.post(
         f"/api/events/{event_id}/access-keys/revoke",
-        json={"master_key": master_key, "event_id": event_id, "access_key": access_key},
+        json={"organizer_key": organizer_key, "event_id": event_id, "access_key": access_key},
     )
     assert revoke.status_code == 200
     unlock_again = client.post("/api/access", json={"key": access_key, "content_id": event_id})

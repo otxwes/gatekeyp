@@ -79,14 +79,25 @@
 
                             <form id="open-event-form" class="card form-card" autocomplete="off">
                                 <h3 class="card-title">Open an existing event</h3>
+                                <div id="org-drop" class="key-drop" tabindex="0" role="button"
+                                     aria-label="Drop, paste or choose a organizer card image"
+                                     data-reset-title="Drop your organizer card here"
+                                     data-reset-sub="or paste the key line with ⌘V">
+                                    <div class="key-drop-inner">
+                                        <span class="key-drop-icon" aria-hidden="true">⤓</span>
+                                        <div class="key-drop-title">Drop your organizer card here</div>
+                                        <div class="key-drop-sub">or paste the key line with ⌘V</div>
+                                    </div>
+                                    <input type="file" id="org-drop-file" accept="image/png,image/*" hidden>
+                                </div>
                                 <div class="field">
                                     <label for="open-event-id">Event ID</label>
                                     <input type="text" id="open-event-id" name="event_id" required
                                            spellcheck="false" autocomplete="off">
                                 </div>
                                 <div class="field">
-                                    <label for="open-master-key">Master key</label>
-                                    <input type="password" id="open-master-key" name="master_key" required
+                                    <label for="open-organizer-key">Organizer key</label>
+                                    <input type="password" id="open-organizer-key" name="organizer_key" required
                                            spellcheck="false" autocomplete="off">
                                 </div>
                                 <p id="open-note" class="form-note" role="status" aria-live="polite"></p>

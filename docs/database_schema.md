@@ -7,7 +7,7 @@ This document defines the database schema for gatekeyp, covering the core infras
 ### 1.1 Keys
 The `keys` table stores the unique identifiers used to unlock specific content.
 - **Hash_Key**: The HMAC-SHA256 keyed hash of the user-provided key (never stored in plaintext).
-- **Type**: The category of key (e.g., "access", "master").
+- **Type**: The category of key (e.g., "access", "organizer").
 - **Created_At / Expires_At**: Timestamps for management and rotation.
 - **Revoked / Revoked_At**: Revocation status and timestamp.
 - **Owner_ID**: Federation identifier (e.g., `@org:instance`).
@@ -79,7 +79,7 @@ The `comments` table stores threaded comments on bulletins.
 | Column | Type | Description |
 | :--- | :--- | :--- |
 | hash_key | TEXT PRIMARY KEY | HMAC-SHA256 keyed hash of the input key. |
-| type | VARCHAR(32) | e.g., "access", "master". |
+| type | VARCHAR(32) | e.g., "access", "organizer". |
 | expires_at | TEXT | Optional expiration timestamp (ISO format). |
 | created_at | TEXT | Creation timestamp (ISO format, UTC). |
 | revoked | INTEGER | 0 = active, 1 = revoked. |
@@ -150,13 +150,13 @@ The `comments` table stores threaded comments on bulletins.
 ## 4. Security Features
 
 ### Encryption at Rest
-- **Master Key**: Required via `GATEKEYP_MASTER_KEY` environment variable (fail-secure).
+- **Organizer Key**: Required via `GATEKEYP_ORGANIZER_KEY` environment variable (fail-secure).
 - **Algorithm**: Fernet (AES-128-CBC + HMAC-SHA256) from the `cryptography` library.
 - **Encrypted Fields**: `content_blocks.payload`, `events.location_data`, `media_assets.filename`, `media_assets.data`, `bulletins.author`, `bulletins.body`, `comments.author`, `comments.body`.
 - **Key Hashes**: Stored as HMAC-SHA256 keyed by `GATEKEYP_HMAC_SECRET` (never plaintext).
 
 ### Fail-Secure Configuration
-- `DatabaseHandler` refuses to start without `GATEKEYP_MASTER_KEY`.
+- `DatabaseHandler` refuses to start without `GATEKEYP_ORGANIZER_KEY`.
 - `KeyManager` refuses to start without `GATEKEYP_HMAC_SECRET`.
 
 ## 5. Federation Support

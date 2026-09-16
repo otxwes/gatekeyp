@@ -1,5 +1,31 @@
 # Project Memory
 
+This document serves as the durable, self-improving memory for the gatekeyp project.
+
+## ⚠️ TOP RULES (read first)
+
+### Process hygiene — never orphan or wedge processes (2026-09-16)
+- **Prompt**: laptop overheating; 8 Chrome/Playwright renderers stuck at 90–190% CPU each,
+  plus 3 wedged tool sessions (one running 7.7 days). Root cause: leaked sessions and
+  frozen tabs from earlier debugging (tabs spinning in a JS busy-loop).
+- **Rules**:
+  1. **Every `start_process` must be terminal**: read output to completion, then `force_terminate`.
+     Never leave a session "Blocked" forever. Check `list_sessions` at the end of any session
+     that used `start_process`; kill leftovers.
+  2. **Searches must terminate too**: `start_search` (esp. `content`) is long-running —
+     `stop_search` or `get_more_search_results` until done. Don't leave them running.
+  3. **Long commands** (pytest, file analysis): use `start_process(timeout_ms ≥ 120s)` +
+     `read_process_output`, prefer short flags / paginate output to a log file than
+     interactive REPLs. But ALWAYS drain + close afterwards.
+  4. **Never write busy-loops**: any counting/search loop must provably terminate — add a
+     cap or exit condition (this was incidentally the stego.js `nextPos()` bug that froze
+     pages in the first place).
+  5. **If CPU anomaly observed** (fan noise / overheated laptop): immediately
+     `list_processes` + `list_sessions` and fix culprits BEFORE continuing other work.
+  6. **Cleanup audit**: at end of any debugging session that opened Playwright/Chromium
+     tabs, close the browser (`browser_close`) — a frozen tab with a JS busy-loop
+     becomes a permanent silent CPU burner.
+
 This document serves as the durable, self-improving memory for the gatekeyp project. It captures lessons learned, tooling solutions, process improvements, and coding practices discovered during development. **This is a living document** — update it whenever you encounter a worthwhile lesson.
 
 ## How to Use This Document
@@ -189,27 +215,27 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
 - **Cross-connection visibility caveat (dev-only)**: after wiping rows via a second process against `keys.db`, the running server kept serving its pre-wipe snapshot until restarted. Production paths write+commit on the server's own connection and are self-consistent; just restart the server after any manual out-of-band DB surgery.
 - **Live-tested contract details**: settings are PUT-like — an omitted `passphrase` clears the gate (docstring: "empty/None clears the gate"); wrong passphrase → 400; the auto-approve dial approves while approved_count < N (a cap on currently-approved, not a total); honeypot submissions return a canned ack (`rsvp_id: null`) and bypass the per-IP limiter even when the window is full; content POST requires `event_id` in the body and returns the block under `id` (not `content_id`).
 
-### 4.4 Design decision — master (organizer) event card (2026-09-15)
+### 4.4 Design decision — organizer (organizer) event card (2026-09-15)
 
-- **Master card = same stego channel, tagged payload, stamped face.** The
+- **Organizer card = same stego channel, tagged payload, stamped face.** The
   hidden payload gains a `organizer\n` role line (3 lines total; 2-line
   payloads remain attendee invites, fully backwards compatible). The keyline
   text form uses a `gkporg:` prefix (see `web/stego.js`). The card face gets a
-  paper-backed "MASTER CARD" stamp chip + keeper note (`web/invite_card.js`),
+  paper-backed "ORGANIZER CARD" stamp chip + keeper note (`web/invite_card.js`),
   drawn on top of covers including full-bleed photos so it can never be
   mistaken for an attendee invite.
 - **Routing is role-driven**: `routeInvitePayload()` in `web/app.js` sends
   attendee payloads to the join unlock and organizer payloads to
   `openOrganizerWorkspace()` (shared with the two-field reopen form). The
-  organize entry and join entry both accept pasted master cards /
+  organize entry and join entry both accept pasted organizer cards /
   `gkporg:` lines and route-card PNGs.
-- **Never re-display the raw master key on the card path** — the About-tab
-  "Master card" action hands `org.masterKey` straight to the cover picker; the
+- **Never re-display the raw organizer key on the card path** — the About-tab
+  "Organizer card" action hands `org.organizerKey` straight to the cover picker; the
   key stays client-side and hidden in pixels.
 - Rejected: URL deep-links with the key (history / shared-machine leaks, same
   reason the join side dropped them), passkey/OPAQUE sessions (protocol
   change, disproportionate). Did NOT bump the stego container version — the
-  role tag lives in the payload, so old decoders reading master cards would
+  role tag lives in the payload, so old decoders reading organizer cards would
   still find valid id+key pairs (fail-open to attendee behavior is safe).
 
 ---
@@ -272,7 +298,7 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
 - Rewrote `web/style.css` as a complete editorial/minimalist design (~1620 lines: design tokens, dark/light themes, responsive breakpoints, reduced-motion, print).
 - Implemented `web/app.js` as a hash-routed, dependency-free SPA (~1330 lines):
   - Organizer desk: create / open events; four-tab workspace (Content, Bulletin
-    board, Media, Access keys) + header Decommission action; one-time master-key modal.
+    board, Media, Access keys) + header Decommission action; one-time organizer-key modal.
   - Attendee door: key-based unlock, content/bulletins/media with commenting.
   - Session keys in `sessionStorage`; raw keys shown once; toasts, confirm
     modals, loading/empty states, theme toggle, keyboard + reduced-motion support.
@@ -309,7 +335,7 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
 - Removed the helper prose / captions everywhere: the three view-header paragraphs
   (landing / organize / join), the five card `section-sub` captions, the "Open an
   existing event" lead, the decorative empty-state second lines, and the
-  master-banner copy (banner now shows the Master badge + Copy button only).
+  organizer-banner copy (banner now shows the Organizer badge + Copy button only).
   Media captions, the event description, and metadata were kept.
 - `web/style.css` — removed the orphaned chrome: `.hero*` (hero → `.home-actions`),
   `.principles`, `.ornament*`, `.footer`, the `.ws-body`/`.ws-side` and `.ep-grid`/`.ep-side`
@@ -549,7 +575,7 @@ on first fetch (retry → 200); unrelated to the card change, worth a look.
 
 **Next session:**
 1. Decommission the test event `event_54f55b3332c3ddc9968e4bc8f4abec24`
-   (master key was shown once in-session) or keep it for visual iteration.
+   (organizer key was shown once in-session) or keep it for visual iteration.
 2. Print one card at actual size: corner QR plate scannability on paper.
 3. Re-check the re-encoded-JPEG card (jsQR fallback path) on the new layout.
 4. Investigate the media-endpoint 500; clean `/tmp/.playwright-mcp/` artifacts.
@@ -607,7 +633,7 @@ the bottom keyhole ⊙ stamped on top of the photo.
 
 **Notes:**
 - The app server on :8000 had died before this session; it was restarted
-  from a throwaway cwd (`/tmp/gkp-e2e/keys.db`, random Fernet master key +
+  from a throwaway cwd (`/tmp/gkp-e2e/keys.db`, random Fernet organizer key +
   HMAC secret, `PYTHONPATH=<repo>`) for the E2E — the repo's `keys.db` was
   **not** touched. Restart recipe is in this entry's git history.
 - `ruff format --check .` flags pre-existing `skills/property_based_testing.md`
@@ -626,7 +652,7 @@ the bottom keyhole ⊙ stamped on top of the photo.
 ### 2026-08-31 — Follow-up: "Key does not exist" everywhere → dev DB reset + canonical `make serve`
 
 **What happened:** the pre-session server that wrote the repo `keys.db` (last
-write 15:56) had been launched with an **ephemerally generated** Fernet master
+write 15:56) had been launched with an **ephemerally generated** Fernet organizer
 key (inline `$(…Fernet.generate_key()…)` in the shell command) that died with
 that process; this session's E2E server then ran against an empty throwaway
 DB, so every key lookup returned "Key does not exist"
@@ -640,21 +666,21 @@ have failed InvalidToken.
 **What changed:**
 - Repo `keys.db` preserved as `keys.db.bak-20260831` (385 KB; payload data
   stays undecryptable without the lost per-session key).
-- New gitignored `.env.dev` (chmod 600) with a **persistent** master key +
+- New gitignored `.env.dev` (chmod 600) with a **persistent** organizer key +
   HMAC secret — `.env.*` was already ignored (`!.env.example` survives).
   Same secrets on every restart, so `keys.db` stays readable from now on.
 - `make serve` — canonical dev-server target: loads `.env.dev`, runs
   `uv run python -m src.api.server` in the foreground from the repo root
   (Ctrl-C to stop). No more ephemeral keys, no more throwaway cwds.
 - Fresh test event created for visual iteration:
-  `event_21f49499ed3d609b9a756259615baeb2` (master key + door access key
+  `event_21f49499ed3d609b9a756259615baeb2` (organizer key + door access key
   handed to the user in-session). Roundtrip verified: create → mint key →
   `get_event_details` validates both keys; organizer UI opens the
   workspace; browser console clean.
 
 **Observed while here (pre-existing, not from the swap):**
 - An invalid key *format* (no `org|local` shape) passed to
-  `GET /api/events/{id}?master_key=…` raises `InvalidKeyFormatError` uncaught
+  `GET /api/events/{id}?organizer_key=…` raises `InvalidKeyFormatError` uncaught
   → HTTP 500 instead of a 400 message; worth a route-level catch when
   convenient.
 - `make clean` runs `rm -f *.db` — it deletes the dev DB (not the `.bak`).
@@ -680,7 +706,7 @@ deadline. Unauthenticated creation funnel with a hard rate limit.*
   fail-closed expiry; `sweep_expired()`; injectable clock; dedicated
   `LiteRateLimiter` fixed-window limiter) and `routes.py` (`POST
   /api/lite/events`, `GET /i/{event_id}` OG page, public flyer route with
-  `nosniff`, keyed attendee view). Master keys get ceil(TTL/24)+1 days so
+  `nosniff`, keyed attendee view). Organizer keys get ceil(TTL/24)+1 days so
   they outlive the event; a failed flyer upload rolls the event back.
 - `src/api/server.py` — `create_app(profile=…)`, `GATEKEYP_PROFILE` env
   (full|lite; unknown → ValueError). Lite profile mounts only the funnel
@@ -694,7 +720,7 @@ deadline. Unauthenticated creation funnel with a hard rate limit.*
 
 **Frontend:**
 - `web/index.html` + `web/app.js` — `#/flyer` creation funnel (title; gated
-  description/when/where; optional public flyer upload; TTL) → master key
+  description/when/where; optional public flyer upload; TTL) → organizer key
   shown once with copyable share/organizer links; `#/e/{event_id}` attendee
   page: key prompt (or `?k=` from the organizer link), unlocked view of
   when/where + flyer image, and an honest "Event ended" state after a wipe.
@@ -707,7 +733,7 @@ invalid key format → 400, standard events invisible to lite routes, lite
 profile hides the standard API, 429 on the sixth creation).
 `tests/test_security_audit.py` gained `TestEphemeralSecurityAudit` (gated
 content + flyer encrypted at rest; wipe leaves no plaintext in any table;
-wiped master key no longer validates; tombstone records nothing sensitive).
+wiped organizer key no longer validates; tombstone records nothing sensitive).
 Full suite: 217 passed.
 
 **DB safety:** migration verified against a copy of `keys.db.bak-20260908`
@@ -715,13 +741,13 @@ before anything touched `keys.db` — 2 events / 4 keys preserved, every stored
 event decrypts and reads back `mode='standard'`.
 
 **Live QA (2026-09-08, browser, lite profile on :8775):** end-to-end funnel
-pass — `#/flyer` fill + flyer upload → one-shot master-key panel with
+pass — `#/flyer` fill + flyer upload → one-shot organizer-key panel with
 share/attendee links; OG page rendered title + flyer + wipe deadline
 (created+48h, verified) with no gated fields; `?k=` attendee unlock showed
 when/where + flyer; backdating the QA event's `expires_at` made both the OG
 page and the keyed attendee page render their honest ended states; then
 `sweep_expired()` (run against the live DB with the same default wiring,
-`GATEKEYP_MASTER_KEY` sourced from `.env.dev`) wiped event + media + blocks,
+`GATEKEYP_ORGANIZER_KEY` sourced from `.env.dev`) wiped event + media + blocks,
 leaving only the tombstone — confirmed by direct SQL (tombstone present,
 events/media/content-blocks rows = 0). Known cosmetic gap: `GET /favicon.ico`
 404s on the OG page (no favicon route; console noise only). One
@@ -744,7 +770,7 @@ page, not the app's quiet voice.
   the title; dropped the three repeated "key holders only" spans;
   "optional, public" → "optional" (single-word `.opt` tag, matching the
   organizer form's convention).
-- `web/app.js` — success panel: card title → "Master key"; the one-shot
+- `web/app.js` — success panel: card title → "Organizer key"; the one-shot
   warning now reuses the canonical `openKeyModal` line verbatim ("Copy this
   key now — it is shown only once and cannot be recovered later.") instead of
   its own two-sentence version; "Share link (anyone)" → "Share link";
@@ -800,14 +826,14 @@ paper). `docs/design_system.md` §2/§3.4/§4/§7/§9/§10/§12 and `docs/qa_mat
 updated to match.
 
 **Organizer handle:** the user asked what it was for — answer: display-only
-metadata (never used to open events; access is keyed by master-key hash; it
+metadata (never used to open events; access is keyed by organizer-key hash; it
 was also the recorded key owner). Removed the create-form field, the
 workspace "Organizer" fact row and the attendee "by …" meta span; API
 contract unchanged (UI sends `"organizer"`, lite keeps `lite:ephemeral`).
 
 **Event-anchored expiry (src/ephemeral/):** `_parse_event_time` — when
 `when` is an ISO-8601 timestamp, `expires_at = event_time + ttl_hours`
-(master-key days computed from that real gap); a past event time raises
+(organizer-key days computed from that real gap); a past event time raises
 "The event time has already passed…" → 400; free text keeps the
 creation-anchored behaviour. Flyer form: `When` is now `datetime-local`
 (client converts to UTC ISO), label "Gone after (hours after the event)",
@@ -835,8 +861,8 @@ creation-anchored fallback remains for API callers only; the browser
 always sends a UTC ISO `when`.
 
 **Mesh (LXMF) key-delivery prototype (opt-in, same day):** shipped a
-working Reticulum relay for master keys — `POST /api/lite/events/{id}/deliver`
-takes the master key shown in the done panel plus a 32-hex LXMF destination
+working Reticulum relay for organizer keys — `POST /api/lite/events/{id}/deliver`
+takes the organizer key shown in the done panel plus a 32-hex LXMF destination
 hash, re-verifies the key through `get_keyed_view` (same HMAC check as the
 attendee unlock), then hands an `LXMF.DIRECT` message to `LXMRouter`
 (`src/ephemeral/lxmf_delivery.py`; `GATEKEYP_LXMF_ENABLED=1` + `mesh`
@@ -938,16 +964,16 @@ Post-rename cleanup, all prototyping state — nothing worth recovering:
   created by `make backup`). ~1 MB reclaimed. These backups **accumulate on
   every `make backup`** and are gitignored, so they never show in `git status`
   — remember they exist and sweep them before assuming the repo is clean.
-- **`.env.dev` (with its persisted Fernet master key) was deliberately kept** —
+- **`.env.dev` (with its persisted Fernet organizer key) was deliberately kept** —
   that was the fix from the 2026-08-31 ephemeral-key incident. Because the key
   schema is recreated on open (`_ensure_column` migrations), the next
   `make serve` boots against a brand-new empty `keys.db` encrypted under the
-  same master key. Nothing else to do to get a fresh DB.
+  same organizer key. Nothing else to do to get a fresh DB.
 - **Verification pattern used for DB-schema sanity without a server:**
-  `GATEKEYP_MASTER_KEY=<generated Fernet key> arch -arm64 .venv/bin/python -c
+  `GATEKEYP_ORGANIZER_KEY=<generated Fernet key> arch -arm64 .venv/bin/python -c
   "from src.db.database_handler import DatabaseHandler;
   DatabaseHandler(':memory:'); print('ok')"` — `:memory:` avoids touching the
-  file DB, and the constructor enforces `GATEKEYP_MASTER_KEY` + a valid 32-byte
+  file DB, and the constructor enforces `GATEKEYP_ORGANIZER_KEY` + a valid 32-byte
   url-safe base64 Fernet key (a plain string fails with a confusing Fernet
   ValueError, not the missing-key error).
 - Port 5000 on this Mac is occupied by **macOS ControlCenter (AirPlay
