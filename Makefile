@@ -78,10 +78,14 @@ serve-lite:
 
 # Timestamped backup of the production database. Run this before migrations
 # or any destructive operation - keys.db is the only copy of event keys.
+# Keeps the newest $(BACKUP_KEEP) backups (default 5); older ones are pruned
+# automatically so timestamped backups don't accumulate forever.
+BACKUP_KEEP ?= 5
 backup:
 	@if [ ! -f keys.db ]; then echo "No keys.db found - nothing to back up"; exit 1; fi
 	@cp keys.db keys.db.bak-$$(date +%Y%m%d)
-	@echo "Backed up keys.db to keys.db.bak-$$(date +%Y%m%d)"
+	@ls -t keys.db.bak-* | tail -n +$$(( $(BACKUP_KEEP) + 1 )) | while read old; do rm -f "$$old"; done
+	@echo "Backed up keys.db to keys.db.bak-$$(date +%Y%m%d) (keeping newest $(BACKUP_KEEP))"
 
 # Docker targets
 docker-build:

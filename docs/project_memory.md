@@ -209,13 +209,20 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
 ### 4.3 Live E2E QA (2026-09-14) — RSVP pull-flow funnel
 
 - **Verdict: PASS** — all funnel parts verified against the live server. One real finding was caught and fixed during QA (`a9a6fc0`): `EventLifecycleManager.decommission_event` only revoked keys — no wipe, no tombstone — so the public view stayed "live" and post-decommission submissions still minted keys. It now calls `db.wipe_event()` (tombstone remains; view → `ended`, late submissions → 410 Gone, door/list reject everything) and surfaces wipe counts in the response. Regression test: `test_decommission_wipes_event_and_leaves_tombstone`.
-- **Runtime for QA**: the repo `.venv` is unlaunchable on this machine (mixed x86_64 wheels + removed Intel-brew OpenSSL — the cryptography wheel links a libssl that no longer exists). Build a clean arm64 venv instead: `/tmp/gkpqa` from `/Library/Frameworks/Python.framework/Versions/3.11/bin/python3` with `cryptography argon2-cffi fastapi python-multipart uvicorn` (+ `pytest hypothesis httpx ruff` for tests/lint). Never run the server from the repo `.venv`.
+- **Runtime for QA**: ~~the repo `.venv` is unlaunchable on this machine~~
+  **(OBSOLETE as of 2026-09-16** — the venv now runs native arm64 Python 3.13
+  and `uv run pytest` passes; `cryptography`'s `_rust.abi3.so` verified arm64
+  via `file`. Use the plain repo venv. The `/tmp/gkpqa` fallback below is kept
+  only as a historical reference**)**: clean arm64 venv at `/tmp/gkpqa` from
+  `/Library/Frameworks/Python.framework/Versions/3.11/bin/python3` with
+  `cryptography argon2-cffi fastapi python-multipart uvicorn` (+ `pytest
+  hypothesis httpx ruff` for tests/lint).
 - **Multi-line pasted scripts get garbled by the tooling** (middle lines silently dropped). Run QA as short single-line chained commands; verify outcomes via the uvicorn access log (`grep 'HTTP/1.1' /tmp/gkp_server.log`), not tool stdout.
 - **Stale-server trap**: `pkill -f '/tmp/gkpqa/bin/python …'` never matches — the venv python execs as `/Library/Frameworks/…/Python -m src.api.server`. Use `pkill -f 'src.api.server'` and confirm with `ps aux | grep src.api.server`; leftover servers keep port 8000 (new instances die on bind while the old code keeps serving).
 - **Cross-connection visibility caveat (dev-only)**: after wiping rows via a second process against `keys.db`, the running server kept serving its pre-wipe snapshot until restarted. Production paths write+commit on the server's own connection and are self-consistent; just restart the server after any manual out-of-band DB surgery.
 - **Live-tested contract details**: settings are PUT-like — an omitted `passphrase` clears the gate (docstring: "empty/None clears the gate"); wrong passphrase → 400; the auto-approve dial approves while approved_count < N (a cap on currently-approved, not a total); honeypot submissions return a canned ack (`rsvp_id: null`) and bypass the per-IP limiter even when the window is full; content POST requires `event_id` in the body and returns the block under `id` (not `content_id`).
 
-### 4.4 Design decision — organizer (organizer) event card (2026-09-15)
+### 4.4 Design decision — organizer event card (2026-09-15)
 
 - **Organizer card = same stego channel, tagged payload, stamped face.** The
   hidden payload gains a `organizer\n` role line (3 lines total; 2-line
@@ -979,3 +986,52 @@ Post-rename cleanup, all prototyping state — nothing worth recovering:
 - Port 5000 on this Mac is occupied by **macOS ControlCenter (AirPlay
   Receiver)**, not a test server — don't hunt for a process to kill there; use
   another port for local services.
+
+### 2026-09-16 — Terminology rename landed as a hard cutoff; workspace hygiene
+
+**Terminology rename ("master" -> "organizer") completed and pushed as `9513c1a`:**
+
+- Zero-tolerance cutoff (prototype, no legacy consumers): all deprecation shims
+  removed — `AliasChoices` dropped from the 7 POST models, `master_key` GET
+  query params deleted, `DatabaseHandler(master_key=)` kwarg removed,
+  `GATEKEYP_MASTER_KEY` env fallback removed from handler and
+  docker-compose (now `GATEKEYP_ORGANIZER_KEY:` with a required `:?` error),
+  `_from_legacy_key_type()` normalization deleted (stored `type` returned
+  verbatim), `MissingMasterKeyError` alias deleted.
+- New `tests/test_organizer_key_compat.py` (6 tests) pins the REJECTIONS:
+  `master_key` POST field -> 422, `?master_key=` -> 422,
+  `DatabaseHandler(master_key=)` -> TypeError, GATEKEYP_MASTER_KEY alone ->
+  MissingOrganizerKeyError; plus positive organizer_key paths. If the old
+  vocabulary is ever reintroduced, a test fails loudly.
+- Only remaining "master" tokens: `sqlite_master` (SQLite catalog) and the
+  hard-cutoff tests themselves. Ringo Starr approved.
+- **Pre-commit PATH quirk:** the hook script invokes `pre-commit`, which lives
+  only in `.venv/bin` — a plain `git commit` fails with "`pre-commit` not
+  found" (exit 0 message, commit not created). Workaround used:
+  `PATH="$(pwd)/.venv/bin:$PATH" git commit ...`. Permanent fix: run
+  `uv run pre-commit install` once.
+- The rename pushed 6 lines past the 100-char ruff limit (extra characters in
+  "organizer"); reflowed in `database_handler.py` + 4 test lines. When a
+  rename lengthens identifiers, expect E501 fallout at line-boundary sites.
+
+**Workspace hygiene items (this session):**
+
+- **`make backup` now prunes itself** — `BACKUP_KEEP ?= 5` (override with
+  `make backup BACKUP_KEEP=10`). Timestamped `keys.db.bak-*` files accumulate
+  silently and are gitignored; older ones beyond the newest 5 are removed
+  automatically after each backup.
+- **The `arch -x86_64` cryptography workaround is OBSOLETE.** The venv runs
+  native arm64 Python 3.13 and `cryptography`'s `_rust.abi3.so` is arm64
+  (`file` check on the .so). Plain `uv run pytest` works; do not propagate the
+  old workaround in new docs.
+- **Boot smoke test** (fail-secure check after the compose `:?` change):
+  boot `make serve` with both required env vars from `.env.dev`, curl
+  `/health`, and confirm an env-less boot refuses to start.
+- **Time-trap found during validation:** `tests/test_lxmf_delivery.py` used a
+  hardcoded event time (`2026-09-15T19:00:00`) that crossed into the past and
+  made 7 `TestDeliverRoute` tests fail with 400 "event time has already
+  passed". Fixed by computing `_future_when()` = now + 24h. Lesson: any test
+  fixture that posts an absolute `when` must be dynamically computed — the
+  lite route validates times are in the future. Note the machine's clock does
+  not match the session's nominal date, so hardcoded relative dates are extra
+  fragile here.

@@ -9,6 +9,7 @@ demo script covers the real stack end to end).
 
 import os
 import sys
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -116,13 +117,18 @@ def lite_client(db, key_manager, content_manager, lifecycle, stub_deliverer):
         yield client
 
 
+def _future_when() -> str:
+    """A time 24h in the future so the fixture never goes stale past validation."""
+    return (datetime.now(UTC) + timedelta(hours=24)).isoformat()
+
+
 def _create_event(client: TestClient) -> dict:
     """Create one lite event through the funnel and return its payload."""
     resp = client.post(
         "/api/lite/events",
         data={
             "title": "Mesh Night",
-            "when": "2026-09-15T19:00:00+00:00",
+            "when": _future_when(),
             "ttl_hours": "48",
         },
     )
