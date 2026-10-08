@@ -22,6 +22,7 @@ from src.rsvp.service import (
     MAX_AUTO_APPROVE,
     MAX_CONTACT_LENGTH,
     MAX_DISPLAY_NAME_LENGTH,
+    MAX_MESSAGE_LENGTH,
     RSVP_STATUS_PENDING,
     RsvpGoneError,
     RsvpNotFoundError,
@@ -40,6 +41,7 @@ class RsvpSubmissionRequest(BaseModel):
     display_name: str = Field(default="", max_length=MAX_DISPLAY_NAME_LENGTH)
     contact: str | None = Field(default=None, max_length=MAX_CONTACT_LENGTH)
     passphrase: str | None = Field(default=None, max_length=MAX_CONTACT_LENGTH)
+    message: str | None = Field(default=None, max_length=MAX_MESSAGE_LENGTH)
     # Honeypot: humans never see this field (hidden in the form). Bots that
     # fill it get a canned acknowledgement and nothing is stored or minted.
     website: str | None = Field(default=None, max_length=256)
@@ -99,6 +101,7 @@ def build_rsvp_router(  # noqa: C901 - many routes
                 body.display_name or None,
                 contact=body.contact,
                 passphrase=body.passphrase,
+                message=body.message,
             )
         except RsvpValidationError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err

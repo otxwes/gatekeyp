@@ -36,6 +36,7 @@ logger = logging.getLogger("rsvp")
 # Field length limits (mirroring API-level validation)
 MAX_DISPLAY_NAME_LENGTH = 64
 MAX_CONTACT_LENGTH = 256
+MAX_MESSAGE_LENGTH = 512
 # Auto-approve dial bounds: null (manual gate) or an integer N meaning "keep
 # up to N RSVPs currently approved" (denying one frees the slot again).
 MAX_AUTO_APPROVE = 100000
@@ -204,6 +205,7 @@ class RsvpService:
         *,
         contact: str | None = None,
         passphrase: str | None = None,
+        message: str | None = None,
     ) -> dict:
         """
         Record an RSVP and pre-mint its access key.
@@ -224,6 +226,7 @@ class RsvpService:
             message = "RSVP name cannot be empty"
             raise RsvpValidationError(message)
         clean_contact = self._validate_text(contact, "contact", MAX_CONTACT_LENGTH)
+        clean_message = self._validate_text(message, "message", MAX_MESSAGE_LENGTH)
         self._check_passphrase(event, passphrase)
 
         approved_count = 0
@@ -252,6 +255,7 @@ class RsvpService:
             contact=clean_contact,
             key_hash=access_hash,
             status=status,
+            message=clean_message,
         )
         self.db.add_key(
             hash_key=access_hash,
