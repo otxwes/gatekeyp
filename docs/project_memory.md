@@ -47,6 +47,28 @@ This document serves as the durable, self-improving memory for the gatekeyp proj
 - **`uv.lock` provides reproducible builds** — always commit it to version control.
 - **`uv sync` is idempotent** — safe to run repeatedly; it only installs what's missing.
 
+### 1.x sqlite3 "Recursive use of cursors" / "InterfaceError: bad parameter" under concurrency (2026-09-24)
+
+- **Symptom**: organizer RSVP tab intermittently 500s ("Could not load"). One
+  of the tab's `Promise.all` pair (`/rsvp/list` + `/rsvp/settings`, or the
+  public `/rsvp/view` alongside them) failed with
+  `sqlite3.ProgrammingError: Recursive use of cursors not allowed` and, after a
+  partial fix, `sqlite3.InterfaceError: bad parameter or other API misuse`.
+- **Root cause**: `DatabaseHandler` shared a single `self.cursor` and one
+  connection (`check_same_thread=False`) while FastAPI runs sync endpoints in
+  a threadpool — concurrent requests raced on the cursor. Even per-thread
+  cursors on the shared connection still failed (`threadsafety == 3` does not
+  make *multi-statement method sequences* atomic).
+- **Fix**: `DatabaseHandler` now wraps every public method instance-side in a
+  shared `threading.RLock` (`_serialize_methods()`), making each method call
+  atomic while internal re-entrant calls (`self.method()`) still work.
+- **Regression test**: `tests/test_db_concurrency.py` — 4 real threads x 40
+  rounds hammering the exact RSVP-tab call pair; suite is 301 passing.
+- **Ops gotcha**: killing the pid saved by `nohup uv run … & echo $!` kills the
+  `uv` wrapper, **not** the uvicorn Python process — the old server stays bound
+  to :8000 and restarts fail with EADDRINUSE. Use `lsof -ti :8000 | xargs kill`
+  to free the port before restarting.
+
 ### 1.2 Pre-commit Hooks
 
 - **`pyupio/safety` hook is broken** — the repo at rev `3.2.0` has an invalid `.pre-commit-hooks.yaml` manifest. Use `pip-audit` instead (via `uv run pip-audit` or the `audit` dependency group).
@@ -1035,3 +1057,32 @@ Post-rename cleanup, all prototyping state — nothing worth recovering:
   lite route validates times are in the future. Note the machine's clock does
   not match the session's nominal date, so hardcoded relative dates are extra
   fragile here.
+
+### 2026-09-24 — Card-first UI: raw key text removed from all display/copy flows
+
+**What was done:** the invite card is now the *only* key artifact in the web UI.
+- `web/app.js openKeyModal`: no `.kc-value` text, no Copy button; card button
+  became primary (`#key-card-btn`) with a "pixels are the key" warning; throws
+  if no card options are available. Titles → "… — make your … card".
+- Workspace banner: "Copy organizer key" (`#ws-copy-key`) removed; hint says the
+  organizer card is the only way back in.
+- Per-key-row "Card" action + `openKeyCardModal` (re-enter raw key) removed.
+- RSVP result: key row + `#rsvp-copy` removed; "Make your invite card" primary;
+  "Open the event now" kept (key still lives in sessionStorage only).
+- `tests/e2e/pages.py`: new `ApiKeyGrabber` attaches a response listener per
+  page and captures raw keys from POST JSON (`organizer_key`/`access_key`) —
+  e2e reads keys off the wire, matching what the UI itself receives.
+  `create_event`/`mint_key` use capture (mint closes via Cancel);
+  `download_card_for_key` replaced by `mint_key_and_card` (mint → card →
+  download). RSVP success wait now uses `#rsvp-views .card-title`.
+- New guards: `test_mint_modal_never_shows_key_text` and no-`.kc-value` /
+  no-copy assertions on the RSVP result.
+- **Kept deliberately:** lite flyer flow key text + LXMF transport (user-
+  approved); `gkp:`/`gkporg:` paste as unadvertised door input-side fallback;
+  share-link Copy (`#rsvp-copy-link`).
+
+**Verification:** `node --check web/app.js` OK; `ruff check src/ tests/` clean
+(after EM101/BLE001 fixes); `ruff format` unchanged; unit `pytest` 306 passed,
+32 e2e deselected; e2e `uv run pytest tests/e2e -q -m e2e --override-ini='addopts='`
+→ **32 passed** (first run caught a missing `AttendeePage.keys` grabber — fixed).
+`ty check` only pre-existing LXMF/RNS unresolved-import diagnostics.

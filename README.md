@@ -43,7 +43,10 @@ gatekeyp is designed to help communities organize events while prioritizing:
   - CORS support for development
 - **Web UI**: Mobile-first, privacy-preserving frontend (hash-routed SPA, no build step)
   - Organizer desk: create / open events, four-tab workspace (Content, Bulletin
-    board, Media, Access keys) with a header Decommission action + one-time organizer-key modal
+    board, Media, Access keys) with a header Decommission action; the
+    organizer card is the only key artifact (card-first: raw key text is never
+    displayed or copied in the UI, and unprocessed `gkp:` paste remains an
+    unadvertised door fallback)
   - Attendee door: unlock an invite with an access key, then read content,
     post on the bulletin board, comment, and view media — no account required
   - Invite cards (stego-only, Phase B): the access key is hidden in the

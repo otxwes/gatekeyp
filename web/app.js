@@ -214,36 +214,27 @@ function openModal({ title, body = "", confirmText = "Confirm", cancelText = "Ca
     confirmBtn.focus();
 }
 
-/** Modal that shows a freshly generated key exactly once, with a copy button.
- *  When `cardOpts` (event metadata for the invite card) is given, also offers
- *  "Also make an invite card" for the fresh key. */
+/** Modal that turns a freshly generated key into its one artifact: the invite
+ *  card. The raw key text is never displayed or copied — the card's pixels are
+ *  the only copy, so closing without "Make the card" destroys the key. */
 function openKeyModal(label, keyValue, cardOpts = null) {
-    const isOrganizer = Boolean(cardOpts && cardOpts.organizer);
-    const cardButton = cardOpts
-        ? `<button class="btn btn-secondary btn-block" type="button" id="key-card-btn">${isOrganizer ? "Also make a organizer card" : "Also make an invite card"}</button>`
-        : "";
-    const cardHint = cardOpts
-        ? `<p class="field-hint">Send the card as a file or attachment, not a photo — re-encoding it in a chat destroys the hidden key, and there is no fallback: the pixels are the key.</p>`
-        : "";
+    if (!cardOpts) {
+        throw new Error("openKeyModal requires card options — keys are never shown as text.");
+    }
+    const isOrganizer = Boolean(cardOpts.organizer);
     openModal({
         title: label,
         body:
-            `<p>Copy this key now — it is shown only once and cannot be recovered later.</p>` +
-            `<div class="keycode-full"><code class="keycode kc-value">${esc(keyValue)}</code>` +
-            `<button class="btn btn-secondary" type="button" id="key-copy-btn">Copy</button></div>` +
-            cardButton +
-            cardHint,
+            `<p>The card below is the only copy of this key. The key text is not ` +
+            `saved, shown, or sent anywhere — closing this modal without making ` +
+            `the card destroys the key forever.</p>` +
+            `<button class="btn btn-primary btn-block" type="button" id="key-card-btn">` +
+            `${isOrganizer ? "Make the organizer card" : "Make the invite card"}</button>` +
+            `<p class="field-hint">Send the card as a file or attachment, not a photo — re-encoding it in a chat destroys the hidden key, and there is no fallback: the pixels are the key.</p>`,
         confirmText: "Done",
         cancelText: "Close",
         onConfirm: async () => {},
     });
-    const copyBtn = $("#key-copy-btn");
-    if (copyBtn) {
-        copyBtn.addEventListener("click", async () => {
-            const ok = await copyText(keyValue);
-            toast(ok ? "Key copied to clipboard." : "Copy blocked — select the key manually.", ok ? "ok" : "error", "Copy");
-        });
-    }
     const cardBtn = $("#key-card-btn");
     if (cardBtn) {
         cardBtn.addEventListener("click", () => {
@@ -478,7 +469,7 @@ function bindOrganizeEntry() {
             createForm.reset();
             saveSession();
             goWorkspace();
-            openKeyModal("Organizer key — save it", created.organizer_key, {
+            openKeyModal("Organizer key — make your organizer card", created.organizer_key, {
                 ...inviteCardOpts(),
                 organizer: true,
             });
@@ -579,7 +570,7 @@ function renderWorkspace() {
         `</header>` +
         `<div class="organizer-banner" role="note">` +
         `<span class="badge badge-warn">Organizer</span>` +
-        `<button class="btn btn-secondary btn-sm" type="button" id="ws-copy-key">Copy organizer key</button>` +
+        `<span class="field-hint">Your organizer card is the only way back in — keep the PNG safe.</span>` +
         `</div>` +
         `<nav class="tabs" role="tablist" aria-label="Workspace sections">` +
         WS_TABS.map(([id, label]) =>
@@ -596,10 +587,6 @@ function renderWorkspace() {
         location.hash = "#/organize";
         renderOrganize();
         toast("Workspace closed. Organizer key discarded from this tab.", "info", "Signed out");
-    });
-    $("#ws-copy-key").addEventListener("click", async () => {
-        const ok = await copyText(org.organizerKey);
-        toast(ok ? "Organizer key copied to clipboard." : "Copy blocked.", ok ? "ok" : "error", "Copy");
     });
     $$(".tab", root).forEach((tab) => {
         tab.addEventListener("click", () => {
@@ -1016,36 +1003,6 @@ function inviteCardOpts() {
     };
 }
 
-/** Modal: make an invite card for an existing key by entering its value. */
-function openKeyCardModal(owner) {
-    openModal({
-        title: "Make an invite card",
-        body:
-            `<p>The raw access key is shown only once at generation and is not stored again. ` +
-            `Enter the <strong>${esc(owner || "key")}</strong> value you were given to embed it in a card.</p>` +
-            `<div class="field"><label for="key-card-key">Access key</label>` +
-            `<input type="password" id="key-card-key" spellcheck="false" autocomplete="off"></div>` +
-            `<p class="field-hint">Send the finished card as a file or attachment — re-encoding it destroys the hidden key, and there is no fallback: the pixels are the key.</p>`,
-        confirmText: "Make card",
-        cancelText: "Cancel",
-        onConfirm: async () => {
-            const input = $("#key-card-key");
-            const accessKey = input ? input.value.trim() : "";
-            if (!/^local:[0-9a-f]{64}$/i.test(accessKey)) {
-                throw new Error("Enter the full access key — it starts with local: followed by 64 hex digits.");
-            }
-            openCardCoverModal({
-                ...inviteCardOpts(),
-                accessKey,
-            });
-        },
-    });
-    window.setTimeout(() => {
-        const input = $("#key-card-key");
-        if (input) input.focus();
-    }, 0);
-}
-
 /* ------------------------------------------------------------------
  * Invite card cover picker (Phase 3.7)
  * ------------------------------------------------------------------ */
@@ -1174,18 +1131,12 @@ function keyRowHTML(key) {
     const label = key.revoked ? "Revoked" : expired ? "Expired" : "Active";
     const badgeClass = key.revoked ? "badge-revoked" : expired ? "badge-warn" : "badge-active";
     const owner = key.owner_id ? key.owner_id : "unnamed key";
-    const cardAction = (key.revoked || expired)
-        ? ""
-        : `<div class="kd-actions">` +
-            `<button class="btn btn-ghost btn-sm" type="button" data-act="card" data-owner="${esc(owner)}">Card</button>` +
-            `</div>`;
     return `<div class="key-detail-row" data-key-id="${esc(key.id || key.hash_key)}">` +
         `<span class="badge ${badgeClass}">${esc(label)}</span>` +
         `<div class="kd-info">` +
         `<div class="kd-name">${esc(owner)}</div>` +
         `<div class="kd-sub">created ${esc(fmtDate(key.created_at))} · expires ${esc(fmtDate(key.expires_at))}</div>` +
         `</div>` +
-        cardAction +
         `</div>`;
 }
 
@@ -1219,12 +1170,6 @@ async function wsKeys(main) {
         `</form>` +
         `</section>`;
 
-    // "Card" action per key row — the raw key value is entered once more
-    // (it is shown only at generation and never stored again).
-    $$('[data-act="card"]', main).forEach((btn) => {
-        btn.addEventListener("click", () => openKeyCardModal(btn.dataset.owner || "key"));
-    });
-
     $("#gen-key-form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -1237,7 +1182,7 @@ async function wsKeys(main) {
                 method: "POST",
                 body: { organizer_key: org.organizerKey, event_id: org.eventId, days, owner_id },
             });
-            openKeyModal("Access key — share it", key.access_key, inviteCardOpts());
+            openKeyModal("Access key — make the invite card", key.access_key, inviteCardOpts());
             toast("Access key generated.", "ok", "New key");
             await wsKeys(main);
         } catch (err) {
@@ -1285,11 +1230,15 @@ function rsvpRowHTML(rsvp) {
               ? `<button class="btn btn-danger btn-sm" type="button" data-act="deny" data-rsvp="${esc(rsvp.id)}">Deny</button>`
               : "";
     const decided = rsvp.status === "pending" ? "" : ` · decided ${esc(fmtDate(rsvp.decided_at))}`;
+    const note = rsvp.message
+        ? `<div class="kd-sub kd-msg">“${esc(rsvp.message)}”</div>`
+        : "";
     return `<div class="key-detail-row" data-rsvp-id="${esc(rsvp.id)}">` +
         rsvpBadge(rsvp.status) +
         `<div class="kd-info">` +
         `<div class="kd-name">${esc(rsvp.display_name || "Unnamed")}</div>` +
         `<div class="kd-sub">${rsvp.contact ? `${esc(rsvp.contact)} · ` : ""}asked ${esc(fmtDate(rsvp.created_at))}${decided}</div>` +
+        note +
         `</div>` +
         (actions ? `<div class="kd-actions">${actions}</div>` : "") +
         `</div>`;
@@ -1760,7 +1709,6 @@ async function renderRsvp() {
             `</header>` +
             `<form id="rsvp-form" class="card form-card" autocomplete="off">` +
             `<h3 class="card-title">Request an invite</h3>` +
-            `<p class="field-hint">Every request pre-mints a one-time access key. It unlocks nothing until the organizer approves your RSVP — you will see the key exactly once, on the next screen.</p>` +
             `<div class="field">` +
             `<label for="rsvp-name">Name <span class="req">*</span></label>` +
             `<input type="text" id="rsvp-name" name="display_name" required maxlength="64" autocomplete="off">` +
@@ -1768,7 +1716,10 @@ async function renderRsvp() {
             `<div class="field">` +
             `<label for="rsvp-contact">How the organizer can reach you <span class="opt">optional</span></label>` +
             `<input type="text" id="rsvp-contact" name="contact" maxlength="256" autocomplete="off">` +
-            `<p class="field-hint">Only the organizer sees this. Leave blank to stay faceless until the door.</p>` +
+            `</div>` +
+            `<div class="field">` +
+            `<label for="rsvp-message">Message to the organizer <span class="opt">optional</span></label>` +
+            `<textarea id="rsvp-message" name="message" rows="3" maxlength="512" autocomplete="off"></textarea>` +
             `</div>` +
             (view.passphrase_required
                 ? `<div class="field">` +
@@ -1819,6 +1770,7 @@ function bindRsvpForm(eventId, event, passphraseRequired) {
                 body: {
                     display_name: name,
                     contact: getField(form, "contact") || null,
+                    message: getField(form, "message") || null,
                     passphrase: passphrase || null,
                     website: getField(form, "website") || null,
                 },
@@ -1833,7 +1785,8 @@ function bindRsvpForm(eventId, event, passphraseRequired) {
 }
 
 
-/** The one-time RSVP result: the pre-minted key is displayed exactly once. */
+/** The one-time RSVP result: the pre-minted key's only artifact is the invite
+ *  card — the raw key text is never displayed. */
 function showRsvpResult(eventId, event, result) {
     const root = $("#rsvp-views");
     if (!root) return;
@@ -1854,19 +1807,14 @@ function showRsvpResult(eventId, event, result) {
             : "Your card works the moment the organizer approves your RSVP. Approve or deny is their call."}</p>` +
         `</header>` +
         `<div class="card form-card">` +
-        `<h3 class="card-title">Your access card — shown once</h3>` +
-        `<p class="field-hint">Save it now: the server stored only a keyed fingerprint and can never show this again. Send the card as a file, not a photo — re-encoding destroys the hidden key, and there is no fallback: the pixels are the key.</p>` +
-        `<div class="keycode-full"><code class="keycode kc-value">${esc(key)}</code>` +
-        `<button class="btn btn-secondary" type="button" id="rsvp-copy">Copy</button></div>` +
-        `<button class="btn btn-secondary btn-block" type="button" id="rsvp-card">Make an invite card</button>` +
+        `<h3 class="card-title">Your access card</h3>` +
+        `<p class="field-hint">The invite card is the only copy of your key — the key text is never shown or saved anywhere. Close this page without saving the card and the key is gone forever: the server stored only a fingerprint and can never show it again.</p>` +
+        `<button class="btn btn-primary btn-block" type="button" id="rsvp-card">Make your invite card</button>` +
+        `<p class="field-hint">Send the card as a file or attachment, not a photo — re-encoding destroys the hidden key, and there is no fallback: the pixels are the key.</p>` +
         (approved
-            ? `<button class="btn btn-primary btn-block" type="button" id="rsvp-unlock">Open the event now</button>`
+            ? `<button class="btn btn-secondary btn-block" type="button" id="rsvp-unlock">Open the event now</button>`
             : `<a class="btn btn-ghost btn-block" href="#/join">Go to the door →</a>`) +
         `</div>`;
-    $("#rsvp-copy").addEventListener("click", async () => {
-        const ok = await copyText(key);
-        toast(ok ? "Key copied to clipboard." : "Copy blocked — select the key manually.", ok ? "ok" : "error", "Copy");
-    });
     $("#rsvp-card").addEventListener("click", () => {
         openCardCoverModal({ eventId, title: event.title, accessKey: key });
     });
@@ -1902,6 +1850,11 @@ function renderEventPage() {
         `</div>` +
         `</header>` +
         `<div class="ep-main">` +
+        ((attendee.event.content_blocks || []).length
+            ? `<section class="card"><h3 class="card-title">Event details</h3>` +
+              `<div class="item-list">${attendee.event.content_blocks.map(blockItem).join("")}</div>` +
+              `</section>`
+            : "") +
         `<section class="card"><h3 class="card-title">Bulletin board</h3>` +
         `<div id="ep-bulletins" class="bulletin-list">Loading…</div></section>` +
         `<section class="card"><h3 class="card-title">Media</h3>` +
@@ -1918,6 +1871,27 @@ function renderEventPage() {
 
     loadAttendeeBulletins();
     loadAttendeeMedia();
+    // Event details (organizer content blocks) arrive with the door unlock;
+    // the RSVP-approve shortcut skips the door, so fetch them instead.
+    if (attendee.event.content_blocks === undefined) {
+        loadAttendeeDetails();
+    }
+}
+
+/** Fill in content blocks for an event unlocked outside the door flow. */
+async function loadAttendeeDetails() {
+    try {
+        const result = await api("/api/access", {
+            method: "POST",
+            body: { key: attendee.accessKey, content_id: attendee.eventId },
+        });
+        const blocks = (result && result.data && result.data.content_blocks) || [];
+        attendee.event = { ...attendee.event, content_blocks: blocks };
+        saveSession();
+        renderEventPage();
+    } catch {
+        /* Details are an enhancement; leave the page as-is on failure. */
+    }
 }
 
 async function loadAttendeeBulletins() {

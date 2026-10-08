@@ -973,6 +973,12 @@ p {
     color: var(--ink-faint);
 }
 
+.key-detail-row .kd-msg {
+    font-style: italic;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+}
+
 .key-detail-row .kd-actions {
     flex: none;
     display: flex;

@@ -11,6 +11,11 @@ what the existing `/api/access` flow already handles, and the card's raw key is
 never stored anywhere — it exists only in the organizer's tab while making the
 card and in the attendee's tab while unlocking.
 
+**Card-first UI (current):** the web UI never displays or copies raw key text —
+the one-time mint modal and the RSVP result render only the card path, so the
+invite card is the *sole* artifact a fresh key gets. The `gkp:` paste option at
+the door stays as an unadvertised fallback (see §7).
+
 ---
 
 ## 1. Why this exists
