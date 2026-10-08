@@ -36,6 +36,9 @@ keys.db.bak-*
 *.sqlite
 *.sqlite3
 
+# Deployment decision trail (local artifact; server-ops docs live in lichen-site)
+.audit/
+
 # Testing
 .pytest_cache/
 # Local QA scratch space (screenshots, flyers, server logs)
