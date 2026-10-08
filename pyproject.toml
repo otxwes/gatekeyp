@@ -32,6 +32,8 @@ test = [
     "pytest>=8.0.0",
     "hypothesis>=6.0.0",
     "httpx>=0.28.1",
+    "playwright>=1.63.0",
+    "pytest-playwright>=0.9.0",
 ]
 audit = [
     "pip-audit",
@@ -80,6 +82,20 @@ ignore = ["D", "COM812", "ISC001", "PLR0911", "PLR0913", "PLR0917"]
 # Mesh (LXMF) prototype: optional deps are imported lazily on purpose and
 # RNS/LXMF objects are duck-typed (not in the base dependency set)
 "src/ephemeral/lxmf_delivery.py" = ["PLC0415", "ANN401"]
+
+# Browser end-to-end suite: spawns the server via uv (shell-out), probes it
+# with urllib over loopback, and its fixtures need the server purely for
+# fixture-ordering (ARG001); long failure messages are the point (TRY003).
+"tests/e2e/**" = [
+    "INP001",  # pytest rootdir-based collection without package marker
+    "S607",    # `uv` resolves via PATH; tests run in a controlled repo checkout
+    "S310",    # only talking to our own 127.0.0.1 server on loopback
+    "S603",    # subprocess with list args (Playwright server spawn)
+    "TRY003",  # long inline messages explain exactly what failed to boot
+    "EM102",   # f-string error text in the boot-failure path
+    "ARG001",  # unused `server` only forces fixture ordering
+    "D105",
+]
 
 # Demo script: prints are the point; it is not a package, and its
 # sys.path insert must precede the repo import (E402)
