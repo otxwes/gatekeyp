@@ -329,6 +329,15 @@ class Gateway:
                 rate_limit_id, key_rate_id, "content_not_found", "Content not found"
             )
 
+        # When the unlocked content is an event, attach the organizer's
+        # content blocks (schedule, location, FAQ, …) so the door response
+        # carries the full attendee page, not just the event header.
+        if content and "payload" not in content and content.get("id"):
+            content = {
+                **content,
+                "content_blocks": self.db.list_content_blocks_for_event(content["id"]),
+            }
+
         # Success: reset rate limiting for this client and key
         self.rate_limiter.reset(rate_limit_id)
         self.rate_limiter.reset(key_rate_id)

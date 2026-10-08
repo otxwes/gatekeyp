@@ -89,6 +89,34 @@ class TestGatewayIntegration(unittest.TestCase):
         self.assertEqual(response["data"]["id"], "event_3")
         self.assertEqual(response["data"]["title"], "Underground Show")
 
+    def test_event_fallback_access_includes_content_blocks(self):
+        """Unlocking an event directly returns its content blocks too."""
+        raw_key = "local:event_key"
+        hashed = self.km.hash_key("event_key")
+        self.db.add_key(hashed, "access")
+        self.db.add_event("event_3", "Underground Show", "Secret location", "org_1")
+        self.db.add_content_block("block_a", "event_3", hashed, "schedule", "Doors 7pm")
+        self.db.add_content_block("block_b", "event_3", hashed, "faq", "21+, yes")
+
+        response = self.gateway.process_request({"key": raw_key, "content_id": "event_3"})
+        self.assertEqual(response["status"], "success")
+        blocks = response["data"]["content_blocks"]
+        self.assertEqual(
+            [(b["content_type"], b["payload"]) for b in blocks],
+            [("schedule", "Doors 7pm"), ("faq", "21+, yes")],
+        )
+
+    def test_block_access_does_not_embed_blocks(self):
+        """Unlocking a block keeps the payload response unchanged."""
+        raw_key = "local:block_key"
+        hashed = self.km.hash_key("block_key")
+        self.db.add_key(hashed, "access")
+        self.db.add_content_block("block_c", "event_5", hashed, "location", "data")
+
+        response = self.gateway.process_request({"key": raw_key, "content_id": "block_c"})
+        self.assertEqual(response["status"], "success")
+        self.assertNotIn("content_blocks", response["data"])
+
     def test_revoked_key_rejected(self):
         """A revoked key is rejected."""
         hashed = self.km.hash_key("revoked_key")
