@@ -1,8 +1,12 @@
 # Copyright (c) 2026 gatekeyp contributors
 
+import inspect
 import os
 import sqlite3
+import threading
+from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import wraps
 
 from cryptography.fernet import Fernet
 
@@ -11,6 +15,7 @@ from cryptography.fernet import Fernet
 _KEY_RSVP_MIN_COLS = 7  # keys.rsvp_id lives at column index 7
 _EVENT_RPH_MIN_COLS = 8  # events.rsvp_passphrase_hash lives at column index 8
 _EVENT_RAA_MIN_COLS = 9  # events.rsvp_auto_approve lives at column index 9
+_RSVP_MSG_MIN_COLS = 8  # rsvps.message lives at column index 8
 
 
 class MissingOrganizerKeyError(ValueError):
@@ -39,7 +44,7 @@ class DatabaseHandler:
 
     def __init__(
         self,
-        db_path: str = "keys.db",
+        db_path: str | None = None,
         organizer_key: str | None = None,
     ) -> None:
         """
@@ -59,12 +64,44 @@ class DatabaseHandler:
             organizer_key = os.environ.get("GATEKEYP_ORGANIZER_KEY")
         if organizer_key is None:
             raise MissingOrganizerKeyError
+        # Path resolution: explicit argument > GATEKEYP_DB_PATH env > "keys.db".
+        db_path = db_path or os.environ.get("GATEKEYP_DB_PATH") or "keys.db"
         raw = organizer_key.encode() if isinstance(organizer_key, str) else organizer_key
         self.fernet = Fernet(raw)
         self.connection = sqlite3.connect(db_path, check_same_thread=False)
         self.cursor = self.connection.cursor()
+        self._db_lock = threading.RLock()
+        # Serialize every DB method across threads: the HTTP layer (FastAPI
+        # threadpool) calls into this handler from several worker threads at
+        # once (e.g. the organizer RSVP tab fires its list + settings calls via
+        # Promise.all). Despite sqlite3.threadsafety == 3, concurrent
+        # multi-statement operations on the shared connection were observed to
+        # fail with "sqlite3.ProgrammingError: Recursive use of cursors not
+        # allowed" and "sqlite3.InterfaceError: bad parameter or other API
+        # misuse"; a re-entrant lock keeps each method call atomic.
+        self._serialize_methods()
         self._initialize_tables()
         self._migrate_schema()
+
+    def _serialize_methods(self) -> None:
+        """Wrap this instance's public methods with the shared RLock.
+
+        Wrapped functions are stored as instance attributes; internal
+        ``self.method()`` re-entries stay safe because the lock re-enters.
+        """
+        for name, fn in inspect.getmembers(type(self), inspect.isfunction):
+            if name.startswith("_"):
+                continue
+
+            def make_locked(f: Callable[..., object]) -> Callable[..., object]:
+                @wraps(f)
+                def wrapper(*args: object, **kwargs: object) -> object:
+                    with self._db_lock:
+                        return f(self, *args, **kwargs)  # type: ignore[arg-type]
+
+                return wrapper
+
+            setattr(self, name, make_locked(fn))
 
     def _initialize_tables(self) -> None:
         """Create all tables if they don't exist."""
@@ -165,7 +202,8 @@ class DatabaseHandler:
                 status TEXT DEFAULT 'pending',
                 key_hash TEXT,
                 created_at TEXT,
-                decided_at TEXT
+                decided_at TEXT,
+                message TEXT
             )
         """)
         self.connection.commit()
@@ -214,7 +252,8 @@ class DatabaseHandler:
                 status TEXT DEFAULT 'pending',
                 key_hash TEXT,
                 created_at TEXT,
-                decided_at TEXT
+                decided_at TEXT,
+                message TEXT
             )
         """)
 
@@ -226,6 +265,10 @@ class DatabaseHandler:
 
         # Phase 2: Check and add missing columns to 'comments'
         self._ensure_column("comments", "parent_comment_id", "TEXT")
+
+        # Pre-mint note: free-text message an attendee sends with their RSVP
+        # (organizer-only, encrypted at rest like the contact field)
+        self._ensure_column("rsvps", "message", "TEXT")
 
         self.connection.commit()
 
@@ -494,22 +537,51 @@ class DatabaseHandler:
         contact: str | None,
         key_hash: str | None,
         status: str = "pending",
+        message: str | None = None,
     ) -> None:
-        """Add an RSVP row. `contact` is stored encrypted (reminder-only)."""
+        """Add an RSVP row.
+
+        `contact` and `message` are stored encrypted — both are visible only
+        to the organizer.
+        """
         now = self._now_iso()
         encrypted_contact = self._encrypt(contact) if contact else None
+        encrypted_message = self._encrypt(message) if message else None
         self.cursor.execute(
             """
             INSERT INTO rsvps
-                (rsvp_id, event_id, display_name, contact, status, key_hash, created_at, decided_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+                (rsvp_id, event_id, display_name, contact, status, key_hash,
+                 created_at, decided_at, message)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)
         """,
-            (rsvp_id, event_id, display_name, encrypted_contact, status, key_hash, now),
+            (
+                rsvp_id,
+                event_id,
+                display_name,
+                encrypted_contact,
+                status,
+                key_hash,
+                now,
+                encrypted_message,
+            ),
         )
         self.connection.commit()
 
+    def _rsvp_message(self, result: tuple, rsvp_id: str) -> str | None:
+        """Extract + decrypt rsvps.message; legacy rows predate the column."""
+        if len(result) <= _RSVP_MSG_MIN_COLS:
+            return None
+        encrypted_message = result[8]
+        if not encrypted_message:
+            return None
+        try:
+            return self._decrypt(encrypted_message)
+        except (ValueError, TypeError) as err:
+            message = f"Failed to decrypt message for RSVP {rsvp_id}"
+            raise DecryptionError(message) from err
+
     def get_rsvp(self, rsvp_id: str) -> dict | None:
-        """Retrieve an RSVP row, decrypting the contact field."""
+        """Retrieve an RSVP row, decrypting the contact and message fields."""
         self.cursor.execute("SELECT * FROM rsvps WHERE rsvp_id = ?", (rsvp_id,))
         result = self.cursor.fetchone()
         if result:
@@ -529,6 +601,7 @@ class DatabaseHandler:
                 "key_hash": result[5],
                 "created_at": result[6],
                 "decided_at": result[7],
+                "message": self._rsvp_message(result, rsvp_id),
             }
         return None
 
@@ -557,6 +630,7 @@ class DatabaseHandler:
                     "key_hash": result[5],
                     "created_at": result[6],
                     "decided_at": result[7],
+                    "message": self._rsvp_message(result, result[0]),
                 }
             )
         return out
