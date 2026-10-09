@@ -9,7 +9,7 @@ from src.db.database_handler import DatabaseHandler
 MAX_TITLE_LENGTH = 256
 MAX_BODY_LENGTH = 65536  # 64 KB
 MAX_FILENAME_LENGTH = 256
-MAX_MEDIA_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_MEDIA_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB; flyers cached client-side
 MAX_COMMENT_LENGTH = 16384  # 16 KB
 MAX_AUTHOR_ID_LENGTH = 256
 
@@ -102,7 +102,8 @@ class ContentManager:
     def _validate_media_size(data: bytes) -> None:
         """Validate that media data is within size limits."""
         if len(data) > MAX_MEDIA_SIZE_BYTES:
-            message = f"Media exceeds maximum size of {MAX_MEDIA_SIZE_BYTES} bytes"
+            limit_mb = MAX_MEDIA_SIZE_BYTES // (1024 * 1024)
+            message = f"Media exceeds the {limit_mb} MB limit"
             raise ContentValidationError(message)
 
     # ------------------------------------------------------------------

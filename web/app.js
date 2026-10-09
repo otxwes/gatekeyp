@@ -2039,6 +2039,21 @@ async function renderFlyer() {
     });
     updateNote();
 
+    // Oversized flyer: tell the human at pick time, not at submit. The cap
+    // mirrors the server's MAX_MEDIA_SIZE_BYTES - keep the two in sync.
+    const MAX_FLYER_BYTES = 25 * 1024 * 1024;
+    const flyerFileEl = $("#flyer-file");
+    if (flyerFileEl) {
+        flyerFileEl.addEventListener("change", () => {
+            const f = flyerFileEl.files?.[0];
+            if (f && f.size > MAX_FLYER_BYTES) {
+                note(noteEl, `Flyer is too large (${fmtBytes(f.size)}). Pick a file under 25 MB — every invitee downloads it.`, "error");
+            } else {
+                updateNote();
+            }
+        });
+    }
+
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const note = $("#flyer-note");
@@ -2054,6 +2069,9 @@ async function renderFlyer() {
             fd.set("where", $("#flyer-where").value);
             fd.set("ttl_hours", String(Number($("#flyer-ttl")?.value || 48)));
             const file = $("#flyer-file")?.files?.[0];
+            if (file && file.size > MAX_FLYER_BYTES) {
+                throw new Error(`Flyer is too large (${fmtBytes(file.size)}). Pick a file under 25 MB — every invitee downloads it.`);
+            }
             if (file) fd.set("flyer", file, file.name);
             const resp = await fetch("/api/lite/events", { method: "POST", body: fd });
             const body = await resp.json().catch(() => ({}));

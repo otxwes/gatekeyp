@@ -135,18 +135,19 @@ class TestMediaAssets:
             )
 
     def test_upload_media_oversized(self, content_manager, setup_event_and_key):
-        """Test that oversized media is rejected."""
+        """Test that oversized media is rejected with a human message."""
         raw_key = setup_event_and_key["raw_key"]
         event_id = setup_event_and_key["event_id"]
 
-        with pytest.raises(ContentValidationError):
+        with pytest.raises(ContentValidationError) as err:
             content_manager.upload_media(
                 input_key=raw_key,
                 event_id=event_id,
                 filename="huge.bin",
                 mime_type="application/pdf",
-                data=b"x" * (10 * 1024 * 1024 + 1),
+                data=b"x" * (25 * 1024 * 1024 + 1),
             )
+        assert "25 MB" in str(err.value)
 
     def test_upload_media_invalid_key(self, content_manager, setup_event_and_key):
         """Test that an invalid key cannot upload media."""

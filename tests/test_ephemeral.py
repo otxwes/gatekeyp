@@ -516,13 +516,31 @@ class TestLiteRoutes:
         assert "Doomed" not in page.text
 
     def test_flyer_served_publicly_without_key(self, client):
-        """The flyer is the one public asset; bytes round-trip."""
+        """The flyer is the one public asset; bytes round-trip, cacheable."""
         body = _create_lite(client, with_flyer=True).json()
         resp = client.get(f"/api/lite/events/{body['event_id']}/flyer")
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "image/png"
-        assert resp.headers["cache-control"] == "no-store"
+        assert resp.headers["cache-control"] == "public, max-age=86400"
+        assert resp.headers["etag"] == f'"{body["flyer_asset_id"]}"'
         assert resp.content == _FLYER
+
+    def test_oversized_flyer_rejected_with_human_message(self, client):
+        """A flyer over the cap is a 400 naming the limit, not a byte count."""
+        big = b"PNG" + b"\x00" * (26 * 1024 * 1024)
+        resp = client.post(
+            "/api/lite/events",
+            data={
+                "title": "Big",
+                "description": "d",
+                "when": "Friday 9pm",
+                "where": "The roof",
+                "ttl_hours": 48,
+            },
+            files={"flyer": ("flyer.png", big, "image/png")},
+        )
+        assert resp.status_code == 400
+        assert "Flyer exceeds the 25 MB limit" in resp.json()["detail"]
 
     def test_flyer_404_when_absent(self, client):
         """Events without a flyer report 404 on the flyer route."""

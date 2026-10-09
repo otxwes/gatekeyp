@@ -225,7 +225,13 @@ def build_ephemeral_router(  # noqa: C901, PLR0915 - many routes
             media_type=asset["mime_type"],
             headers={
                 "Content-Disposition": f'inline; filename="{filename}"',
-                "Cache-Control": "no-store",
+                # Public poster, immutable per asset id: let visitors' browsers
+                # cache it (a day) instead of re-downloading + re-decrypting
+                # the blob on every share-page visit. The page itself stays
+                # no-store; a wiped event's page renders "Event ended" while a
+                # visitor's cached flyer copy is beyond server control anyway.
+                "Cache-Control": "public, max-age=86400",
+                "ETag": f'"{asset_id}"',
                 "X-Content-Type-Options": "nosniff",
             },
         )

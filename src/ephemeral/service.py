@@ -172,7 +172,8 @@ class EphemeralService:
             message = f"filename exceeds maximum length of {MAX_FILENAME_LENGTH} characters"
             raise LiteValidationError(message)
         if len(flyer["data"]) > MAX_MEDIA_SIZE_BYTES:
-            message = f"flyer exceeds maximum size of {MAX_MEDIA_SIZE_BYTES} bytes"
+            limit_mb = MAX_MEDIA_SIZE_BYTES // (1024 * 1024)
+            message = f"Flyer exceeds the {limit_mb} MB limit"
             raise LiteValidationError(message)
         return flyer
 
