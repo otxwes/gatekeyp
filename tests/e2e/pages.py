@@ -6,10 +6,13 @@ public funnel through `#/rsvp/{event_id}`, lite events through `#/e/{id}`.
 """
 
 import re
+import tempfile
 import time
 from pathlib import Path
 
 from playwright.sync_api import Page, expect
+
+from tests.stego_ref import _make_carrier, embed
 
 SHOTS = Path("/tmp/gkp-e2e")
 BENIGN_CONSOLE_PATTERNS = [
@@ -148,18 +151,21 @@ class OrganizerPage:
         return EventHandle(event_id, org_key)
 
     def open_workspace(self, handle: EventHandle) -> None:
-        """Re-enter the workspace through a fresh tab (two-field form) so any
-        prior session in this context doesn't hide the entry form; the active
-        page and watcher move to the new tab."""
+        """Re-enter the workspace through a fresh tab by dropping a generated
+        organizer card — the card is the only way back in (no id+key form).
+        The active page and watcher move to the new tab."""
         old = self.page
         page = old.context.new_page()
         self.page = page
         self.watcher = ConsoleWatcher(page)
         self.keys = ApiKeyGrabber(page)
         page.goto(f"{self.base}/#/organize")
-        page.fill("#open-event-id", handle.event_id)
-        page.fill("#open-organizer-key", handle.organizer_key)
-        page.click("#open-btn")
+        page.locator("#org-drop").wait_for(state="visible")
+        payload = f"organizer\n{handle.event_id}\n{handle.organizer_key}"
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as fh:
+            fh.write(embed(_make_carrier(), payload))
+            card_path = fh.name
+        page.locator("#org-drop-file").set_input_files(card_path)
         page.locator(".ws-title").wait_for(state="visible")
         old.close()
 
@@ -314,7 +320,7 @@ class OrganizerPage:
 
     def close_workspace(self) -> None:
         self.page.click("#ws-end")
-        self.page.locator("#open-event-id").wait_for(state="visible")
+        self.page.locator("#org-drop").wait_for(state="visible")
         expect(
             self.page.locator(".toast", has_text="Organizer key discarded from this tab.")
         ).to_be_visible()

@@ -391,7 +391,7 @@ function endAllSessions() {
  * ------------------------------------------------------------------ */
 function bindOrganizeEntry() {
     // Paste a organizer key line (gkporg:) or organizer card image while the
-    // organize entry is showing — reopening without the two-field form.
+    // organize entry is showing — the card is the only way back in.
     document.addEventListener("paste", async (event) => {
         const view = $("#view-organize");
         const workspace = $("#organize-workspace");
@@ -481,28 +481,7 @@ function bindOrganizeEntry() {
     });
 
     const openForm = $("#open-event-form");
-    openForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const noteEl = $("#open-note");
-        const btn = $("#open-btn");
-        note(noteEl, "");
-        const eventId = getField(openForm, "event_id");
-        const organizerKey = getField(openForm, "organizer_key");
-        if (!eventId || !organizerKey) {
-            note(noteEl, "Both the event ID and organizer key are required.", "error");
-            return;
-        }
-        btnBusy(btn, true, "Opening…");
-        try {
-            await openOrganizerWorkspace(eventId, organizerKey);
-            openForm.reset();
-            toast("Workspace restored from your key.", "ok", "Welcome back");
-            btnBusy(btn, false);
-        } catch (err) {
-            note(noteEl, err.message, "error");
-            btnBusy(btn, false);
-        }
-    });
+    if (openForm) openForm.addEventListener("submit", (event) => event.preventDefault());
 }
 
 /** Show the workspace container (inside the organize view). */
@@ -1493,8 +1472,6 @@ async function handleInvitePng(file) {
 async function handleOrganizerCardFile(file) {
     if (!file) return;
     const drop = $("#org-drop");
-    const noteEl = $("#open-note");
-    if (noteEl) note(noteEl, "");
     setDropBusy(drop, true, "Reading the card…");
     try {
         const bytes = new Uint8Array(await file.arrayBuffer());
