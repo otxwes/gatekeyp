@@ -84,6 +84,18 @@ def _fmt_utc(expires_at: str | None) -> str:
     return dt.astimezone(UTC).strftime("%b %d, %Y %H:%M UTC")
 
 
+def _fmt_when(when: str) -> str:
+    """Format the invite's When line: readable stamp for ISO timestamps,
+    the organizer's text verbatim otherwise."""
+    try:
+        dt = datetime.fromisoformat(when)
+    except (TypeError, ValueError):
+        return when
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).strftime("%b %d, %Y %H:%M UTC")
+
+
 def _render_live_page(
     event_id: str,
     title: str,
@@ -107,7 +119,7 @@ def _render_live_page(
         f"<h1>{html.escape(title)}</h1>"
         f"{flyer_tag}"
         f"{body_description}"
-        + (f"<p><strong>When:</strong> {html.escape(when)}</p>" if when else "")
+        + (f"<p><strong>When:</strong> {html.escape(_fmt_when(when))}</p>" if when else "")
         + (f"<p><strong>Location:</strong> {html.escape(where)}</p>" if where else "")
     )
     head = (

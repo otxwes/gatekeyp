@@ -479,6 +479,13 @@ class TestLiteRoutes:
         assert "The roof" in page.text
         assert "wiped automatically" not in page.text
 
+    def test_og_page_formats_iso_when_free_text_verbatim(self, client):
+        """ISO timestamps render as readable stamps; free text stays verbatim."""
+        body = _create_lite(client, when="2099-01-01T21:00:00+00:00").json()
+        page = client.get(f"/i/{body['event_id']}")
+        assert "Jan 01, 2099 21:00 UTC" in page.text
+        assert "2099-01-01T21:00:00" not in page.text
+
     def test_og_page_does_not_duplicate_default_description(self, client):
         """When description defaults to the title, the page renders it once."""
         body = _create_lite(client, description=None).json()
