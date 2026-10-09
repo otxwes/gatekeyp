@@ -348,8 +348,17 @@ function route() {
     else if (name === "organize") renderOrganize();
     else if (name === "join") renderJoin();
     else if (name === "flyer") renderFlyer();
-    else if (name === "e") renderLiteEvent();
-    else if (name === "rsvp") renderRsvp();
+    else if (name === "e") {
+        // Lite events: the share page (/i/{id}) IS the event page — the key
+        // no longer gates anything on it, so the hash route just redirects.
+        const { id } = parseLiteHash();
+        if (id) {
+            location.href = `/i/${encodeURIComponent(id)}`;
+        } else {
+            const root = $("#lite-views");
+            if (root) root.innerHTML = emptyState("No event here", "This page needs an event id in the link.");
+        }
+    } else if (name === "rsvp") renderRsvp();
 }
 
 /* ------------------------------------------------------------------
@@ -1949,8 +1958,7 @@ async function deliverByMesh(eventId, organizerKey, statusEl) {
 /** Render the flyer creation funnel result panel. */
 function showFlyerDone(done, body) {
     const publicUrl = body.public_url || `${location.origin}/i/${body.event_id}`;
-    const eventHref =
-        `#/e/${encodeURIComponent(body.event_id)}?k=${encodeURIComponent(body.organizer_key)}`;
+    const eventHref = `/i/${encodeURIComponent(body.event_id)}`;
     const meshPanel = body.mesh_delivery_available
         ? `<div class="item"><button type="button" class="btn" id="mesh-deliver-btn">` +
           `Send key over mesh (LXMF)</button>` +
@@ -1959,10 +1967,6 @@ function showFlyerDone(done, body) {
     done.innerHTML =
         `<header class="view-head"><h2 class="view-title">Your event is live</h2></header>` +
         `<div class="card form-card">` +
-        `<h3 class="card-title">Organizer key</h3>` +
-        `<p class="key-hint">Copy this key now — it is shown only once and cannot be ` +
-        `recovered later.</p>` +
-        `<code class="key-hint">${esc(body.organizer_key)}</code>` +
         `<div class="field"><label>Share link</label>` +
         `<div class="item"><code>${esc(publicUrl)}</code></div></div>` +
         meshPanel +
@@ -2056,6 +2060,13 @@ async function renderFlyer() {
             entry.hidden = true;
             showFlyerDone(done, body);
             done.hidden = false;
+            // Same one-shot card modal as the standard flow: the organizer
+            // card is the only way back into a lite event too.
+            openKeyModal("Organizer key — make your organizer card", body.organizer_key, {
+                eventId: body.event_id,
+                title: body.title,
+                organizer: true,
+            });
             toast("Copy the organizer key before leaving this page.", "ok", "Event is live");
         } catch (err) {
             note.textContent = err.message;
@@ -2072,52 +2083,6 @@ function parseLiteHash() {
     if (!path.startsWith("/e/")) return { id: "", key: "" };
     const params = new URLSearchParams(query || "");
     return { id: path.slice(3), key: params.get("k") || "" };
-}
-
-function liteKeyForm() {
-    return `<form id="lite-key-form" class="card form-card" autocomplete="off">` +
-        `<div class="field"><label for="lite-key">Event key</label>` +
-        `<input type="password" id="lite-key" required autocomplete="off"></div>` +
-        `<button type="submit" class="btn btn-primary btn-block">Unlock</button></form>`;
-}
-
-async function renderLiteEvent() {
-    const root = $("#lite-views");
-    if (!root) return;
-    const { id, key } = parseLiteHash();
-    if (!id) {
-        root.innerHTML = emptyState("No event here", "This page needs an event id in the link.");
-        return;
-    }
-    if (!key) {
-        root.innerHTML = liteKeyForm();
-        $("#lite-key-form").addEventListener("submit", (event) => {
-            event.preventDefault();
-            const entered = $("#lite-key").value.trim();
-            location.hash = `#/e/${encodeURIComponent(id)}?k=${encodeURIComponent(entered)}`;
-        });
-        return;
-    }
-    root.innerHTML = `<p class="form-note">Unlocking…</p>`;
-    try {
-        const data = await api(`/api/lite/events/${encodeURIComponent(id)}${qs({ key })}`);
-        const evt = data.event || {};
-        const flyer = data.flyer_asset_id
-            ? `<img class="lite-flyer" src="/api/lite/events/${encodeURIComponent(id)}/flyer" alt="${esc(evt.title || "Flyer")}">`
-            : "";
-        root.innerHTML =
-            `<div class="view-head"><h2 class="view-title">${esc(evt.title || "")}</h2></div>` +
-            `${flyer}` +
-            (evt.description ? `<p>${esc(evt.description)}</p>` : "") +
-            (data.when ? `<p><strong>When:</strong> ${esc(fmtDate(data.when))}</p>` : "") +
-            (data.where ? `<p><strong>Location:</strong> ${esc(data.where)}</p>` : "");
-    } catch (err) {
-        if (/ended|expired/i.test(err.message)) {
-            root.innerHTML = emptyState("Event ended", "All data for this event was wiped.");
-        } else {
-            root.innerHTML = emptyState("Could not unlock this event", err.message);
-        }
-    }
 }
 
 /* ------------------------------------------------------------------
