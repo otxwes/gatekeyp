@@ -71,7 +71,10 @@ def _render_ended_page(ended_at: str | None) -> str:
 
 
 def _fmt_utc(expires_at: str | None) -> str:
-    """Render the wipe deadline as a readable UTC stamp; 'soon' if unparseable."""
+    """Render the wipe deadline as a readable UTC stamp; 'soon' if unparseable.
+
+    Used by the LXMF deliver route's API response (not rendered on pages).
+    """
     try:
         dt = datetime.fromisoformat(expires_at or "")
     except (TypeError, ValueError):
@@ -82,7 +85,13 @@ def _fmt_utc(expires_at: str | None) -> str:
 
 
 def _render_live_page(
-    event_id: str, title: str, flyer_asset_id: str | None, expires_at: str | None, base_url: str
+    event_id: str,
+    title: str,
+    description: str,
+    when: str | None,
+    where: str | None,
+    flyer_asset_id: str | None,
+    base_url: str,
 ) -> str:
     """HTML plus Open Graph tags for a live ephemeral event."""
     og_image = ""
@@ -91,11 +100,15 @@ def _render_live_page(
         flyer_url = f"{base_url}/api/lite/events/{event_id}/flyer"
         og_image = f'<meta property="og:image" content="{html.escape(flyer_url)}">'
         flyer_tag = f'<img src="/api/lite/events/{event_id}/flyer" alt="{html.escape(title)}">'
+    # The organizer-facing description defaults to the title when omitted
+    # (lifecycle requires non-empty); never render that default twice.
+    body_description = "" if description == title else f"<p>{html.escape(description)}</p>"
     body = (
         f"<h1>{html.escape(title)}</h1>"
         f"{flyer_tag}"
-        '<p class="notice">All event data is wiped automatically at '
-        f"{_fmt_utc(expires_at)}.</p>"
+        f"{body_description}"
+        + (f"<p><strong>When:</strong> {html.escape(when)}</p>" if when else "")
+        + (f"<p><strong>Location:</strong> {html.escape(where)}</p>" if where else "")
     )
     head = (
         '<meta property="og:type" content="website">'
@@ -282,8 +295,10 @@ def build_ephemeral_router(  # noqa: C901, PLR0915 - many routes
         page = _render_live_page(
             event_id=event_id,
             title=event["title"],
+            description=event.get("description") or "",
+            when=view.get("when"),
+            where=view.get("where"),
             flyer_asset_id=view.get("flyer_asset_id"),
-            expires_at=event.get("expires_at"),
             base_url=str(request.base_url).rstrip("/"),
         )
         return HTMLResponse(page, headers={"Cache-Control": "no-store"})

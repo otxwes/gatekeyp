@@ -1258,8 +1258,6 @@ async function wsRsvps(main) {
     const dial = settings.auto_approve;
     main.innerHTML =
         `<section class="card">` +
-        `<h3 class="card-title">The pull-flow funnel</h3>` +
-        `<p class="field-hint">People RSVP at your public page; each submission pre-mints a one-time key that unlocks nothing until you approve it. Approve the queue, share the cards — the door reads a pending key as "valid but waiting".</p>` +
         `<div class="keycode-full"><code class="keycode">${esc(shareUrl)}</code>` +
         `<button class="btn btn-secondary" type="button" id="rsvp-copy-link">Copy link</button></div>` +
         `</section>` +
@@ -1993,7 +1991,6 @@ function showFlyerDone(done, body) {
         meshPanel +
         `<div class="item"><a class="btn btn-primary" href="${esc(eventHref)}">` +
         `Open the event page</a></div>` +
-        `<p class="key-hint">This page wipes itself ${esc(fmtDate(body.event_expires_at))}.</p>` +
         `</div>`;
     const meshBtn = document.getElementById("mesh-deliver-btn");
     if (meshBtn) {
@@ -2018,24 +2015,22 @@ async function renderFlyer() {
     if (!form || form.dataset.bound) return;
     form.dataset.bound = "1";
 
-    // Live wipe note: the page vanishes ttl hours after the event time.
+    // Past-time validation: the page vanishes ttl hours after the event
+    // time, so a time already in the past can never hold an event.
     const noteEl = $("#flyer-note");
     const updateNote = () => {
         if (!noteEl) return;
         const ttl = Number($("#flyer-ttl")?.value || 48);
-        const hours = ttl === 1 ? "hour" : "hours";
         const whenRaw = $("#flyer-when")?.value;
         const whenDate = whenRaw ? new Date(whenRaw) : null;
-        if (!whenDate || Number.isNaN(whenDate.getTime())) {
-            note(noteEl, `The wipe runs ${ttl} ${hours} after the event.`);
-            return;
+        if (whenDate && !Number.isNaN(whenDate.getTime())) {
+            const wipes = new Date(whenDate.getTime() + ttl * 3600 * 1000);
+            if (wipes.getTime() <= Date.now()) {
+                note(noteEl, "The event time has already passed — pick a time in the future.", "error");
+                return;
+            }
         }
-        const wipes = new Date(whenDate.getTime() + ttl * 3600 * 1000);
-        if (wipes.getTime() <= Date.now()) {
-            note(noteEl, "The event time has already passed — pick a time in the future.", "error");
-            return;
-        }
-        note(noteEl, `Wipes ${fmtDate(wipes.toISOString())} — ${ttl} ${hours} after the event.`);
+        noteEl.textContent = "";
     };
     ["#flyer-when", "#flyer-ttl"].forEach((sel) => {
         const el = $(sel);
@@ -2116,14 +2111,11 @@ async function renderLiteEvent() {
             ? `<img class="lite-flyer" src="/api/lite/events/${encodeURIComponent(id)}/flyer" alt="${esc(evt.title || "Flyer")}">`
             : "";
         root.innerHTML =
-            `<div class="view-head"><p class="eyebrow">Lite event</p>` +
-            `<h2 class="view-title">${esc(evt.title || "")}</h2></div>` +
+            `<div class="view-head"><h2 class="view-title">${esc(evt.title || "")}</h2></div>` +
             `${flyer}` +
             (evt.description ? `<p>${esc(evt.description)}</p>` : "") +
             (data.when ? `<p><strong>When:</strong> ${esc(fmtDate(data.when))}</p>` : "") +
-            (data.where ? `<p><strong>Location:</strong> ${esc(data.where)}</p>` : "") +
-            `<p class="form-note">This page wipes itself ` +
-            `${esc(fmtDate(data.expires_at))}.</p>`;
+            (data.where ? `<p><strong>Location:</strong> ${esc(data.where)}</p>` : "");
     } catch (err) {
         if (/ended|expired/i.test(err.message)) {
             root.innerHTML = emptyState("Event ended", "All data for this event was wiped.");

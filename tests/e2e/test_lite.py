@@ -34,11 +34,10 @@ def test_flyer_create_then_lite_view(attendee_context, server):
     assert match, f"no public event link among {codes}"
     event_id = match.group(1)
 
-    # Lite view with the key in the URL shows title, when/where, wipe note.
+    # Lite view with the key in the URL shows title and when/where.
     page.goto(f"{server.base_url}/#/e/{event_id}?k={key}")
     page.locator("#lite-views .view-title").first.wait_for(state="visible")
     assert "Shed Festival" in page.locator("#lite-views .view-title").first.inner_text()
-    assert "wipes itself" in page.locator("#lite-views .form-note").last.inner_text()
     watcher.expect_clean()
 
 

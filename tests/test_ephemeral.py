@@ -467,14 +467,23 @@ class TestLiteRoutes:
         assert "#/organizer/" in body["organizer_url"]
         assert f"k={body['organizer_key']}" in body["organizer_url"]
 
-    def test_organizer_key_never_leaks_to_public_page(self, client):
-        """The OG page shows the title only - never keys or description."""
+    def test_og_page_shows_invite_details_never_keys(self, client):
+        """The OG page carries the invite details; keys never appear."""
         body = _create_lite(client, description="private description").json()
         page = client.get(f"/i/{body['event_id']}")
         assert page.status_code == 200
         assert 'property="og:title"' in page.text
         assert body["organizer_key"] not in page.text
-        assert "private description" not in page.text
+        assert "private description" in page.text
+        assert "Friday 9pm" in page.text
+        assert "The roof" in page.text
+        assert "wiped automatically" not in page.text
+
+    def test_og_page_does_not_duplicate_default_description(self, client):
+        """When description defaults to the title, the page renders it once."""
+        body = _create_lite(client, description=None).json()
+        page = client.get(f"/i/{body['event_id']}")
+        assert f"<p>{body['title']}</p>" not in page.text
 
     def test_event_time_anchors_expiry_over_http(self, client):
         """The wipe deadline counts from the event time, not the creation moment."""
@@ -486,13 +495,6 @@ class TestLiteRoutes:
         resp = _create_lite(client, when="2001-01-01T00:00:00+00:00")
         assert resp.status_code == 400
         assert "already passed" in resp.json()["detail"]
-
-    def test_og_page_states_absolute_wipe_time(self, client):
-        """The OG page notice states the wipe moment, not a raw timestamp."""
-        body = _create_lite(client, when="2099-01-01T21:00:00+00:00", ttl_hours=24).json()
-        page = client.get(f"/i/{body['event_id']}")
-        assert "wiped automatically at" in page.text
-        assert "Jan 02, 2099 21:00 UTC" in page.text
 
     def test_og_page_after_wipe_shows_honest_ended_page(self, client, db):
         """A wiped event renders a noindex 'ended' page, not old content."""

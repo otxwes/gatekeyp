@@ -320,9 +320,14 @@ class EphemeralService:
         if self._is_expired(event.get("expires_at")):
             return {"status": "expired"}
         media = self.db.list_media_assets(event_id)
+        blocks = self.db.list_content_blocks_for_event(event_id)
+        when = next((b["payload"] for b in blocks if b["content_type"] == "schedule"), None)
+        where = next((b["payload"] for b in blocks if b["content_type"] == "location"), None)
         return {
             "status": "live",
             "event": event,
+            "when": when,
+            "where": where,
             "flyer_asset_id": media[0]["id"] if media else None,
         }
 
