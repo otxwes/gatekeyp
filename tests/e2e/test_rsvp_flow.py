@@ -62,9 +62,7 @@ def test_approved_rsvp_unlocks_and_content_blocks_surface(
     attendee.expect_event_title("Print Run")
     # The approved shortcut passes no content_blocks: the lazy fetch must fill
     # them in or the blocks never surface (the bug this locks down).
-    attendee.page.locator(".card:has-text('Event details') .item", has_text=BLOCK_TEXT).wait_for(
-        timeout=10_000
-    )
+    attendee.page.locator("#ep-board .item", has_text=BLOCK_TEXT).wait_for(timeout=10_000)
     attendee.watcher.expect_clean()
 
 
@@ -88,7 +86,7 @@ def test_queue_row_shows_attendee_message(organizer_context, attendee_context, s
     attendee = AttendeePage(attendee_context.new_page(), server.base_url)
     attendee.rsvp(funnel, name="Quote Seeker", message="Bring the big kettle.")
     organizer.open_workspace(handle)
-    organizer.tab("content")
+    organizer.tab("board")
     organizer.tab("rsvps")
     row = organizer.page.locator(".key-detail-row", has_text="Quote Seeker")
     expect(row.locator(".kd-msg")).to_contain_text("Bring the big kettle.")
@@ -99,7 +97,7 @@ def test_gate_settings_passphrase_round_trip(organizer_context, attendee_context
     """D7: require a passphrase, see the funnel enforce it, then remove it."""
     organizer = OrganizerPage(organizer_context.new_page(), server.base_url)
     handle = organizer.create_event("Password Parlor", "Knock twice.")
-    organizer.tab("content")
+    organizer.tab("board")
     organizer.tab("rsvps")
     organizer.page.locator("#rsvp-pass-on").check()
     organizer.page.fill("#rsvp-pass", "sesame")
@@ -117,7 +115,7 @@ def test_gate_settings_passphrase_round_trip(organizer_context, attendee_context
     expect(attendee.page.locator("#rsvp-views #rsvp-copy")).to_have_count(0)
     # Untick + save removes the gate again.
     organizer.open_workspace(handle)
-    organizer.tab("content")
+    organizer.tab("board")
     organizer.tab("rsvps")
     organizer.page.locator("#rsvp-pass-on").uncheck()
     organizer.page.click("#rsvp-settings-btn")
@@ -136,10 +134,10 @@ def test_decided_rsvp_row_is_final(organizer_context, attendee_context, server):
     attendee = AttendeePage(attendee_context.new_page(), server.base_url)
     attendee.rsvp(funnel, name="Once Only")
     organizer.open_workspace(handle)
-    organizer.tab("content")
+    organizer.tab("board")
     organizer.tab("rsvps")
     organizer.approve_rsvp("Once Only")
-    organizer.tab("content")
+    organizer.tab("board")
     organizer.tab("rsvps")
     row = organizer.page.locator('.key-detail-row:has-text("Once Only")')
     expect(row.locator(".badge-active")).to_contain_text("Approved")

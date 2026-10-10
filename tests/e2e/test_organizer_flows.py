@@ -29,7 +29,7 @@ def test_each_block_type_adds_and_renders(organizer_context, server):
         ("location", "Loading bay B, sublevel 2."),
     ]:
         org.add_content_block(content_type, payload)
-    expect(org.page.locator(".item-list .item")).to_have_count(3)
+    expect(org.page.locator("#board-posts .item")).to_have_count(3)
     org.watcher.expect_clean()
 
 
@@ -42,7 +42,7 @@ def test_media_upload_then_delete(organizer_context, server, tmp_path):
     org.upload_media(png)
     expect(org.page.locator(".media-tile")).to_have_count(1)
     org.delete_media_tiles()
-    org.tab("media")
+    org.tab("board")
     expect(org.page.locator(".media-tile")).to_have_count(0)
     org.watcher.expect_clean()
 
@@ -65,7 +65,7 @@ def test_bulletin_comment_and_cleanup(organizer_context, attendee_context, serve
     org.delete_bulletin("Victuals")
 
     att.reload_keeps_session()
-    expect(att.page.locator("#ep-bulletins .bulletin-card")).to_have_count(0)
+    expect(att.page.locator("#ep-board .bulletin-card")).to_have_count(0)
     att.watcher.expect_clean()
 
 

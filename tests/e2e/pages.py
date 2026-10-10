@@ -72,9 +72,10 @@ class ConsoleWatcher:
 class EventHandle:
     """Everything created for one E2E event, shared between page objects."""
 
-    def __init__(self, event_id: str, organizer_key: str) -> None:
+    def __init__(self, event_id: str, organizer_key: str, title: str = "") -> None:
         self.event_id = event_id
         self.organizer_key = organizer_key
+        self.title = title
         self._tmpdir = tempfile.mkdtemp(prefix="gkp-e2e-card-")
 
     def _card_png(self, payload: str) -> Path:
@@ -158,8 +159,8 @@ class OrganizerPage:
         # tests that need the card itself use mint_key_and_card.
         self.page.locator('[data-act="cancel"]').click()
         self.page.locator(".ws-title").wait_for(state="visible")
-        event_id = self.page.locator(".ws-meta").inner_text().strip()
-        return EventHandle(event_id, org_key)
+        event_id = self.page.locator("#ws-event-id").inner_text().strip()
+        return EventHandle(event_id, org_key, title)
 
     def open_workspace(self, handle: EventHandle) -> None:
         """Re-enter the workspace through a fresh tab by dropping a generated
@@ -180,23 +181,26 @@ class OrganizerPage:
         self.page.click(f'.tab[data-tab="{name}"]')
 
     def add_content_block(self, content_type: str, payload: str) -> None:
-        self.tab("content")
+        self.tab("board")
+        self.page.select_option("#board-kind", "block")
         self.page.fill("#block-type", content_type)
         self.page.locator("#block-payload").fill(payload)
-        self.page.click("#add-block-btn")
-        expect(self.page.locator(".item-list .item", has_text=payload)).to_be_visible()
+        self.page.click("#board-post-btn")
+        expect(self.page.locator("#board-posts .item", has_text=payload)).to_be_visible()
 
     def post_bulletin(self, title: str, body: str) -> None:
-        self.tab("bulletins")
+        self.tab("board")
+        self.page.select_option("#board-kind", "bulletin")
         self.page.fill("#bulletin-title", title)
         self.page.fill("#bulletin-body", body)
-        self.page.click("#add-bulletin-btn")
+        self.page.click("#board-post-btn")
         expect(self.page.locator(".bulletin-card", has_text=title)).to_be_visible()
 
     def upload_media(self, file_path: str | Path) -> None:
-        self.tab("media")
+        self.tab("board")
+        self.page.select_option("#board-kind", "media")
         self.page.locator("#media-file").set_input_files(file_path)
-        self.page.click("#upload-btn")
+        self.page.click("#board-post-btn")
         expect(self.page.locator(".media-tile")).to_be_visible()
 
     def mint_key(self, owner: str, days: int = 30) -> str:
@@ -238,13 +242,13 @@ class OrganizerPage:
     def approve_rsvp(self, name: str) -> None:
         # The queue is fetched when the tab renders — re-render it first so a
         # request that arrived after the last render is in the list.
-        self.tab("content")
+        self.tab("board")
         self.tab("rsvps")
         row = self.page.locator(f'.key-detail-row:has-text("{name}")')
         row.get_by_role("button", name="Approve").click()
 
     def deny_rsvp(self, name: str) -> None:
-        self.tab("content")
+        self.tab("board")
         self.tab("rsvps")
         row = self.page.locator(f'.key-detail-row:has-text("{name}")')
         row.get_by_role("button", name="Deny").click()
@@ -256,7 +260,7 @@ class OrganizerPage:
         self.page.locator('#modal-root [data-act="confirm"]').click()
 
     def bulletin_card(self, title: str):
-        self.tab("bulletins")
+        self.tab("board")
         return self.page.locator("#ws-main .bulletin-card", has_text=title)
 
     def open_bulletin(self, title: str):
@@ -278,7 +282,7 @@ class OrganizerPage:
         expect(card.locator(".c-meta")).to_have_count(0)
 
     def delete_media_tiles(self) -> None:
-        self.tab("media")
+        self.tab("board")
         tiles = self.page.locator(".media-tile")
         count = tiles.count()
         assert count > 0, "expected at least one media tile"
@@ -309,7 +313,7 @@ class OrganizerPage:
         """Decommission via the header action + type-to-confirm modal.
         Assumes the workspace is already open (e.g. right after minting)."""
         self.page.click("#ws-decommission")
-        self.page.locator("#decom-confirm").fill(handle.event_id)
+        self.page.locator("#decom-confirm").fill(handle.title)
         self.confirm_modal()
         expect(self.page.locator(".toast", has_text="Event decommissioned")).to_be_visible()
 
@@ -320,7 +324,7 @@ class OrganizerPage:
         self.page.reload()
         self.page.locator("#ws-main").wait_for(state="visible")
         expect(self.page.locator(".ws-title").first).to_have_text(title)
-        assert handle.event_id in self.page.locator(".ws-meta").inner_text()
+        assert handle.event_id in self.page.locator("#ws-event-id").inner_text()
 
     def close_workspace(self) -> None:
         self.page.click("#ws-end")
@@ -458,11 +462,11 @@ class AttendeePage:
         expect(self.page.locator("#join-views .ep-title").first).to_have_text(title)
 
     def expect_bulletin_visible(self, title: str) -> None:
-        expect(self.page.locator("#ep-bulletins .bulletin-card", has_text=title)).to_be_visible()
+        expect(self.page.locator("#ep-board .bulletin-card", has_text=title)).to_be_visible()
 
     def comment_on_bulletin(self, bulletin_title: str, author: str, body: str) -> None:
         """Expand the bulletin card and post a comment from the attendee view."""
-        card = self.page.locator("#ep-bulletins .bulletin-card", has_text=bulletin_title).first
+        card = self.page.locator("#ep-board .bulletin-card", has_text=bulletin_title).first
         card.locator(".bulletin-head").click()
         card.locator(".comment-form").wait_for(state="visible")
         card.locator("input.cf-author").fill(author)

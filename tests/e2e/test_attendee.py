@@ -40,10 +40,8 @@ def test_created_event_surface(organizer_context, attendee_context, server, tmp_
     att = AttendeePage(attendee_context.new_page(), server.base_url)
     att.unlock_by_stego_png(handle.attendee_card_png(key))
     att.expect_event_title("Kitchen Table Scribble Club")
-    expect(
-        att.page.locator("#ep-bulletins .bulletin-card", has_text="Committee notes")
-    ).to_be_visible()
-    expect(att.page.locator("#ep-media img.mt-preview")).to_be_visible()
+    expect(att.page.locator("#ep-board .bulletin-card", has_text="Committee notes")).to_be_visible()
+    expect(att.page.locator("#ep-board img.mt-preview")).to_be_visible()
     att.watcher.expect_clean()
 
 
@@ -56,19 +54,15 @@ def test_block_added_later_shows_on_fresh_unlock(organizer_context, attendee_con
     key = org.mint_key("Early Bird")
     att = AttendeePage(attendee_context.new_page(), server.base_url)
     att.unlock_by_stego_png(handle.attendee_card_png(key))
-    expect(
-        att.page.locator(".card:has-text('Event details') .item", has_text="sneak peek")
-    ).to_have_count(0)
+    expect(att.page.locator("#ep-board .item", has_text="sneak peek")).to_have_count(0)
     org.add_content_block("agenda", "11:00 — sneak peek and cake.")
     att.reload_keeps_session()
     expect(  # reload keeps the stale cached view: no re-fetch post-unlock
-        att.page.locator(".card:has-text('Event details') .item", has_text="sneak peek")
+        att.page.locator("#ep-board .item", has_text="sneak peek")
     ).to_have_count(0)
     att.end_session()
     att.unlock_by_stego_png(handle.attendee_card_png(key))
-    att.page.locator(
-        ".card:has-text('Event details') .item", has_text="sneak peek and cake"
-    ).wait_for(timeout=10_000)
+    att.page.locator("#ep-board .item", has_text="sneak peek and cake").wait_for(timeout=10_000)
     org.watcher.expect_clean()
     att.watcher.expect_clean()
 

@@ -33,9 +33,9 @@ if TYPE_CHECKING:
 
 _FAVICON = (
     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E"
-    "%3Cpath fill='%23f5f5f5' d='M7.5 11a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2.4a2.1 2.1 "
-    "0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2Z'/%3E%3Cpath fill='none' stroke='%23f5f5f5' "
-    "stroke-linecap='round' stroke-width='2' d='M11 11 20 2M16 6l3 3M13 9l2.5-2.5'/%3E%3C/svg%3E"
+    "%3Ccircle cx='12' cy='4' r='2' fill='%23f5f5f5'/%3E"
+    "%3Cpath fill='none' stroke='%23f5f5f5' stroke-linecap='round' stroke-linejoin='round'"
+    " stroke-width='2' d='M5 20V11a7 7 0 0 1 14 0v9'/%3E%3C/svg%3E"
 )
 
 _PAGE_STYLE = (

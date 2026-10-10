@@ -696,12 +696,6 @@ p {
     letter-spacing: -0.015em;
 }
 
-.ws-meta {
-    margin-top: var(--space-2);
-    color: var(--ink-soft);
-    font-size: var(--text-sm);
-}
-
 .ws-actions {
     display: flex;
     flex-wrap: wrap;
@@ -843,11 +837,6 @@ p {
 /* ------------------------------------------------------------
    8. Content blocks, access keys
    ------------------------------------------------------------ */
-.item-list {
-    display: grid;
-    gap: var(--space-3);
-}
-
 .item {
     border: 1px solid var(--line);
     border-radius: var(--radius-m);

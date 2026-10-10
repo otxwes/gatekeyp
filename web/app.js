@@ -279,17 +279,6 @@ function contentTypeLabel(type) {
     return CONTENT_TYPE_LABELS[type] || type || "Note";
 }
 
-function blockItem(block) {
-    return `<div class="item">` +
-        `<div class="item-head">` +
-        `<span class="tag">${esc(contentTypeLabel(block.content_type))}</span>` +
-        `<span class="item-title">${esc(block.content_type || "content")}</span>` +
-        `</div>` +
-        `<div class="item-body">${esc(block.payload || "")}</div>` +
-        `<div class="item-meta">${esc(fmtDate(block.created_at))}</div>` +
-        `</div>`;
-}
-
 /* ------------------------------------------------------------------
  * Router
  * ------------------------------------------------------------------ */
@@ -482,20 +471,16 @@ function renderOrganize() {
 /* ------------------------------------------------------------------
  * Workspace shell
  * ------------------------------------------------------------------ */
-let wsTab = "content";
+let wsTab = "board";
 
 const WS_TABS = [
-    ["content", "Content"],
-    ["bulletins", "Bulletin board"],
-    ["media", "Media"],
+    ["board", "Board"],
     ["keys", "Access keys"],
     ["rsvps", "RSVP funnel"],
 ];
 
 const WS_LOADERS = {
-    content: wsContent,
-    bulletins: wsBulletins,
-    media: wsMedia,
+    board: wsBoard,
     keys: wsKeys,
     rsvps: wsRsvps,
 };
@@ -511,7 +496,7 @@ function renderWorkspace() {
         `<header class="ws-head">` +
         `<div class="ws-titles">` +
         `<h2 class="ws-title">${esc(org.title || "Event workspace")}</h2>` +
-        `<p class="ws-meta">${esc(org.eventId)}</p>` +
+        `<span id="ws-event-id" hidden>${esc(org.eventId)}</span>` +
         `</div>` +
         `<div class="ws-actions">` +
         `<button class="btn btn-ghost" type="button" id="ws-end">Close workspace</button>` +
@@ -554,7 +539,7 @@ async function loadWsTab() {
     const main = $("#ws-main");
     if (!main) return;
     main.innerHTML = `<div class="empty"><div class="empty-title">Loading…</div></div>`;
-    const loader = WS_LOADERS[wsTab] || wsContent;
+    const loader = WS_LOADERS[wsTab] || wsBoard;
     try {
         await loader(main);
     } catch (err) {
@@ -563,73 +548,161 @@ async function loadWsTab() {
 }
 
 /* ------------------------------------------------------------------
- * Workspace: Content tab
+ * Workspace: Board tab (consolidated Content + Bulletin + Media)
  * ------------------------------------------------------------------ */
-async function wsContent(main) {
-    const details = await fetchEventDetails();
+function boardPostHTML(post) {
+    const time = esc(fmtDate(post.created_at));
+    switch (post._type) {
+    case "bulletin":
+        return bulletinCardHTML(post, true);
+    case "media":
+        return mediaTile(post);
+    default: { // content block
+        const label = esc(contentTypeLabel(post.content_type));
+        return `<div class="item board-post">` +
+            `<div class="item-head">` +
+            `<span class="tag">${label}</span>` +
+            `<span class="item-title">${esc(post.content_type || "note")}</span>` +
+            `</div>` +
+            `<div class="item-body">${esc(post.payload || "")}</div>` +
+            `<div class="item-meta">${time}</div>` +
+            `</div>`;
+    }}
+}
+
+async function wsBoard(main) {
+    const [details, bulletins, assets] = await Promise.all([
+        fetchEventDetails(),
+        api(`/api/events/${encodeURIComponent(org.eventId)}/bulletins${qs({ key: org.organizerKey })}`).catch(() => []),
+        api(`/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.organizerKey })}`).catch(() => []),
+    ]);
     const event = details.event || {};
-    const blocks = details.content_blocks || [];
+    const blocks = (details.content_blocks || []).map((b) => ({ ...b, _type: "block" }));
+    const posts = [
+        ...blocks,
+        ...bulletins.map((b) => ({ ...b, _type: "bulletin" })),
+        ...assets.map((a) => ({ ...a, _type: "media" })),
+    ].sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+
     main.innerHTML =
         `<section class="card">` +
-        `<h3 class="card-title">About this event</h3>` +
+        `<h3 class="card-title">${esc(event.title || "Event")}</h3>` +
         `<p class="section-text">${esc(event.description || "")}</p>` +
-        `<div class="fact-list">` +
-        factRow("Title", event.title) +
-        factRow("Event ID", fmtId(event.id)) +
-        (event.location_data ? factRow("Location", event.location_data) : "") +
-        factRow("Created", fmtDate(event.created_at)) +
-        `</div>` +
+        (event.location_data
+            ? `<p class="field-hint">📍 ${esc(event.location_data)}</p>`
+            : "") +
         `<p><button class="btn btn-secondary btn-sm" type="button" id="ws-organizer-card">Organizer card</button>` +
-        ` — a stamped copy of this organizer key, hidden in the pixels. Drop it on the join tab to reopen this workspace.</p>` +
+        ` — a stamped copy of this organizer key, hidden in the pixels.</p>` +
         `</section>` +
+
+        (posts.length
+            ? `<section class="card"><h3 class="card-title">Posts</h3>` +
+              `<div id="board-posts">${posts.map(boardPostHTML).join("")}</div>` +
+              `</section>`
+            : `<section class="card">${emptyState("No posts yet", "Add a bulletin, content block, or file below.")}</section>`) +
+
         `<section class="card">` +
-        `<h3 class="card-title">Content blocks</h3>` +
-        `<div class="item-list">` +
-        (blocks.length
-            ? blocks.map(blockItem).join("")
-            : emptyState("No content blocks yet")) +
+        `<h3 class="card-title">New post</h3>` +
+        `<form id="board-post-form" autocomplete="off">` +
+        `<div class="field"><label for="board-kind">Kind</label>` +
+        `<select id="board-kind" name="kind" class="field-input">` +
+        `<option value="bulletin">Bulletin (announcement with comments)</option>` +
+        `<option value="block">Content block (typed info)</option>` +
+        `<option value="media">File upload</option>` +
+        `</select></div>` +
+        `<div id="board-bulletin-fields">` +
+        `<div class="field"><label for="bulletin-title">Title</label>` +
+        `<input id="bulletin-title" name="title" type="text" maxlength="256"></div>` +
+        `<div class="field"><label for="bulletin-body">Details</label>` +
+        `<textarea id="bulletin-body" name="body" rows="4" maxlength="65536"></textarea></div>` +
         `</div>` +
-        `</section>` +
-        `<section class="card">` +
-        `<h3 class="card-title">Add a block</h3>` +
-        `<form id="add-block-form" class="inline-form" autocomplete="off">` +
+        `<div id="board-block-fields" hidden>` +
         `<div class="field"><label for="block-type">Type</label>` +
-        `<input id="block-type" name="content_type" list="block-types" maxlength="64" value="description" required spellcheck="false"></div>` +
+        `<input id="block-type" name="content_type" list="block-types" maxlength="64" value="description" spellcheck="false"></div>` +
         `<div class="field"><label for="block-payload">Content</label>` +
-        `<textarea id="block-payload" name="payload" rows="3" maxlength="65536" required></textarea></div>` +
-        `<button class="btn btn-primary" type="submit" id="add-block-btn">Add block</button>` +
+        `<textarea id="block-payload" name="payload" rows="3" maxlength="65536"></textarea></div>` +
+        `</div>` +
+        `<div id="board-media-fields" hidden>` +
+        `<div class="field"><label for="media-file">Choose a file</label>` +
+        `<input id="media-file" type="file"></div>` +
+        `</div>` +
+        `<button class="btn btn-primary" type="submit" id="board-post-btn">Post</button>` +
         `</form>` +
         `<datalist id="block-types">${Object.keys(CONTENT_TYPE_LABELS).map((t) => `<option value="${esc(t)}">`).join("")}</datalist>` +
         `</section>`;
 
-    $("#ws-organizer-card").addEventListener("click", () => {
-        if (!org || !org.organizerKey) return;
-        // Never re-display the raw organizer key — hand it straight to the card
-        // maker, which keeps it client-side and hidden in the pixels.
-        openCardCoverModal({
-            ...inviteCardOpts(),
-            accessKey: org.organizerKey,
-            organizer: true,
-        });
-    });
-
-    $("#add-block-form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const form = event.currentTarget;
-        const content_type = getField(form, "content_type");
-        const payload = getField(form, "payload");
-        if (!content_type || !payload) return;
-        const btn = $("#add-block-btn");
-        btnBusy(btn, true, "Adding…");
-        try {
-            await api(`/api/events/${encodeURIComponent(org.eventId)}/content`, {
-                method: "POST",
-                body: { organizer_key: org.organizerKey, event_id: org.eventId, content_type, payload },
+    // Bind bulletin cards
+    $$(".bulletin-card", main).forEach((card) => bindBulletinCard(card, true));
+    // Bind media tiles
+    bindMediaTiles(main);
+    // Organizer card button
+    const cardBtn = $("#ws-organizer-card");
+    if (cardBtn) {
+        cardBtn.addEventListener("click", () => {
+            if (!org || !org.organizerKey) return;
+            openCardCoverModal({
+                ...inviteCardOpts(),
+                accessKey: org.organizerKey,
+                organizer: true,
             });
-            toast("Content block added.", "ok", "Saved");
-            await wsContent(main);
+        });
+    }
+
+    // Kind selector toggles fields
+    const kindSel = $("#board-kind");
+    const bulletinFields = $("#board-bulletin-fields");
+    const blockFields = $("#board-block-fields");
+    const mediaFields = $("#board-media-fields");
+    const toggleFields = () => {
+        const k = kindSel ? kindSel.value : "bulletin";
+        if (bulletinFields) bulletinFields.hidden = k !== "bulletin";
+        if (blockFields) blockFields.hidden = k !== "block";
+        if (mediaFields) mediaFields.hidden = k !== "media";
+    };
+    if (kindSel) kindSel.addEventListener("change", toggleFields);
+    toggleFields();
+
+    // Submit
+    $("#board-post-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const kind = kindSel ? kindSel.value : "bulletin";
+        const btn = $("#board-post-btn");
+        btnBusy(btn, true, "Posting…");
+        try {
+            if (kind === "bulletin") {
+                const title = getField(event.target, "title");
+                const body = getField(event.target, "body");
+                if (!title || !body) throw new Error("Title and details are required.");
+                await api(`/api/events/${encodeURIComponent(org.eventId)}/bulletins`, {
+                    method: "POST",
+                    body: { key: org.organizerKey, event_id: org.eventId, title, body, author_id: "organizer" },
+                });
+                toast("Bulletin posted.", "ok", "Board updated");
+            } else if (kind === "block") {
+                const content_type = getField(event.target, "content_type");
+                const payload = getField(event.target, "payload");
+                if (!content_type || !payload) throw new Error("Type and content are required.");
+                await api(`/api/events/${encodeURIComponent(org.eventId)}/content`, {
+                    method: "POST",
+                    body: { organizer_key: org.organizerKey, event_id: org.eventId, content_type, payload },
+                });
+                toast("Content block added.", "ok", "Saved");
+            } else {
+                const input = $("#media-file");
+                if (!input || !input.files.length) throw new Error("Choose a file.");
+                const fd = new FormData();
+                fd.append("file", input.files[0]);
+                const url = `/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.organizerKey })}`;
+                const resp = await fetch(url, { method: "POST", body: fd });
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || `Upload failed (${resp.status})`);
+                }
+                toast("Media uploaded.", "ok", "Added");
+            }
+            await wsBoard(main);
         } catch (err) {
-            toast(err.message, "error", "Could not add block");
+            toast(err.message, "error", "Could not post");
             btnBusy(btn, false);
         }
     });
@@ -780,55 +853,7 @@ function renderComments(box, comments, manage) {
 }
 
 /* ------------------------------------------------------------------
- * Workspace: Bulletin board tab
- * ------------------------------------------------------------------ */
-async function wsBulletins(main) {
-    const bulletins = await api(`/api/events/${encodeURIComponent(org.eventId)}/bulletins${qs({ key: org.organizerKey })}`);
-    main.innerHTML =
-        `<section class="card">` +
-        `<h3 class="card-title">Bulletin board</h3>` +
-        `<div class="bulletin-list">` +
-        (bulletins.length
-            ? bulletins.map((b) => bulletinCardHTML(b, true)).join("")
-            : emptyState("The board is quiet")) +
-        `</div>` +
-        `</section>` +
-        `<section class="card">` +
-        `<h3 class="card-title">Post a bulletin</h3>` +
-        `<form id="add-bulletin-form" autocomplete="off">` +
-        `<div class="field"><label for="bulletin-title">Title</label>` +
-        `<input id="bulletin-title" name="title" type="text" maxlength="256" required></div>` +
-        `<div class="field"><label for="bulletin-body">Details</label>` +
-        `<textarea id="bulletin-body" name="body" rows="4" maxlength="65536" required></textarea></div>` +
-        `<button class="btn btn-primary" type="submit" id="add-bulletin-btn">Post bulletin</button>` +
-        `</form>` +
-        `</section>`;
-
-    $$(".bulletin-card", main).forEach((card) => bindBulletinCard(card, true));
-    $("#add-bulletin-form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const form = event.currentTarget;
-        const title = getField(form, "title");
-        const body = getField(form, "body");
-        if (!title || !body) return;
-        const btn = $("#add-bulletin-btn");
-        btnBusy(btn, true, "Posting…");
-        try {
-            await api(`/api/events/${encodeURIComponent(org.eventId)}/bulletins`, {
-                method: "POST",
-                body: { key: org.organizerKey, event_id: org.eventId, title, body, author_id: "organizer" },
-            });
-            toast("Bulletin posted.", "ok", "Board updated");
-            await wsBulletins(main);
-        } catch (err) {
-            toast(err.message, "error", "Could not post");
-            btnBusy(btn, false);
-        }
-    });
-}
-
-/* ------------------------------------------------------------------
- * Workspace: Media tab
+ * Media tile helpers (used by the board and attendee views)
  * ------------------------------------------------------------------ */
 function mediaTile(asset) {
     const isImage = (asset.mime_type || "").startsWith("image/");
@@ -884,59 +909,6 @@ function bindMediaTiles(root) {
                 });
             });
         }
-    });
-}
-
-async function wsMedia(main) {
-    const assets = await api(`/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.organizerKey })}`);
-    main.innerHTML =
-        `<section class="card">` +
-        `<h3 class="card-title">Media library</h3>` +
-        (assets.length
-            ? `<div class="media-grid">${assets.map((asset) => mediaTile(asset)).join("")}</div>`
-            : emptyState("No media yet")) +
-        `</section>` +
-        `<section class="card">` +
-        `<h3 class="card-title">Upload a file</h3>` +
-        `<form id="upload-form" class="up-zone">` +
-        `<div class="field"><label for="media-file">Choose a file</label>` +
-        `<input id="media-file" type="file" required></div>` +
-        `<button class="btn btn-primary" type="submit" id="upload-btn">Upload</button>` +
-        `</form>` +
-        `</section>`;
-
-    bindMediaTiles(main);
-    $("#upload-form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const input = $("#media-file");
-        if (!input || !input.files.length) return;
-        const btn = $("#upload-btn");
-        const fd = new FormData();
-        fd.append("file", input.files[0]);
-        btnBusy(btn, true, "Uploading…");
-        const url = `/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.organizerKey })}`;
-        let response;
-        try {
-            response = await fetch(url, { method: "POST", body: fd });
-        } catch {
-            toast("Upload failed — is the server running?", "error", "Upload failed");
-            btnBusy(btn, false);
-            return;
-        }
-        let detail = "";
-        try {
-            const data = await response.json();
-            detail = data.detail || data.message || "";
-        } catch {
-            /* not json */
-        }
-        if (!response.ok) {
-            toast(detail || `Upload failed (${response.status})`, "error", "Upload failed");
-            btnBusy(btn, false);
-            return;
-        }
-        toast("Media uploaded.", "ok", "Added");
-        await wsMedia(main);
     });
 }
 
@@ -1336,18 +1308,18 @@ function openDecommissionModal() {
     openModal({
         title: "Decommission event?",
         body:
-            `<p>This permanently revokes every access key for <strong>${esc(org.eventId)}</strong>, and ` +
+            `<p>This permanently revokes every access key for <strong>${esc(org.title || "this event")}</strong>, and ` +
             `content access ends. No attendee will be able to unlock this event again. ` +
             `This cannot be undone.</p>` +
-            `<div class="field"><label for="decom-confirm">Type the event ID to confirm</label>` +
+            `<div class="field"><label for="decom-confirm">Type the event title to confirm</label>` +
             `<input id="decom-confirm" type="text" required spellcheck="false" autocomplete="off"></div>`,
         confirmText: "Decommission",
         danger: true,
         onConfirm: async () => {
             const input = $("#decom-confirm");
             const typed = input ? input.value.trim() : "";
-            if (typed !== org.eventId) {
-                throw new Error("Type the event ID exactly as shown to confirm.");
+            if (typed !== org.title) {
+                throw new Error("Type the event title exactly as shown to confirm.");
             }
             await api(`/api/events/${encodeURIComponent(org.eventId)}/decommission`, {
                 method: "POST",
@@ -1791,15 +1763,8 @@ function renderEventPage() {
         `</div>` +
         `</header>` +
         `<div class="ep-main">` +
-        ((attendee.event.content_blocks || []).length
-            ? `<section class="card"><h3 class="card-title">Event details</h3>` +
-              `<div class="item-list">${attendee.event.content_blocks.map(blockItem).join("")}</div>` +
-              `</section>`
-            : "") +
-        `<section class="card"><h3 class="card-title">Bulletin board</h3>` +
-        `<div id="ep-bulletins" class="bulletin-list">Loading…</div></section>` +
-        `<section class="card"><h3 class="card-title">Media</h3>` +
-        `<div id="ep-media">Loading…</div></section>` +
+        `<section class="card"><h3 class="card-title">Board</h3>` +
+        `<div id="ep-board">Loading…</div></section>` +
         `</div>`;
 
     $("#attendee-end").addEventListener("click", () => {
@@ -1810,42 +1775,68 @@ function renderEventPage() {
         toast("Key dropped. To re-enter, use the invite again.", "info", "Signed out");
     });
 
-    loadAttendeeBulletins();
-    loadAttendeeMedia();
-    // Event details (organizer content blocks) arrive with the door unlock;
-    // the RSVP-approve shortcut skips the door, so fetch them instead.
-    if (attendee.event.content_blocks === undefined) {
-        loadAttendeeDetails();
-    }
+    loadAttendeeBoard();
 }
 
-/** Fill in content blocks for an event unlocked outside the door flow. */
-async function loadAttendeeDetails() {
-    try {
-        const result = await api("/api/access", {
-            method: "POST",
-            body: { key: attendee.accessKey, content_id: attendee.eventId },
-        });
-        const blocks = (result && result.data && result.data.content_blocks) || [];
-        attendee.event = { ...attendee.event, content_blocks: blocks };
-        saveSession();
-        renderEventPage();
-    } catch {
-        /* Details are an enhancement; leave the page as-is on failure. */
-    }
-}
-
-async function loadAttendeeBulletins() {
-    const box = $("#ep-bulletins");
+async function loadAttendeeBoard() {
+    const box = $("#ep-board");
     if (!box) return;
     try {
-        const bulletins = await api(`/api/events/${encodeURIComponent(attendee.eventId)}/bulletins${qs({ key: attendee.accessKey })}`);
-        if (bulletins && bulletins.length) {
-            box.innerHTML = bulletins.map((b) => bulletinCardHTML(b, false)).join("");
-            $$(".bulletin-card", box).forEach((card) => bindBulletinCard(card, false));
-        } else {
-            box.innerHTML = emptyState("Nothing posted yet");
+        // Fetch content blocks (may already be in attendee.event from door unlock)
+        let blocks = attendee.event.content_blocks;
+        if (blocks === undefined) {
+            const result = await api("/api/access", {
+                method: "POST",
+                body: { key: attendee.accessKey, content_id: attendee.eventId },
+            });
+            blocks = (result && result.data && result.data.content_blocks) || [];
+            attendee.event = { ...attendee.event, content_blocks: blocks };
+            saveSession();
         }
+        const [bulletins, assets] = await Promise.all([
+            api(`/api/events/${encodeURIComponent(attendee.eventId)}/bulletins${qs({ key: attendee.accessKey })}`).catch(() => []),
+            api(`/api/events/${encodeURIComponent(attendee.eventId)}/media${qs({ key: attendee.accessKey })}`).catch(() => []),
+        ]);
+
+        const posts = [
+            ...blocks.map((b) => ({ ...b, _type: "block" })),
+            ...bulletins.map((b) => ({ ...b, _type: "bulletin" })),
+            ...assets.map((a) => ({ ...a, _type: "media" })),
+        ].sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+
+        if (!posts.length) {
+            box.innerHTML = emptyState("Nothing posted yet");
+            return;
+        }
+        box.innerHTML = posts.map((post) => {
+            switch (post._type) {
+            case "bulletin":
+                return bulletinCardHTML(post, false);
+            case "media":
+                return attendeeMediaTile(post);
+            default:
+                return `<div class="item board-post">` +
+                    `<div class="item-head">` +
+                    `<span class="tag">${esc(contentTypeLabel(post.content_type))}</span>` +
+                    `<span class="item-title">${esc(post.content_type || "note")}</span>` +
+                    `</div>` +
+                    `<div class="item-body">${esc(post.payload || "")}</div>` +
+                    `<div class="item-meta">${esc(fmtDate(post.created_at))}</div>` +
+                    `</div>`;
+            }
+        }).join("");
+
+        $$(".bulletin-card", box).forEach((card) => bindBulletinCard(card, false));
+        // Attendee media tiles: open links, no delete/copy
+        $$("img.mt-preview", box).forEach((img) => {
+            img.addEventListener("error", () => {
+                const fallback = document.createElement("div");
+                fallback.className = "mt-fallback";
+                fallback.setAttribute("aria-hidden", "true");
+                fallback.textContent = "📄";
+                img.replaceWith(fallback);
+            });
+        });
     } catch (err) {
         box.innerHTML = emptyState("Could not load the board", err.message);
     }
@@ -1864,30 +1855,6 @@ function attendeeMediaTile(asset) {
         `</div>` +
         `<div class="mt-actions"><a class="btn btn-ghost btn-sm" href="${esc(mediaUrl(asset.id))}" target="_blank" rel="noopener">Open</a></div>` +
         `</div>`;
-}
-
-async function loadAttendeeMedia() {
-    const box = $("#ep-media");
-    if (!box) return;
-    try {
-        const assets = await api(`/api/events/${encodeURIComponent(attendee.eventId)}/media${qs({ key: attendee.accessKey })}`);
-        if (assets && assets.length) {
-            box.innerHTML = `<div class="media-grid">${assets.map(attendeeMediaTile).join("")}</div>`;
-            $$("img.mt-preview", box).forEach((img) => {
-                img.addEventListener("error", () => {
-                    const fallback = document.createElement("div");
-                    fallback.className = "mt-fallback";
-                    fallback.setAttribute("aria-hidden", "true");
-                    fallback.textContent = "📄";
-                    img.replaceWith(fallback);
-                });
-            });
-        } else {
-            box.innerHTML = emptyState("No media yet");
-        }
-    } catch (err) {
-        box.innerHTML = emptyState("Could not load media", err.message);
-    }
 }
 
 /* ------------------------------------------------------------------
