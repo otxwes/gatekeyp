@@ -4,6 +4,8 @@
 
 # Plan — Rebrand icon + hide event ID + consolidate board
 
+(Complete — commit 07bda65)
+
 ## A. Remove key logo → cellar-appropriate mark
 - [ ] `web/index.html` line 9: replace favicon data-URI SVG (key icon → arched doorway)
 - [ ] `web/index.html` lines 17-22: replace `.brand-mark` inline SVG (key icon → arched doorway)

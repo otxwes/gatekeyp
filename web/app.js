@@ -444,13 +444,18 @@ function bindOrganizeEntry() {
     if (openForm) openForm.addEventListener("submit", (event) => event.preventDefault());
 }
 
-/** Show the workspace container (inside the organize view). */
+/** Show the workspace container, then sync the URL hash so the router
+ *  stays consistent — necessary when entering from another view (e.g.
+ *  dropping an organizer card on the Join page). */
 function goWorkspace() {
     const entry = $("#organize-entry");
     const workspace = $("#organize-workspace");
     if (entry) entry.hidden = true;
     if (workspace) workspace.hidden = false;
     renderWorkspace();
+    if (location.hash !== "#/organize") {
+        location.hash = "#/organize";
+    }
 }
 
 function renderOrganize() {
