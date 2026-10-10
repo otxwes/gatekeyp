@@ -68,7 +68,6 @@ def _build_expected() -> dict:
                 "eventId": event_id,
                 "key": key,
                 "pair": stego_ref.make_payload(event_id, key),
-                "keyLine": stego_ref.make_key_line(event_id, key),
             }
             for event_id, key in payloads
         ],
@@ -168,14 +167,14 @@ def main() -> int:
     # Hook the shipped codec: expose its internals as a __test member of the
     # returned module so the harness can pin them against the Python oracle.
     target = (
-        "    return { embed, extract, makePayload, parsePayload, keyLine, parseKeyLine, "
+        "    return { embed, extract, makePayload, parsePayload, "
         "classifyInvite, inviteRejectReason };"
     )
     hooked = (
-        "    return { embed, extract, makePayload, parsePayload, keyLine, parseKeyLine, "
+        "    return { embed, extract, makePayload, parsePayload, "
         "classifyInvite, inviteRejectReason, "
-        "__test: { crc32, makeRng, makePositionIter, makePayload, parsePayload, keyLine, "
-        "parseKeyLine, buildContainer, parseContainer, classifyInvite, inviteRejectReason } };"
+        "__test: { crc32, makeRng, makePositionIter, makePayload, parsePayload, "
+        "buildContainer, parseContainer, classifyInvite, inviteRejectReason } };"
     )
     module_src = _STEGO_JS.read_text(encoding="utf-8")
     if target not in module_src:

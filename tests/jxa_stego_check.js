@@ -95,22 +95,13 @@ function bigintMod(x, c) {
     }
 })();
 
-// payload / key-line string helpers
+// payload string helpers
 exp.payloads.forEach(function (p) {
     if (T.makePayload(p.eventId, p.key) !== p.pair) failures.push("makePayload mismatch for " + p.eventId);
     var parsed = T.parsePayload(p.pair);
     if (!parsed || parsed.eventId !== p.eventId || parsed.accessKey !== p.key) {
         failures.push("parsePayload mismatch for " + p.eventId);
     }
-    if (T.keyLine(p.eventId, p.key) !== p.keyLine) failures.push("keyLine mismatch for " + p.eventId);
-    var kparsed = T.parseKeyLine(p.keyLine);
-    if (!kparsed || kparsed.eventId !== p.eventId || kparsed.accessKey !== p.key) {
-        failures.push("parseKeyLine mismatch for " + p.eventId);
-    }
-});
-// negative key-line / payload cases
-["", "gkp:", "https://example.com/x", "gkp:event_x"].forEach(function (s) {
-    if (T.parseKeyLine(s) !== null) failures.push("parseKeyLine accepted bad input: " + s);
 });
 
 // container build/parse vs Python mirror

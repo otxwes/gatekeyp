@@ -117,7 +117,7 @@ async function api(path, options = {}) {
     try {
         response = await fetch(path, req);
     } catch {
-        throw new Error("Network error — is the gatekeyp server running?");
+        throw new Error("Network error — is the cellar server running?");
     }
     let data = null;
     try {
@@ -217,35 +217,6 @@ function openModal({ title, body = "", confirmText = "Confirm", cancelText = "Ca
 /** Modal that turns a freshly generated key into its one artifact: the invite
  *  card. The raw key text is never displayed or copied — the card's pixels are
  *  the only copy, so closing without "Make the card" destroys the key. */
-function openKeyModal(label, keyValue, cardOpts = null) {
-    if (!cardOpts) {
-        throw new Error("openKeyModal requires card options — keys are never shown as text.");
-    }
-    const isOrganizer = Boolean(cardOpts.organizer);
-    openModal({
-        title: label,
-        body:
-            `<p>The card below is the only copy of this key. The key text is not ` +
-            `saved, shown, or sent anywhere — closing this modal without making ` +
-            `the card destroys the key forever.</p>` +
-            `<button class="btn btn-primary btn-block" type="button" id="key-card-btn">` +
-            `${isOrganizer ? "Make the organizer card" : "Make the invite card"}</button>` +
-            `<p class="field-hint">Send the card as a file or attachment, not a photo — re-encoding it in a chat destroys the hidden key, and there is no fallback: the pixels are the key.</p>`,
-        confirmText: "Done",
-        cancelText: "Close",
-        onConfirm: async () => {},
-    });
-    const cardBtn = $("#key-card-btn");
-    if (cardBtn) {
-        cardBtn.addEventListener("click", () => {
-            openCardCoverModal({
-                ...cardOpts,
-                accessKey: keyValue,
-            });
-        });
-    }
-}
-
 /* ------------------------------------------------------------------
  * Small UI hooks + render helpers
  * ------------------------------------------------------------------ */
@@ -399,7 +370,7 @@ function endAllSessions() {
  * Organize entry (create / open)
  * ------------------------------------------------------------------ */
 function bindOrganizeEntry() {
-    // Paste a organizer key line (gkporg:) or organizer card image while the
+    // Paste an organizer card image while the organize entry is showing —
     // organize entry is showing — the card is the only way back in.
     document.addEventListener("paste", async (event) => {
         const view = $("#view-organize");
@@ -437,17 +408,6 @@ function bindOrganizeEntry() {
                 }
             }
         }
-        const text = event.clipboardData && event.clipboardData.getData("text");
-        const parsed = text ? window.gkpStego.parseKeyLine(text.trim()) : null;
-        if (parsed && parsed.role === "organizer") {
-            event.preventDefault();
-            try {
-                await openOrganizerWorkspace(parsed.eventId, parsed.accessKey);
-                toast("Workspace restored from your key.", "ok", "Welcome back");
-            } catch (err) {
-                toast(err.message, "error", "Could not open the workspace");
-            }
-        }
     });
 
     const createForm = $("#create-event-form");
@@ -478,9 +438,11 @@ function bindOrganizeEntry() {
             createForm.reset();
             saveSession();
             goWorkspace();
-            openKeyModal("Organizer key — make your organizer card", created.organizer_key, {
+            openCardCoverModal({
                 ...inviteCardOpts(),
+                accessKey: created.organizer_key,
                 organizer: true,
+                fresh: true,
             });
             toast("Event created. Share access keys, never this organizer key.", "ok", "Ready");
         } catch (err) {
@@ -1018,7 +980,13 @@ function openCardCoverModal(card) {
             `</button>`
         );
     }).join("");
+    const oneShot = card.fresh
+        ? `<p class="field-hint">This card is the only copy of the key. Closing ` +
+          `without downloading it destroys the key forever: the server stored ` +
+          `only a fingerprint and can never show it again.</p>`
+        : "";
     const body =
+        oneShot +
         `<p class="field-hint">Pick a cover — a monochrome pattern for the hero band, or your own image spread across the whole card (nothing cropped). ` +
         `The hidden key is untouched.</p>` +
         `<div class="field"><label>Cover</label>` +
@@ -1031,6 +999,7 @@ function openCardCoverModal(card) {
         `</div>` +
         `<p class="field-hint" id="cover-file-hint">No image chosen — presets only.</p>` +
         `</div>` +
+        `<p class="field-hint">Send the card as a file or attachment, not a photo — re-encoding destroys the hidden key, and there is no fallback: the pixels are the key.</p>` +
         `<div class="card-preview-wrap"><canvas id="card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>`;
 
     openModal({
@@ -1170,7 +1139,11 @@ async function wsKeys(main) {
                 method: "POST",
                 body: { organizer_key: org.organizerKey, event_id: org.eventId, days, owner_id },
             });
-            openKeyModal("Access key — make the invite card", key.access_key, inviteCardOpts());
+            openCardCoverModal({
+                ...inviteCardOpts(),
+                accessKey: key.access_key,
+                fresh: true,
+            });
             toast("Access key generated.", "ok", "New key");
             await wsKeys(main);
         } catch (err) {
@@ -1575,8 +1548,8 @@ function bindJoinDrop() {
             fileInput.value = "";
         });
     }
-    // Paste anywhere while the join entry is visible: an invite card, organizer
-    // card, or gkp: / gkporg: text — each routed by the payload's role.
+    // Paste anywhere while the join entry is visible: an invite or organizer
+    // card image, routed by the payload's role.
     document.addEventListener("paste", async (event) => {
         const entry = $("#join-entry");
         if (!entry || entry.hidden) return;
@@ -1591,16 +1564,6 @@ function bindJoinDrop() {
                         return;
                     }
                 }
-            }
-        }
-        const text = event.clipboardData && event.clipboardData.getData("text");
-        const parsed = text ? window.gkpStego.parseKeyLine(text.trim()) : null;
-        if (parsed) {
-            event.preventDefault();
-            try {
-                await routeInvitePayload(parsed);
-            } catch (err) {
-                toast(err.message, "error", parsed.role === "organizer" ? "Could not open the workspace" : "Could not unlock");
             }
         }
     });
@@ -1790,18 +1753,12 @@ function showRsvpResult(eventId, event, result) {
             ? "You're approved — the card below opens the event right now."
             : "Your card works the moment the organizer approves your RSVP. Approve or deny is their call."}</p>` +
         `</header>` +
-        `<div class="card form-card">` +
-        `<h3 class="card-title">Your access card</h3>` +
-        `<p class="field-hint">The invite card is the only copy of your key — the key text is never shown or saved anywhere. Close this page without saving the card and the key is gone forever: the server stored only a fingerprint and can never show it again.</p>` +
-        `<button class="btn btn-primary btn-block" type="button" id="rsvp-card">Make your invite card</button>` +
-        `<p class="field-hint">Send the card as a file or attachment, not a photo — re-encoding destroys the hidden key, and there is no fallback: the pixels are the key.</p>` +
         (approved
             ? `<button class="btn btn-secondary btn-block" type="button" id="rsvp-unlock">Open the event now</button>`
-            : `<a class="btn btn-ghost btn-block" href="#/join">Go to the door →</a>`) +
-        `</div>`;
-    $("#rsvp-card").addEventListener("click", () => {
-        openCardCoverModal({ eventId, title: event.title, accessKey: key });
-    });
+            : `<a class="btn btn-ghost btn-block" href="#/join">Go to the door →</a>`);
+    // Immediate card creation: the fresh key's only artifact is its card, so
+    // the cover modal opens on top of the result without a button hop.
+    openCardCoverModal({ eventId, title: event.title, accessKey: key, fresh: true });
     const unlock = $("#rsvp-unlock");
     if (unlock) {
         unlock.addEventListener("click", () => {
@@ -2060,12 +2017,14 @@ async function renderFlyer() {
             entry.hidden = true;
             showFlyerDone(done, body);
             done.hidden = false;
-            // Same one-shot card modal as the standard flow: the organizer
-            // card is the only way back into a lite event too.
-            openKeyModal("Organizer key — make your organizer card", body.organizer_key, {
+            // Same immediate card creation as every other mint: the card is
+            // the only copy of the organizer key.
+            openCardCoverModal({
                 eventId: body.event_id,
                 title: body.title,
+                accessKey: body.organizer_key,
                 organizer: true,
+                fresh: true,
             });
             toast("Copy the organizer key before leaving this page.", "ok", "Event is live");
         } catch (err) {

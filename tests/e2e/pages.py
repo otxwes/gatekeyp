@@ -75,12 +75,21 @@ class EventHandle:
     def __init__(self, event_id: str, organizer_key: str) -> None:
         self.event_id = event_id
         self.organizer_key = organizer_key
+        self._tmpdir = tempfile.mkdtemp(prefix="gkp-e2e-card-")
 
-    def attendee_keyline(self, key: str) -> str:
-        return f"gkp:{self.event_id}:{key}"
+    def _card_png(self, payload: str) -> Path:
+        out = Path(self._tmpdir) / f"card-{abs(hash(payload)) % 10**10}.png"
+        out.write_bytes(embed(_make_carrier(), payload))
+        return out
 
-    def organizer_keyline(self) -> str:
-        return f"gkporg:{self.event_id}:{self.organizer_key}"
+    def attendee_card_png(self, key: str) -> Path:
+        """A valid attendee card whose hidden key is `key` (junk for the
+        rate-limit drill, a real minted key for happy paths)."""
+        return self._card_png(f"{self.event_id}\n{key}")
+
+    def organizer_card_png(self) -> Path:
+        """A valid organizer card for this event (the only way back in)."""
+        return self._card_png(f"organizer\n{self.event_id}\n{self.organizer_key}")
 
 
 class ApiKeyGrabber:
@@ -145,7 +154,9 @@ class OrganizerPage:
         self.page.click("#create-btn")
         self.page.locator("#modal-root .modal").wait_for(timeout=10_000)
         org_key = self.keys.latest(self.page)
-        self.page.locator('[data-act="confirm"]').click()
+        # The fresh organizer card modal opens immediately — Cancel it here;
+        # tests that need the card itself use mint_key_and_card.
+        self.page.locator('[data-act="cancel"]').click()
         self.page.locator(".ws-title").wait_for(state="visible")
         event_id = self.page.locator(".ws-meta").inner_text().strip()
         return EventHandle(event_id, org_key)
@@ -161,11 +172,7 @@ class OrganizerPage:
         self.keys = ApiKeyGrabber(page)
         page.goto(f"{self.base}/#/organize")
         page.locator("#org-drop").wait_for(state="visible")
-        payload = f"organizer\n{handle.event_id}\n{handle.organizer_key}"
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as fh:
-            fh.write(embed(_make_carrier(), payload))
-            card_path = fh.name
-        page.locator("#org-drop-file").set_input_files(card_path)
+        page.locator("#org-drop-file").set_input_files(str(handle.organizer_card_png()))
         page.locator(".ws-title").wait_for(state="visible")
         old.close()
 
@@ -206,17 +213,14 @@ class OrganizerPage:
 
     def mint_key_and_card(self, file_path: Path, owner: str, days: int = 30) -> str:
         """Mint a key and immediately make its invite card — the only supported
-        way to keep a key now. Saves the stego PNG to `file_path`."""
+        way to keep a key now. The card modal opens immediately after
+        generation; confirm downloads the stego PNG to `file_path`."""
         self.tab("keys")
         self.page.fill("#key-owner", owner)
         self.page.fill("#key-days", str(days))
         self.page.click("#gen-key-btn")
-        self.page.locator("#key-card-btn").wait_for(state="visible", timeout=10_000)
+        self.page.locator("#modal-root .modal").wait_for(timeout=10_000)
         key = self.keys.latest(self.page)
-        self.page.click("#key-card-btn")
-        # Confirm "Download card" in the cover-picker modal; the card is
-        # downloaded via the browser download pipeline so the stego PNG is
-        # byte-exact.
         with self.page.expect_download() as dl:
             self.page.locator('[data-act="confirm"]').click()
         dl.value.save_as(str(file_path))
@@ -339,25 +343,12 @@ class AttendeePage:
         self.page.goto(f"{self.base}/#/join")
         self.page.locator("#key-drop").wait_for(state="visible")
 
-    def unlock_by_keyline(self, keyline: str, *, expect_unlock: bool = True) -> None:
-        """Dispatch a paste event the door's own paste handler picks up."""
+    def unlock_by_stego_png(self, png_path: str | Path, *, expect_unlock: bool = True) -> None:
+        """Drop a card image on the door's zone — the only unlock path."""
         self.go_join()
-        self.page.evaluate(
-            """(keyline) => {
-                const dt = new DataTransfer();
-                dt.setData('text/plain', keyline);
-                document.dispatchEvent(
-                    new ClipboardEvent('paste', {clipboardData: dt, bubbles: true}));
-            }""",
-            keyline,
-        )
+        self.page.locator("#key-drop-file").set_input_files(str(png_path))
         if expect_unlock:
             wait_event_page(self.page)
-
-    def unlock_by_stego_png(self, png_path: str | Path) -> None:
-        self.go_join()
-        self.page.locator("#key-drop-file").set_input_files(png_path)
-        wait_event_page(self.page)
 
     def inject_session(self, event_id: str, key: str, event: dict | None = None) -> None:
         """Seed attendee sessionStorage like a prior unlock, then reload —
@@ -383,7 +374,9 @@ class AttendeePage:
         return self.keys.latest(self.page)
 
     def unlock_from_rsvp_result(self) -> None:
-        """'Open the event now' on the approved-RSVP result page."""
+        """'Open the event now' on the approved-RSVP result page. The
+        fresh-key card modal auto-opens on top — dismiss it first."""
+        self.page.locator('[data-act="cancel"]').click()
         self.page.click("#rsvp-unlock")
         self.page.locator("#join-views .ep-title").first.wait_for(state="visible")
 
@@ -409,7 +402,8 @@ class AttendeePage:
             self.page.fill("#rsvp-passphrase", passphrase)
         self.page.click("#rsvp-form button[type=submit]")
         if expect_success:
-            self.page.locator("#rsvp-views .card-title").wait_for(state="visible")
+            # The fresh key's card modal opens immediately on success.
+            self.page.locator("#card-preview").wait_for(state="visible", timeout=15_000)
         else:
             self.page.locator("#rsvp-note:not(:empty)").wait_for(timeout=10_000)
 
@@ -421,10 +415,11 @@ class AttendeePage:
     def expect_join_note(self, text: str) -> None:
         expect(self.page.locator("#join-note")).to_contain_text(text)
 
-    def paste_and_read_note(self, keyline: str) -> str:
-        """Paste a keyline then wait until the door note actually says
+    def drop_card_and_read_note(self, png: Path) -> str:
+        """Drop a card on the door then wait until the note actually says
         something (unlockEvent clears the note first, so poll for non-empty)."""
-        self.unlock_by_keyline(keyline, expect_unlock=False)
+        self.go_join()
+        self.page.locator("#key-drop-file").set_input_files(str(png))
         el = self.page.locator("#join-note")
         for _ in range(40):
             text = el.inner_text().strip()
@@ -433,22 +428,20 @@ class AttendeePage:
             self.page.wait_for_timeout(100)
         return ""
 
-    def paste_until_rate_limited(self, handle: EventHandle) -> None:
-        """Paste bad keylines until the door answers Rate limit exceeded."""
+    def drop_until_rate_limited(self, handle: EventHandle) -> None:
+        """Drop cards with junk keys until the door answers Rate limit exceeded."""
         import string
 
         alphabet = string.ascii_letters + string.digits
-        seen_limit = False
         for i in range(10):
             junk = "".join(alphabet[(i * 7 + j) % len(alphabet)] for j in range(24))
-            note = self.paste_and_read_note(handle.attendee_keyline(junk))
+            note = self.drop_card_and_read_note(handle.attendee_card_png(f"local:{junk}"))
             if "rate limit" in note.lower():
-                seen_limit = True
-                break
+                return
             if "in backoff" in note.lower():
-                seen_limit = True
-                break
-        assert seen_limit, "door never rate-limited the failure streak"
+                return
+        message = "door never rate-limited the failure streak"
+        raise AssertionError(message)
 
     def end_session(self) -> None:
         """Leave (drop key): the door returns and a Signed-out toast fires."""

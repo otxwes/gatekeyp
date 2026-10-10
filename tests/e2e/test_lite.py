@@ -36,10 +36,9 @@ def test_flyer_create_then_lite_view(attendee_context, server):
     assert match, f"no public event link among {codes}"
     event_id = match.group(1)
 
-    # The one-shot card modal opened — the card is the only copy of the key
-    # (the no-key-text guard for this same modal is pinned in
-    # test_organizer_flows.test_mint_modal_never_shows_key_text).
-    page.locator("#key-card-btn").wait_for(state="visible", timeout=10_000)
+    # The card modal opened immediately — the card is the only copy of the key
+    # (the no-key-text guard is pinned in test_organizer_flows).
+    page.locator("#card-preview").wait_for(state="visible", timeout=10_000)
 
     # The share page IS the event page: #/e/{id} redirects there, key or not.
     page.goto(f"{server.base_url}/#/e/{event_id}?k={key}")

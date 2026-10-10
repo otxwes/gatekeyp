@@ -2,6 +2,10 @@
 
 A privacy-preserving, federated event-organizing toolkit with a secure "Key" system that gates access to event content.
 
+**Public app name: cellar** — the UI-facing brand (title, pages, hostname).
+`gatekeyp` remains the internal package/project name (env vars, database,
+deployment).
+
 ## Overview
 
 gatekeyp is designed to help communities organize events while prioritizing:
@@ -45,9 +49,9 @@ gatekeyp is designed to help communities organize events while prioritizing:
   - Organizer desk: create / open events, four-tab workspace (Content, Bulletin
     board, Media, Access keys) with a header Decommission action; the
     organizer card is the only key artifact (card-first: raw key text is never
-    displayed or copied in the UI, and unprocessed `gkp:` paste remains an
-    unadvertised door fallback)
-  - Attendee door: unlock an invite with an access key, then read content,
+    displayed or copied anywhere, and creation flows straight into card
+    making)
+  - Attendee door: cards-only unlock — drop an invite card, then read content,
     post on the bulletin board, comment, and view media — no account required
   - Invite cards (stego-only, Phase B): the access key is hidden in the
     card's pixels by a steganographic codec (`web/stego.js` +

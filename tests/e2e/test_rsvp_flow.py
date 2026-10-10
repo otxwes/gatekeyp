@@ -20,7 +20,7 @@ def test_pending_key_gets_pending_note_attendee_side(organizer_context, attendee
         f"{server.base_url}/#/rsvp/{handle.event_id}", name="Orchard Botanist", message="Two spots?"
     )
     key = attendee.rsvp_key()
-    attendee.unlock_by_keyline(handle.attendee_keyline(key), expect_unlock=False)
+    attendee.unlock_by_stego_png(handle.attendee_card_png(key), expect_unlock=False)
     attendee.page.locator("#join-note").wait_for(state="visible")
     assert "awaiting" in attendee.page.locator("#join-note").inner_text().lower()
     title = attendee.page.locator("#join-views .ep-title")
@@ -38,7 +38,7 @@ def test_denied_key_never_opens(organizer_context, attendee_context, server):
     organizer.open_workspace(handle)  # fresh reload picks up latest state
     organizer.tab("rsvps")
     organizer.deny_rsvp("Zine Friend")
-    attendee.unlock_by_keyline(handle.attendee_keyline(key), expect_unlock=False)
+    attendee.unlock_by_stego_png(handle.attendee_card_png(key), expect_unlock=False)
     # Rejected: stays on the door entry, event page never appears.
     assert attendee.page.locator("#join-views .ep-title").count() == 0
     assert attendee.page.locator("#join-event:not([hidden])").count() == 0

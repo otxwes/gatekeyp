@@ -18,7 +18,7 @@ MEDIA_PNG = (
 
 def test_created_event_surface(organizer_context, attendee_context, server, tmp_path_factory):
     """Full happy path: organizer makes an event, mints a key, the attendee
-    unlocks through the keyline paste and sees everything the organizer made."""
+    unlocks by dropping its invite card and sees everything the organizer made."""
     org = OrganizerPage(organizer_context.new_page(), server.base_url)
     handle = org.create_event(
         "Kitchen Table Scribble Club",
@@ -38,7 +38,7 @@ def test_created_event_surface(organizer_context, attendee_context, server, tmp_
     org.watcher.expect_clean()
 
     att = AttendeePage(attendee_context.new_page(), server.base_url)
-    att.unlock_by_keyline(handle.attendee_keyline(key))
+    att.unlock_by_stego_png(handle.attendee_card_png(key))
     att.expect_event_title("Kitchen Table Scribble Club")
     expect(
         att.page.locator("#ep-bulletins .bulletin-card", has_text="Committee notes")
@@ -55,7 +55,7 @@ def test_block_added_later_shows_on_fresh_unlock(organizer_context, attendee_con
     handle = org.create_event("Late Additions", "New news for old guests.")
     key = org.mint_key("Early Bird")
     att = AttendeePage(attendee_context.new_page(), server.base_url)
-    att.unlock_by_keyline(handle.attendee_keyline(key))
+    att.unlock_by_stego_png(handle.attendee_card_png(key))
     expect(
         att.page.locator(".card:has-text('Event details') .item", has_text="sneak peek")
     ).to_have_count(0)
@@ -65,7 +65,7 @@ def test_block_added_later_shows_on_fresh_unlock(organizer_context, attendee_con
         att.page.locator(".card:has-text('Event details') .item", has_text="sneak peek")
     ).to_have_count(0)
     att.end_session()
-    att.unlock_by_keyline(handle.attendee_keyline(key))
+    att.unlock_by_stego_png(handle.attendee_card_png(key))
     att.page.locator(
         ".card:has-text('Event details') .item", has_text="sneak peek and cake"
     ).wait_for(timeout=10_000)
@@ -79,7 +79,7 @@ def test_refresh_keeps_attendee_session(organizer_context, attendee_context, ser
     handle = org.create_event("Reload Refuge", "Stay seated.")
     key = org.mint_key("Sitting Guest")
     att = AttendeePage(attendee_context.new_page(), server.base_url)
-    att.unlock_by_keyline(handle.attendee_keyline(key))
+    att.unlock_by_stego_png(handle.attendee_card_png(key))
     att.expect_event_title("Reload Refuge")
     att.reload_keeps_session()
     att.expect_event_title("Reload Refuge")
@@ -93,10 +93,10 @@ def test_end_session_drops_key_and_reopens_door(organizer_context, attendee_cont
     handle = org.create_event("Turnstile Etiquette", "Leave and come back.")
     key = org.mint_key("Polite Guest")
     att = AttendeePage(attendee_context.new_page(), server.base_url)
-    att.unlock_by_keyline(handle.attendee_keyline(key))
+    att.unlock_by_stego_png(handle.attendee_card_png(key))
     att.expect_event_title("Turnstile Etiquette")
     att.end_session()
-    att.unlock_by_keyline(handle.attendee_keyline(key))  # same key still works
+    att.unlock_by_stego_png(handle.attendee_card_png(key))  # same key still works
     att.expect_event_title("Turnstile Etiquette")
     att.watcher.expect_clean()
 
@@ -110,7 +110,7 @@ def test_key_mint_error_is_clean(organizer_context, server):
     org.watcher.expect_clean()
 
 
-def test_rsvp_keyline_unlock_after_approval(organizer_context, attendee_context, server):
+def test_rsvp_card_unlock_after_approval(organizer_context, attendee_context, server):
     organizer = OrganizerPage(organizer_context.new_page(), server.base_url)
     handle = organizer.create_event("Gallery Sitting", "A quiet sitting.")
     funnel_url = organizer.set_gate_settings()  # manual gate, no auto-approve
@@ -118,6 +118,6 @@ def test_rsvp_keyline_unlock_after_approval(organizer_context, attendee_context,
     attendee.rsvp(funnel_url, name="Gallery Friend")
     key = attendee.rsvp_key()
     organizer.approve_rsvp("Gallery Friend")
-    attendee.unlock_by_keyline(handle.attendee_keyline(key))
+    attendee.unlock_by_stego_png(handle.attendee_card_png(key))
     attendee.expect_event_title("Gallery Sitting")
     attendee.watcher.expect_clean()

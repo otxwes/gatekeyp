@@ -96,15 +96,6 @@ def test_parse_payload() -> None:
     assert stego_ref.parse_payload("  \n  ") is None
 
 
-def test_key_line_roundtrip() -> None:
-    event_id, key = "event_abcd1234", "local:0123456789abcdef"
-    text = stego_ref.make_key_line(event_id, key)
-    assert text.startswith("gkp:")
-    assert stego_ref.parse_key_line(text) == (event_id, key)
-    assert stego_ref.parse_key_line("https://example.com") is None
-    assert stego_ref.parse_key_line("gkp:event_x") is None  # no colon separator
-
-
 def test_classify_invite_magic_bytes() -> None:
     png = _random_png(1, 8, 8)
     assert stego_ref.classify_invite(png) == "png"
@@ -121,7 +112,7 @@ def test_classify_invite_magic_bytes() -> None:
 def test_invite_reject_reason_messages() -> None:
     # The exact strings are pinned JS<->Python by the JXA cross-check; here we
     # only guard intent (specific, honest guidance per image kind).
-    assert "gatekeyp card" in stego_ref.invite_reject_reason("png")
+    assert "cellar card" in stego_ref.invite_reject_reason("png")
     assert "re-encoded" in stego_ref.invite_reject_reason("jpeg")
     assert stego_ref.invite_reject_reason("webp") == stego_ref.invite_reject_reason("jpeg")
     assert "PNGs" in stego_ref.invite_reject_reason("gif")

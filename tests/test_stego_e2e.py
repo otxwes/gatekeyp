@@ -119,10 +119,6 @@ def test_invite_card_loop_unlocks_event(client) -> None:
     assert unlock.json()["status"] == "success"
     assert unlock.json()["data"]["id"] == event_id
 
-    # 6. The card's paste-anywhere key line carries the same credential.
-    key_line = stego_ref.make_key_line(event_id, access_key)
-    assert stego_ref.parse_key_line(key_line) == (event_id, access_key)
-
 
 def test_revoked_card_key_no_longer_unlocks(client) -> None:
     # The gateway unlocks on key validity (a valid key + existing content is

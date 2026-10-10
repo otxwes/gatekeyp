@@ -56,7 +56,7 @@ def test_bulletin_comment_and_cleanup(organizer_context, attendee_context, serve
 
     key = org.mint_key("Mug Enthusiast")
     att = AttendeePage(attendee_context.new_page(), server.base_url)
-    att.unlock_by_keyline(handle.attendee_keyline(key))
+    att.unlock_by_stego_png(handle.attendee_card_png(key))
     att.expect_bulletin_visible("Victuals")
     att.comment_on_bulletin("Victuals", "Mug Enthusiast", "See you there")
 
@@ -106,13 +106,13 @@ def test_decommission_ends_event_for_everyone(organizer_context, attendee_contex
     handle = org.create_event("Bonfire Archive", "One good burn.")
     key = org.mint_key("Ashes Guest")
     att = AttendeePage(attendee_context.new_page(), server.base_url)
-    att.unlock_by_keyline(handle.attendee_keyline(key))
+    att.unlock_by_stego_png(handle.attendee_card_png(key))
     att.expect_event_title("Bonfire Archive")
 
     org.decommission(handle)
 
     att.end_session()  # drop the now-useless local session first
-    att.unlock_by_keyline(handle.attendee_keyline(key), expect_unlock=False)
+    att.unlock_by_stego_png(handle.attendee_card_png(key), expect_unlock=False)
     att.expect_join_note("Invalid key")
     att.page.goto(f"{server.base_url}/#/rsvp/{handle.event_id}")
     expect(att.page.locator(".empty-title", has_text="Event ended")).to_be_visible()
@@ -138,10 +138,14 @@ def test_mint_modal_never_shows_key_text(organizer_context, server):
     org.tab("keys")
     org.page.fill("#key-owner", "Quiet Guest")
     org.page.click("#gen-key-btn")
-    org.page.locator("#key-card-btn").wait_for(state="visible", timeout=10_000)
+    org.page.locator("#card-preview").wait_for(state="visible", timeout=10_000)
     assert org.keys.latest(org.page)  # key did arrive — but only on the wire
     expect(org.page.locator("#modal-root .kc-value")).to_have_count(0)
     expect(org.page.locator("#modal-root #key-copy-btn")).to_have_count(0)
+    # The one-shot warning moved here with the modal hop removed.
+    expect(
+        org.page.locator("#modal-root .modal", has_text="destroys the key forever")
+    ).to_be_visible()
     org.page.locator('[data-act="cancel"]').click()
     expect(org.page.locator(".ws-banner #ws-copy-key, #ws-copy-key")).to_have_count(0)
     org.watcher.expect_clean()

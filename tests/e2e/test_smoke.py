@@ -16,5 +16,5 @@ def test_server_is_up_and_isolated(server):
 def test_home_view_renders(attendee_context, server):
     page = attendee_context.new_page()
     page.goto(server.base_url)
-    expect(page.locator(".brand-name")).to_have_text("gatekeyp")
+    expect(page.locator(".brand-name")).to_have_text("cellar")
     expect(page.locator("nav.topnav a[href='#/organize']")).to_be_visible()

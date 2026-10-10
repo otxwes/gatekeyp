@@ -98,30 +98,6 @@ window.gkpStego = (function () {
         return null;
     }
 
-    // The `gkp:` key line — the paste-anywhere text form of a key. It used to
-    // travel as a printed QR on the card; the QR is gone (Phase B: a scannable
-    // key is a secrecy downgrade — anything photographable can be harvested
-    // en masse), but the same text survives as the clipboard escape hatch.
-    // A organizer key uses the `gkporg:` prefix so the tabs can route it to the
-    // organizer workspace instead of the attendee unlock.
-    function keyLine(eventId, accessKey, role) {
-        return (role === "organizer" ? "gkporg:" : "gkp:") + `${eventId}:${accessKey}`;
-    }
-
-    function parseKeyLine(str) {
-        if (typeof str !== "string") return null;
-        const match = /^(gkporg:|gkp:)/.exec(str);
-        if (!match) return null;
-        const role = match[1] === "gkporg:" ? "organizer" : "attendee";
-        const rest = str.slice(match[1].length);
-        const sep = rest.indexOf(":");
-        if (sep <= 0 || sep === rest.length - 1) return null;
-        const eventId = rest.slice(0, sep).trim();
-        const accessKey = rest.slice(sep + 1).trim();
-        if (!eventId || !accessKey) return null;
-        return { eventId, accessKey, role };
-    }
-
     /* ----------------------------------------------------------
      * zlib helpers (browser-native CompressionStream / DecompressionStream)
      * ---------------------------------------------------------- */
@@ -432,20 +408,15 @@ window.gkpStego = (function () {
 
     const REJECT_RE_ENCODE =
         "This looks like a re-encoded copy of a card — the hidden key was lost to " +
-        "compression. Share the original PNG as a file, or paste the gkp: text " +
-        "with ⌘V.";
+        "compression. Share the original PNG as a file.";
     const REJECT = {
-        png: "This looks like a gatekeyp card, but no key could be read from it — " +
-            "the card may have been altered or re-encoded. Share the original PNG as " +
-            "a file, or paste the gkp: text with ⌘V.",
+        png: "This looks like a cellar card, but no key could be read from it — " +
+            "the card may have been altered or re-encoded. Share the original PNG as a file.",
         jpeg: REJECT_RE_ENCODE,
         webp: REJECT_RE_ENCODE,
-        gif: "That's a GIF — invite cards are PNGs. Share the original PNG as a " +
-            "file, or paste the gkp: text with ⌘V.",
-        bmp: "That's a BMP — invite cards are PNGs. Share the original PNG as a " +
-            "file, or paste the gkp: text with ⌘V.",
-        other: "That doesn't look like an invite card. Drop the card PNG here, or " +
-            "paste the gkp: text with ⌘V.",
+        gif: "That's a GIF — invite cards are PNGs. Share the original PNG as a file.",
+        bmp: "That's a BMP — invite cards are PNGs. Share the original PNG as a file.",
+        other: "That doesn't look like an invite card. Drop the card PNG here.",
     };
 
     function inviteRejectReason(kind) {
@@ -505,5 +476,5 @@ window.gkpStego = (function () {
         return null;
     }
 
-    return { embed, extract, makePayload, parsePayload, keyLine, parseKeyLine, classifyInvite, inviteRejectReason };
+    return { embed, extract, makePayload, parsePayload, classifyInvite, inviteRejectReason };
 })();

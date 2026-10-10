@@ -12,9 +12,10 @@ never stored anywhere — it exists only in the organizer's tab while making the
 card and in the attendee's tab while unlocking.
 
 **Card-first UI (current):** the web UI never displays or copies raw key text —
-the one-time mint modal and the RSVP result render only the card path, so the
-invite card is the *sole* artifact a fresh key gets. The `gkp:` paste option at
-the door stays as an unadvertised fallback (see §7).
+creation and minting flow **immediately into card creation** (the one-shot
+warning + cover picker + download), so the invite card is the *sole* artifact
+and the *sole* credential path. There is no text fallback: a card that is
+damaged or lost is replaced by re-submitting.
 
 ---
 
@@ -30,21 +31,20 @@ the door stays as an unadvertised fallback (see §7).
 
 ### Honest trade-offs
 
-| Property | Invite card (LSB PNG) | `gkp:` key line (text paste) | Raw `local:` key |
-|---|---|---|---|
-| Survives lossy re-encode (photo apps, socials) | ❌ no | ✅ yes | n/a |
-| Undetectable to a glance | ✅ | ❌ visible text | ❌ visible text |
-| Capacity needed | ~700 bits (~90 B payload) | n/a | n/a |
-| Offline decode | ✅ in-browser | ✅ | ✅ |
+| Property | Invite card (LSB PNG) | Raw `local:` key |
+|---|---|---|
+| Survives lossy re-encode (photo apps, socials) | ❌ no | n/a |
+| Undetectable to a glance | ✅ | ❌ visible text |
+| Capacity needed | ~700 bits (~90 B payload) | n/a |
+| Offline decode | ✅ in-browser | ✅ |
 
-The card is **stego-only** (Phase B): the key lives only in the pixels, and the
-paste-anywhere `gkp:<event_id>:<access_key>` key line (`web/stego.js` `keyLine` /
-`parseKeyLine`) is the survives-re-encode escape hatch — carried as text, never
-printed on the card. Phase 3.6 printed a QR as that fallback; Phase B **removed
-it** because a scannable key is a secrecy downgrade: a photographed card would
-hand its credential to anyone in camera range, with no need to suspect
-steganography at all (see §6). The stego layer remains the privacy choice; the
-key line is the resilience choice.
+The card is **stego-only**: the key lives only in the pixels and nowhere else.
+The old text channels are gone by design — Phase B removed the printed QR (a
+scannable key is a secrecy downgrade: a photographed card would hand its
+credential to anyone in camera range, with no need to suspect steganography at
+all — see §6), and the clipboard `gkp:` key line was removed with the
+cards-only sweep (a text credential reintroduces everything the card exists to
+prevent: visible, copyable, harvestable).
 
 ---
 
@@ -118,7 +118,7 @@ decodes any valid PNG an attendee brings.
 
 | File | Role |
 |---|---|
-| `web/stego.js` | zero-dependency codec: `embed` / `extract` / `makePayload` / `parsePayload` / `keyLine` / `parseKeyLine` |
+| `web/stego.js` | zero-dependency codec: `embed` / `extract` / `makePayload` / `parsePayload` / `classifyInvite` / `inviteRejectReason` |
 | `web/invite_card.js` | canvas card renderer (`render`) + embed-and-download (`download`) + cover engine (`coverFit`, `containFit`, `backdropCrop`, `drawImageFullCard`, `drawPreset`, `drawCoverBand`, `renderCover`, `loadCoverImage`) |
 | `tests/stego_ref.py` | stdlib-only Python mirror (the oracle) + `--write-fixture` / `--decode` CLI |
 | `tests/test_stego_invites.py` | Hypothesis round-trips, golden vectors, filter/CRC coverage, corruption recovery, fixture decode |
@@ -140,7 +140,7 @@ decodes any valid PNG an attendee brings.
 4. **Corruption recovery**: one channel fully inverted still decodes via the
    majority vote.
 5. **The JXA cross-check** runs the actual `web/stego.js` in JavaScriptCore
-   (macOS) and compares crc32, the PRNG stream, payload/key-line helpers,
+   (macOS) and compares crc32, the PRNG stream, the payload helpers,
    containers, and the door `classifyInvite`/`inviteRejectReason` against
    Python — catching e.g. the float64-seed trap and a missing IIFE
    invocation that pure review missed. Since Phase 3.7 it also loads
@@ -162,65 +162,53 @@ arch -x86_64 python -m pytest -q               # full suite (Apple Silicon)
 
 ## 5. Product flows
 
-### Organizer (Access-keys tab)
+### Organizer (creation + Access-keys tab)
 
-- **Generate a key** → the one-shot modal now offers **"Also make an invite
-  card"** — the only moment the raw key exists, so this is the primary path.
-  It downloads `<title>-invite.png` with the key hidden in its pixels.
-- **Card action per key row** (active keys) → prompts for the key value once
-  more (keys are shown only at generation and never stored), then downloads
-  the card. This covers the "organizer still has it in their chat history"
-  case.
-- **Custom covers** (Phase 3.7). Both card paths open a cover picker first:
-  preset monochrome patterns (hatch / keyline / dots / keyhole) drawn on the
+- **Create an event / mint a key / approve an RSVP** → the fresh key's card
+  modal opens **immediately**: the one-shot warning, the cover picker (preset
+  monochrome patterns — hatch / keyline / dots / keyhole — drawn on the
   704×600 hero band, or the organizer's own image spread across the **entire
-  card surface** (*contain-fit* — the whole picture is on the card, never
-  cropped; the letterbox around it is a blurred extension of the picture, so
-  no paper bands or outlines show at the edges), with a live 200×300 preview
-  before download. Purely client-side — the cover never leaves the tab, and
-  the hidden key is untouched.
+  card surface**, *contain-fit*, letterboxed by a blurred extension of the
+  picture), a live 200×300 preview, then **Download card**. Closing without
+  downloading destroys the key — the server stored only a fingerprint. The
+  cover never leaves the tab; the hidden key is untouched.
+- The **About-tab organizer card action** re-issues the organizer card from the
+  tab's session (no key re-entry, no warning — that card is not one-shot).
 - The card is **text-free and scannable-free** (minimalist pass + Phase B):
   preset/paper cards carry the keyhole ornaments, dotted paper and keyline
   frame with a hero cover band (or plain dotted paper when no cover); a
-  full-card photo owns the whole surface (no paper chrome). It embeds only the
-  `gkp:event_id:access_key` payload in its pixels — the QR plates printed by
-  Phase 3.6/3.7 were removed in Phase B (see §1); the event title only
-  names the downloaded file (`<title>-invite.png`). No organizer, location,
-  key, or caption text is printed on the card.
+  full-card photo owns the whole surface (no paper chrome). The event title
+  only names the downloaded file (`<title>-invite.png`). No organizer,
+  location, key, or caption text is printed on the card.
 
 ### Attendee (Join door)
 
-- A **drop / paste / choose** zone sits above the unlock form:
-  - drop a card PNG onto it,
-  - `⌘V` an image, or `⌘V` a `gkp:event_id:access_key` key line,
-  - click to choose a file.
-- On success the event id + access key are **auto-filled** into the existing
-  form; the attendee still presses *Unlock event* and the normal gateway flow
-  (validation, expiry, revocation) applies. Manual entry always remains.
-- **Stego-only at the door (Phase B).** The printed-QR fallback and its
-  in-browser jsQR decoder are gone (see §1/§6): a re-encoded photo of a card
-  (JPEG, WebP, screenshot) cannot be scanned back to a key. The universal
-  fallback is the paste-anywhere `gkp:` key line — it needs no image at all —
-  and the attendee can always type the key manually.
+- The door is **cards-only**: a single drop zone handles dragging a card PNG,
+  `⌘V` of a copied card image, and click-to-choose.
+- On decode the event unlocks **immediately** — no form, no typing; the normal
+  gateway rules (validation, expiry, revocation) apply through the same
+  `/api/access` flow.
 - **Honest rejection.** When nothing decodes, the door names the problem and
   the fix instead of a generic error: a re-encoded photo → "share the original
-  PNG, or paste the gkp: text"; a GIF/BMP → "invite cards are PNGs"; an
-  unrecognised file → "drop the card PNG, or paste the gkp: text".
-- **Share guidance.** The card modals say it once, up front: *send the card as
+  PNG as a file"; a GIF/BMP → "invite cards are PNGs"; an unrecognised file →
+  "drop the card PNG here".
+- **Share guidance.** The card modal says it once, up front: *send the card as
   a file or attachment, not a photo* — re-encoding destroys the hidden key, and
-  the `gkp:` key line is the fallback if it happens anyway.
+  there is no fallback: the pixels are the key.
 
 ---
 
 ## 6. Threat-model notes
 
-- **PNG-only, no re-encode, no QR (Phase B).** LSB stego is destroyed by
+- **PNG-only, no re-encode, no text channel.** LSB stego is destroyed by
   JPEG/webp re-encode or resizing. The Phase-3.6 printed-QR fallback — and the
   door's in-browser QR decode (vendored jsQR) — were **removed in Phase B**: a
   scannable key is a secrecy downgrade, since a photographed card would yield
   its credential to anyone without any suspicion of steganography. The
-  fallback is now the paste-anywhere `gkp:` key line, and the door rejects
-  damaged files with a specific, honest message pointing at it.
+  clipboard `gkp:` key line was removed in the cards-only sweep for the same
+  reason (a text credential is visible, copyable, harvestable). The door
+  rejects damaged files with a specific, honest message; a lost card is
+  replaced by re-submitting.
 - **Detectability.** LSB replacement perturbs the LSB histogram slightly; a
   motivated analyst with the *suspicion* of steganography can detect it with a
   statistical pass. The value here is casual-opacity and shoulder-surfing
@@ -239,9 +227,8 @@ arch -x86_64 python -m pytest -q               # full suite (Apple Silicon)
 
 ## 7. Known limitations / future work
 
-- A badly damaged photo of a card is unrecoverable by design (stego-only,
-  no QR); pasting the `gkp:` key line always works as the last resort and
-  needs no image at all.
+- A badly damaged photo of a card is unrecoverable **by design** (stego-only,
+  no fallback channel); the attendee submits a fresh RSVP for a new card.
 - Only 8-bit, non-interlaced PNGs are accepted as carriers.
 - The stego placement is deterministic (fixed seed); this is deliberate — the
   key is the secret, not the placement — and keeps the format auditable and

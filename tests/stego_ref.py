@@ -286,46 +286,20 @@ def parse_payload(payload: str) -> tuple[str, str] | None:
     return event_id, access_key
 
 
-# The `gkp:` key line — the paste-anywhere text form of a key. Formerly the
-# QR payload printed on the card; the QR is gone (Phase B) but the same text
-# survives as the clipboard escape hatch.
-def make_key_line(event_id: str, access_key: str) -> str:
-    return f"gkp:{event_id}:{access_key}"
-
-
-def parse_key_line(text: str) -> tuple[str, str] | None:
-    if not text.startswith("gkp:"):
-        return None
-    rest = text[4:]
-    sep = rest.find(":")
-    if sep <= 0 or sep == len(rest) - 1:
-        return None
-    event_id = rest[:sep].strip()
-    access_key = rest[sep + 1 :].strip()
-    if not event_id or not access_key:
-        return None
-    return event_id, access_key
-
-
 REJECT_RE_ENCODE = (
     "This looks like a re-encoded copy of a card — the hidden key was lost to "
-    "compression. Share the original PNG as a file, or paste the gkp: text "
-    "with ⌘V."
+    "compression. Share the original PNG as a file."
 )
 REJECT = {
     "png": (
-        "This looks like a gatekeyp card, but no key could be read from it — "
-        "the card may have been altered or re-encoded. Share the original PNG as "
-        "a file, or paste the gkp: text with ⌘V."
+        "This looks like a cellar card, but no key could be read from it — "
+        "the card may have been altered or re-encoded. Share the original PNG as a file."
     ),
     "jpeg": REJECT_RE_ENCODE,
     "webp": REJECT_RE_ENCODE,
-    "gif": "That's a GIF — invite cards are PNGs. Share the original PNG as a "
-    "file, or paste the gkp: text with ⌘V.",
-    "bmp": "That's a BMP — invite cards are PNGs. Share the original PNG as a "
-    "file, or paste the gkp: text with ⌘V.",
-    "other": "That doesn't look like an invite card. Drop the card PNG here, or "
-    "paste the gkp: text with ⌘V.",
+    "gif": "That's a GIF — invite cards are PNGs. Share the original PNG as a file.",
+    "bmp": "That's a BMP — invite cards are PNGs. Share the original PNG as a file.",
+    "other": "That doesn't look like an invite card. Drop the card PNG here.",
 }
 
 
