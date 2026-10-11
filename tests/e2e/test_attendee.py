@@ -25,13 +25,11 @@ def test_created_event_surface(organizer_context, attendee_context, server, tmp_
         "A weekly scribble.",
         location="Back kitchen",
     )
-    org.add_content_block("description", BLOCK_TEXT)
-    org.post_bulletin("Committee notes", BULLETIN)
-
-    # Media: write a tiny real PNG the attendee tile can render.
+    # Posts are the one artifact type: one plain post, one with a media file.
+    org.post_bulletin("Doors", BLOCK_TEXT)
     png = tmp_path_factory.mktemp("media") / "scribble.png"
     png.write_bytes(MEDIA_PNG)
-    org.upload_media(png)
+    org.post_bulletin("Committee notes", BULLETIN, media_file=png)
     org.watcher.expect_clean()
 
     key = org.mint_key("Attendee Echo")
@@ -41,28 +39,23 @@ def test_created_event_surface(organizer_context, attendee_context, server, tmp_
     att.unlock_by_stego_png(handle.attendee_card_png(key))
     att.expect_event_title("Kitchen Table Scribble Club")
     expect(att.page.locator("#ep-board .bulletin-card", has_text="Committee notes")).to_be_visible()
+    # The post's attached media renders on the board.
     expect(att.page.locator("#ep-board img.mt-preview")).to_be_visible()
     att.watcher.expect_clean()
 
 
-def test_block_added_later_shows_on_fresh_unlock(organizer_context, attendee_context, server):
-    """B5: a block added while an attendee is already inside is not re-fetched
-    by a plain reload (details are cached at unlock time), but a fresh unlock
-    picks it up — locking in the expected surfacing behavior."""
+def test_post_added_later_shows_on_reload(organizer_context, attendee_context, server):
+    """A post added after an attendee is already inside appears on a plain
+    reload — the board is fetched live (not cached at unlock)."""
     org = OrganizerPage(organizer_context.new_page(), server.base_url)
     handle = org.create_event("Late Additions", "New news for old guests.")
     key = org.mint_key("Early Bird")
     att = AttendeePage(attendee_context.new_page(), server.base_url)
     att.unlock_by_stego_png(handle.attendee_card_png(key))
-    expect(att.page.locator("#ep-board .item", has_text="sneak peek")).to_have_count(0)
-    org.add_content_block("agenda", "11:00 — sneak peek and cake.")
+    expect(att.page.locator("#ep-board .bulletin-card", has_text="Addendum")).to_have_count(0)
+    org.post_bulletin("Addendum", "11:00 — sneak peek and cake.")
     att.reload_keeps_session()
-    expect(  # reload keeps the stale cached view: no re-fetch post-unlock
-        att.page.locator("#ep-board .item", has_text="sneak peek")
-    ).to_have_count(0)
-    att.end_session()
-    att.unlock_by_stego_png(handle.attendee_card_png(key))
-    att.page.locator("#ep-board .item", has_text="sneak peek and cake").wait_for(timeout=10_000)
+    att.page.locator("#ep-board .bulletin-card", has_text="Addendum").wait_for(timeout=10_000)
     org.watcher.expect_clean()
     att.watcher.expect_clean()
 

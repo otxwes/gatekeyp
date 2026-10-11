@@ -180,28 +180,16 @@ class OrganizerPage:
     def tab(self, name: str) -> None:
         self.page.click(f'.tab[data-tab="{name}"]')
 
-    def add_content_block(self, content_type: str, payload: str) -> None:
+    def post_bulletin(self, title: str, body: str, media_file: str | Path | None = None) -> None:
+        """Create a board post (title + content, optionally with a media
+        attachment). The single post type — supports comments."""
         self.tab("board")
-        self.page.select_option("#board-kind", "block")
-        self.page.fill("#block-type", content_type)
-        self.page.locator("#block-payload").fill(payload)
-        self.page.click("#board-post-btn")
-        expect(self.page.locator("#board-posts .item", has_text=payload)).to_be_visible()
-
-    def post_bulletin(self, title: str, body: str) -> None:
-        self.tab("board")
-        self.page.select_option("#board-kind", "bulletin")
         self.page.fill("#bulletin-title", title)
         self.page.fill("#bulletin-body", body)
+        if media_file:
+            self.page.locator("#media-file").set_input_files(media_file)
         self.page.click("#board-post-btn")
         expect(self.page.locator(".bulletin-card", has_text=title)).to_be_visible()
-
-    def upload_media(self, file_path: str | Path) -> None:
-        self.tab("board")
-        self.page.select_option("#board-kind", "media")
-        self.page.locator("#media-file").set_input_files(file_path)
-        self.page.click("#board-post-btn")
-        expect(self.page.locator(".media-tile")).to_be_visible()
 
     def mint_key(self, owner: str, days: int = 30) -> str:
         """Mint an access key; the raw value arrives only via the POST response
@@ -272,7 +260,11 @@ class OrganizerPage:
         return card
 
     def delete_bulletin(self, title: str) -> None:
-        self.bulletin_card(title).locator('[data-act="delete-bulletin"]').click()
+        card = self.bulletin_card(title)
+        if not card.locator(".bulletin-body").is_visible():
+            card.locator(".bulletin-head").click()
+            card.locator(".bulletin-body").wait_for(state="visible")
+        card.locator('[data-act="delete-bulletin"]').click()
         self.confirm_modal()
         expect(self.bulletin_card(title)).to_have_count(0)
 
@@ -280,15 +272,6 @@ class OrganizerPage:
         card = self.open_bulletin(title)
         card.locator('[data-act="delete-comment"]').first.click()
         expect(card.locator(".c-meta")).to_have_count(0)
-
-    def delete_media_tiles(self) -> None:
-        self.tab("board")
-        tiles = self.page.locator(".media-tile")
-        count = tiles.count()
-        assert count > 0, "expected at least one media tile"
-        tiles.first.locator('[data-act="delete-media"]').click()
-        self.confirm_modal()
-        expect(self.page.locator(".media-tile")).to_have_count(0)
 
     def copy_rsvp_link(self) -> str:
         """RSVP tab: copy funnel link (clipboard API is denied headless, so the

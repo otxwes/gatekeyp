@@ -47,22 +47,22 @@ def test_denied_key_never_opens(organizer_context, attendee_context, server):
 def test_approved_rsvp_unlocks_and_content_blocks_surface(
     organizer_context, attendee_context, server
 ):
-    """The regression lock for the content-blocks-never-rendered bug: approved
-    RSVP shortcut 'Open the event now' lazily fetches content blocks."""
+    """The regression lock for the content-never-rendered bug: approved
+    RSVP shortcut 'Open the event now' lazily fetches the board."""
     organizer = OrganizerPage(organizer_context.new_page(), server.base_url)
     handle = organizer.create_event("Print Run", "One-night run.")
     del handle  # workspace ref unused: the funnel link drives the flow below
-    organizer.add_content_block("logistics", BLOCK_TEXT)
+    organizer.post_bulletin("Logistics", BLOCK_TEXT)
     # Auto-approve 1 means the RSVP result page is already approved, which is
-    # the state whose "Open the event now" shortcut skipped blocks (the bug).
+    # the state whose "Open the event now" shortcut skipped content (the bug).
     funnel = organizer.set_gate_settings(auto_approve=1)
     attendee = AttendeePage(attendee_context.new_page(), server.base_url)
     attendee.rsvp(funnel, name="Print Pal")
     attendee.unlock_from_rsvp_result()
     attendee.expect_event_title("Print Run")
-    # The approved shortcut passes no content_blocks: the lazy fetch must fill
-    # them in or the blocks never surface (the bug this locks down).
-    attendee.page.locator("#ep-board .item", has_text=BLOCK_TEXT).wait_for(timeout=10_000)
+    # The approved shortcut passes no cached board: the lazy fetch must fill
+    # it in or the post never surfaces (the bug this locks down).
+    attendee.page.locator("#ep-board .bulletin-card", has_text="Logistics").wait_for(timeout=10_000)
     attendee.watcher.expect_clean()
 
 

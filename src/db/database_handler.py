@@ -168,6 +168,7 @@ class DatabaseHandler:
                 title TEXT,
                 body TEXT,
                 author_id TEXT,
+                media_id TEXT,
                 created_at TEXT,
                 updated_at TEXT
             )
@@ -262,6 +263,7 @@ class DatabaseHandler:
 
         # Phase 2: Check and add missing columns to 'bulletins'
         self._ensure_column("bulletins", "updated_at", "TEXT")
+        self._ensure_column("bulletins", "media_id", "TEXT")
 
         # Phase 2: Check and add missing columns to 'comments'
         self._ensure_column("comments", "parent_comment_id", "TEXT")
@@ -932,20 +934,24 @@ class DatabaseHandler:
         title: str,
         body: str,
         author_id: str,
+        media_id: str | None = None,
     ) -> None:
         """
         Add a bulletin (communication board post), encrypting the body at rest.
         Also creates a key_content_link for key-gated access.
+
+        media_id optionally links an already-uploaded media asset to the post.
         """
         now = self._now_iso()
         encrypted_body = self._encrypt(body)
         self.cursor.execute(
             """
             INSERT INTO bulletins
-                (bulletin_id, event_id, key_id, title, body, author_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (bulletin_id, event_id, key_id, title, body, author_id,
+                 media_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-            (bulletin_id, event_id, key_id, title, encrypted_body, author_id, now, now),
+            (bulletin_id, event_id, key_id, title, encrypted_body, author_id, media_id, now, now),
         )
         self.add_key_content_link(key_id, bulletin_id, "bulletin")
         self.connection.commit()
@@ -967,8 +973,9 @@ class DatabaseHandler:
                 "title": result[3],
                 "body": body,
                 "author_id": result[5],
-                "created_at": result[6],
-                "updated_at": result[7],
+                "media_id": result[6],
+                "created_at": result[7],
+                "updated_at": result[8],
             }
         return None
 
@@ -989,8 +996,9 @@ class DatabaseHandler:
                 "key_id": r[2],
                 "title": r[3],
                 "author_id": r[5],
-                "created_at": r[6],
-                "updated_at": r[7],
+                "media_id": r[6],
+                "created_at": r[7],
+                "updated_at": r[8],
             }
             for r in results
         ]

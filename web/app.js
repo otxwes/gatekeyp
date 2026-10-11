@@ -553,16 +553,34 @@ async function loadWsTab() {
 }
 
 /* ------------------------------------------------------------------
- * Workspace: Board tab (consolidated Content + Bulletin + Media)
+ * Workspace: Board tab (single post type: title + content + comments,
+ * with an optional media attachment)
  * ------------------------------------------------------------------ */
-function boardPostHTML(post) {
+/** Render a bulletin's optional attached media tile (if media_id matches). */
+function bulletinMediaHTML(bulletin, assetsById) {
+    const asset = bulletin && bulletin.media_id ? assetsById[bulletin.media_id] : null;
+    if (!asset) return "";
+    const isImage = (asset.mime_type || "").startsWith("image/");
+    const preview = isImage
+        ? `<img class="mt-preview" src="${esc(mediaUrl(asset.id))}" alt="${esc(asset.filename)}" loading="lazy" referrerpolicy="no-referrer">`
+        : `<div class="mt-fallback" aria-hidden="true">📄</div>`;
+    return `<div class="b-media">` +
+        `<div class="media-tile" data-asset="${esc(asset.id)}">` +
+        preview +
+        `<div class="mt-info">` +
+        `<span class="mt-name" title="${esc(asset.filename)}">${esc(asset.filename)}</span>` +
+        `<span class="mt-size">${fmtBytes(asset.size_bytes)} · ${esc(asset.mime_type)}</span>` +
+        `</div>` +
+        `<div class="mt-actions"><a class="btn btn-ghost btn-sm" href="${esc(mediaUrl(asset.id))}" target="_blank" rel="noopener">Open</a></div>` +
+        `</div></div>`;
+}
+
+function boardPostHTML(post, assetsById) {
     const time = esc(fmtDate(post.created_at));
-    switch (post._type) {
-    case "bulletin":
-        return bulletinCardHTML(post, true);
-    case "media":
+    if (post._type === "media") {
         return mediaTile(post);
-    default: { // content block
+    }
+    if (post._type === "block") { // legacy content block
         const label = esc(contentTypeLabel(post.content_type));
         return `<div class="item board-post">` +
             `<div class="item-head">` +
@@ -572,7 +590,12 @@ function boardPostHTML(post) {
             `<div class="item-body">${esc(post.payload || "")}</div>` +
             `<div class="item-meta">${time}</div>` +
             `</div>`;
-    }}
+    }
+    // bulletin (keep card + attached media together so a delete removes both)
+    return `<div class="board-entry">` +
+        bulletinCardHTML(post, true) +
+        bulletinMediaHTML(post, assetsById) +
+        `</div>`;
 }
 
 async function wsBoard(main) {
@@ -582,11 +605,14 @@ async function wsBoard(main) {
         api(`/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.organizerKey })}`).catch(() => []),
     ]);
     const event = details.event || {};
+    const assetsById = {};
+    assets.forEach((a) => { assetsById[a.id] = a; });
+    const attached = new Set(bulletins.map((b) => b.media_id).filter(Boolean));
     const blocks = (details.content_blocks || []).map((b) => ({ ...b, _type: "block" }));
     const posts = [
         ...blocks,
         ...bulletins.map((b) => ({ ...b, _type: "bulletin" })),
-        ...assets.map((a) => ({ ...a, _type: "media" })),
+        ...assets.filter((a) => !attached.has(a.id)).map((a) => ({ ...a, _type: "media" })),
     ].sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
 
     main.innerHTML =
@@ -601,43 +627,26 @@ async function wsBoard(main) {
 
         (posts.length
             ? `<section class="card"><h3 class="card-title">Posts</h3>` +
-              `<div id="board-posts">${posts.map(boardPostHTML).join("")}</div>` +
+              `<div id="board-posts">${posts.map((p) => boardPostHTML(p, assetsById)).join("")}</div>` +
               `</section>`
-            : `<section class="card">${emptyState("No posts yet", "Add a bulletin, content block, or file below.")}</section>`) +
+            : `<section class="card">${emptyState("No posts yet", "Write the first one below.")}</section>`) +
 
         `<section class="card">` +
         `<h3 class="card-title">New post</h3>` +
         `<form id="board-post-form" autocomplete="off">` +
-        `<div class="field"><label for="board-kind">Kind</label>` +
-        `<select id="board-kind" name="kind" class="field-input">` +
-        `<option value="bulletin">Bulletin (announcement with comments)</option>` +
-        `<option value="block">Content block (typed info)</option>` +
-        `<option value="media">File upload</option>` +
-        `</select></div>` +
-        `<div id="board-bulletin-fields">` +
         `<div class="field"><label for="bulletin-title">Title</label>` +
-        `<input id="bulletin-title" name="title" type="text" maxlength="256"></div>` +
-        `<div class="field"><label for="bulletin-body">Details</label>` +
-        `<textarea id="bulletin-body" name="body" rows="4" maxlength="65536"></textarea></div>` +
-        `</div>` +
-        `<div id="board-block-fields" hidden>` +
-        `<div class="field"><label for="block-type">Type</label>` +
-        `<input id="block-type" name="content_type" list="block-types" maxlength="64" value="description" spellcheck="false"></div>` +
-        `<div class="field"><label for="block-payload">Content</label>` +
-        `<textarea id="block-payload" name="payload" rows="3" maxlength="65536"></textarea></div>` +
-        `</div>` +
-        `<div id="board-media-fields" hidden>` +
-        `<div class="field"><label for="media-file">Choose a file</label>` +
-        `<input id="media-file" type="file"></div>` +
-        `</div>` +
+        `<input id="bulletin-title" name="title" type="text" maxlength="256" required></div>` +
+        `<div class="field"><label for="bulletin-body">Content</label>` +
+        `<textarea id="bulletin-body" name="body" rows="4" maxlength="65536" required></textarea></div>` +
+        `<div class="field"><label for="media-file">Attachment (optional)</label>` +
+        `<input id="media-file" name="media" type="file"></div>` +
         `<button class="btn btn-primary" type="submit" id="board-post-btn">Post</button>` +
         `</form>` +
-        `<datalist id="block-types">${Object.keys(CONTENT_TYPE_LABELS).map((t) => `<option value="${esc(t)}">`).join("")}</datalist>` +
         `</section>`;
 
     // Bind bulletin cards
     $$(".bulletin-card", main).forEach((card) => bindBulletinCard(card, true));
-    // Bind media tiles
+    // Bind standalone media tiles
     bindMediaTiles(main);
     // Organizer card button
     const cardBtn = $("#ws-organizer-card");
@@ -652,48 +661,20 @@ async function wsBoard(main) {
         });
     }
 
-    // Kind selector toggles fields
-    const kindSel = $("#board-kind");
-    const bulletinFields = $("#board-bulletin-fields");
-    const blockFields = $("#board-block-fields");
-    const mediaFields = $("#board-media-fields");
-    const toggleFields = () => {
-        const k = kindSel ? kindSel.value : "bulletin";
-        if (bulletinFields) bulletinFields.hidden = k !== "bulletin";
-        if (blockFields) blockFields.hidden = k !== "block";
-        if (mediaFields) mediaFields.hidden = k !== "media";
-    };
-    if (kindSel) kindSel.addEventListener("change", toggleFields);
-    toggleFields();
-
     // Submit
     $("#board-post-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const kind = kindSel ? kindSel.value : "bulletin";
         const btn = $("#board-post-btn");
         btnBusy(btn, true, "Posting…");
         try {
-            if (kind === "bulletin") {
-                const title = getField(event.target, "title");
-                const body = getField(event.target, "body");
-                if (!title || !body) throw new Error("Title and details are required.");
-                await api(`/api/events/${encodeURIComponent(org.eventId)}/bulletins`, {
-                    method: "POST",
-                    body: { key: org.organizerKey, event_id: org.eventId, title, body, author_id: "organizer" },
-                });
-                toast("Bulletin posted.", "ok", "Board updated");
-            } else if (kind === "block") {
-                const content_type = getField(event.target, "content_type");
-                const payload = getField(event.target, "payload");
-                if (!content_type || !payload) throw new Error("Type and content are required.");
-                await api(`/api/events/${encodeURIComponent(org.eventId)}/content`, {
-                    method: "POST",
-                    body: { organizer_key: org.organizerKey, event_id: org.eventId, content_type, payload },
-                });
-                toast("Content block added.", "ok", "Saved");
-            } else {
-                const input = $("#media-file");
-                if (!input || !input.files.length) throw new Error("Choose a file.");
+            const title = getField(event.target, "title");
+            const body = getField(event.target, "body");
+            if (!title || !body) throw new Error("Title and content are required.");
+
+            // Optional attachment: upload first, then attach to the post.
+            const input = $("#media-file");
+            let mediaId = null;
+            if (input && input.files && input.files.length) {
                 const fd = new FormData();
                 fd.append("file", input.files[0]);
                 const url = `/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.organizerKey })}`;
@@ -702,8 +683,22 @@ async function wsBoard(main) {
                     const data = await resp.json().catch(() => ({}));
                     throw new Error(data.detail || `Upload failed (${resp.status})`);
                 }
-                toast("Media uploaded.", "ok", "Added");
+                const uploaded = await resp.json();
+                mediaId = (uploaded && uploaded.id) || null;
             }
+
+            await api(`/api/events/${encodeURIComponent(org.eventId)}/bulletins`, {
+                method: "POST",
+                body: {
+                    key: org.organizerKey,
+                    event_id: org.eventId,
+                    title,
+                    body,
+                    author_id: "organizer",
+                    media_id: mediaId,
+                },
+            });
+            toast("Post published.", "ok", "Board updated");
             await wsBoard(main);
         } catch (err) {
             toast(err.message, "error", "Could not post");
@@ -793,7 +788,8 @@ async function bindBulletinCard(card, manage) {
                 danger: true,
                 onConfirm: async () => {
                     await api(`/api/bulletins/${encodeURIComponent(card.dataset.bid)}${qs({ key: org.organizerKey })}`, { method: "DELETE" });
-                    card.remove();
+                    const holder = card.closest(".board-entry") || card;
+                    holder.remove();
                     toast("Bulletin deleted.", "ok", "Removed");
                 },
             });
@@ -1796,11 +1792,14 @@ async function loadAttendeeBoard() {
             api(`/api/events/${encodeURIComponent(attendee.eventId)}/bulletins${qs({ key: attendee.accessKey })}`).catch(() => []),
             api(`/api/events/${encodeURIComponent(attendee.eventId)}/media${qs({ key: attendee.accessKey })}`).catch(() => []),
         ]);
+        const assetsById = {};
+        assets.forEach((a) => { assetsById[a.id] = a; });
+        const attached = new Set(bulletins.map((b) => b.media_id).filter(Boolean));
 
         const posts = [
             ...blocks.map((b) => ({ ...b, _type: "block" })),
             ...bulletins.map((b) => ({ ...b, _type: "bulletin" })),
-            ...assets.map((a) => ({ ...a, _type: "media" })),
+            ...assets.filter((a) => !attached.has(a.id)).map((a) => ({ ...a, _type: "media" })),
         ].sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
 
         if (!posts.length) {
@@ -1810,7 +1809,10 @@ async function loadAttendeeBoard() {
         box.innerHTML = posts.map((post) => {
             switch (post._type) {
             case "bulletin":
-                return bulletinCardHTML(post, false);
+                return `<div class="board-entry">` +
+                    bulletinCardHTML(post, false) +
+                    bulletinMediaHTML(post, assetsById) +
+                    `</div>`;
             case "media":
                 return attendeeMediaTile(post);
             default:

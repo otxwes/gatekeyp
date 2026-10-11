@@ -98,6 +98,7 @@ class CreateBulletinRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=256)
     body: str = Field(..., min_length=1, max_length=65536)
     author_id: str = Field(..., min_length=1, max_length=256)
+    media_id: str | None = Field(default=None, max_length=256)
 
 
 class AddCommentRequest(BaseModel):
@@ -381,6 +382,7 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
                 title=request.title,
                 body=request.body,
                 author_id=request.author_id,
+                media_id=request.media_id,
             )
         except (ContentValidationError, ContentAccessError) as err:
             raise HTTPException(status_code=400, detail=str(err)) from err

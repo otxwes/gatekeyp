@@ -19,31 +19,33 @@ MEDIA_PNG = (
 )
 
 
-def test_each_block_type_adds_and_renders(organizer_context, server):
-    """A3: description / schedule / location blocks each land in the list."""
+def test_each_post_adds_and_renders(organizer_context, server):
+    """Posts (the single post type) each land on the board."""
     org = OrganizerPage(organizer_context.new_page(), server.base_url)
-    org.create_event("Block Smorgasbord", "Every field gets its turn.")
-    for content_type, payload in [
-        ("description", "The long story of the club."),
-        ("schedule", "Doors 20:00, last entry 23:00."),
-        ("location", "Loading bay B, sublevel 2."),
+    org.create_event("Post Smorgasbord", "Every post gets its turn.")
+    for title, body in [
+        ("The long story of the club", "Every field gets its turn."),
+        ("Doors", "20:00, last entry 23:00."),
+        ("Loading bay", "Sublevel 2."),
     ]:
-        org.add_content_block(content_type, payload)
-    expect(org.page.locator("#board-posts .item")).to_have_count(3)
+        org.post_bulletin(title, body)
+    expect(org.page.locator("#board-posts .bulletin-card")).to_have_count(3)
     org.watcher.expect_clean()
 
 
-def test_media_upload_then_delete(organizer_context, server, tmp_path):
-    """A5: a media tile can be uploaded and then deleted via its control."""
+def test_post_with_media_then_delete(organizer_context, server, tmp_path):
+    """A post can carry a media attachment, and deleting the post removes
+    it from the board."""
     org = OrganizerPage(organizer_context.new_page(), server.base_url)
     org.create_event("Poster Swap", "Pictures on the board.")
     png = tmp_path / "poster.png"
     png.write_bytes(MEDIA_PNG)
-    org.upload_media(png)
-    expect(org.page.locator(".media-tile")).to_have_count(1)
-    org.delete_media_tiles()
-    org.tab("board")
-    expect(org.page.locator(".media-tile")).to_have_count(0)
+    org.post_bulletin("Poster", "Here's the flyer.", media_file=png)
+    expect(org.page.locator("#board-posts .bulletin-card", has_text="Poster")).to_have_count(1)
+    expect(org.page.locator("#board-posts img.mt-preview")).to_be_visible()
+    org.delete_bulletin("Poster")
+    expect(org.page.locator("#board-posts .bulletin-card", has_text="Poster")).to_have_count(0)
+    expect(org.page.locator("#board-posts img.mt-preview")).to_have_count(0)
     org.watcher.expect_clean()
 
 

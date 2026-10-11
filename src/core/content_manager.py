@@ -286,6 +286,7 @@ class ContentManager:
         title: str,
         body: str,
         author_id: str,
+        media_id: str | None = None,
     ) -> dict:
         """
         Create a bulletin (communication board post) gated by a key.
@@ -299,6 +300,8 @@ class ContentManager:
             title: Bulletin title.
             body: Bulletin body content.
             author_id: Identifier of the author (e.g., @user:instance).
+            media_id: Optional ID of an already-uploaded media asset to
+                attach to this post.
 
         Returns:
             The created bulletin metadata.
@@ -311,6 +314,13 @@ class ContentManager:
         # Verify the key grants access to the event
         key_hash = self._verify_key_access(input_key, event_id)
 
+        # If a media attachment is requested, verify it belongs to the event.
+        if media_id:
+            asset = self.db.get_media_asset(media_id)
+            if asset is None or asset.get("event_id") != event_id:
+                message = "Media attachment not found for this event"
+                raise ContentAccessError(message)
+
         # Generate a unique bulletin ID
         bulletin_id = self._generate_id("bulletin")
 
@@ -322,6 +332,7 @@ class ContentManager:
             title=title,
             body=body,
             author_id=author_id,
+            media_id=media_id,
         )
 
         return {
@@ -329,6 +340,7 @@ class ContentManager:
             "event_id": event_id,
             "title": title,
             "author_id": author_id,
+            "media_id": media_id,
         }
 
     def get_bulletin(
