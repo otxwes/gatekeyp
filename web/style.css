@@ -741,20 +741,6 @@ p {
     min-width: 0;
 }
 
-/* Organizer-key banner — a stamped notice: hairline hatch ground,
-   bold keyline edge. Texture replaces the old amber wash. */
-.organizer-banner {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    align-items: center;
-    background: var(--hatch-fill);
-    border: 1px solid var(--line-strong);
-    border-left: 4px solid var(--ink);
-    border-radius: var(--radius-m);
-    padding: var(--space-4) var(--space-5);
-}
-
 /* Key value display (organizer key, access key) */
 .keycode {
     font-family: var(--font-mono);
@@ -1236,20 +1222,13 @@ p {
 }
 
 .ep-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-4);
-    margin-top: var(--space-4);
+    margin-top: var(--space-3);
     color: var(--ink-soft);
     font-size: var(--text-sm);
-    border-top: 1px solid var(--line);
-    padding-top: var(--space-4);
 }
 
-.ep-meta .ep-meta-item {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
+.ep-actions {
+    margin-top: var(--space-3);
 }
 
 .ep-main {
@@ -1500,10 +1479,6 @@ p {
     .key-detail-row .kd-actions {
         width: 100%;
         justify-content: flex-end;
-    }
-
-    .organizer-banner .btn {
-        width: 100%;
     }
 
     .modal-actions {

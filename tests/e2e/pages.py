@@ -252,9 +252,11 @@ class OrganizerPage:
         return self.page.locator("#ws-main .bulletin-card", has_text=title)
 
     def open_bulletin(self, title: str):
-        """Expand a bulletin card so its comments render, return the card."""
+        """Expand a bulletin card so its comments render, return the card.
+        Posts start expanded; the head click only toggles from collapsed."""
         card = self.bulletin_card(title)
-        card.locator(".bulletin-head").click()
+        if not card.locator(".bulletin-body").is_visible():
+            card.locator(".bulletin-head").click()
         card.locator(".bulletin-body").wait_for(state="visible")
         card.locator(".comment-row, .c-meta").first.wait_for(state="visible")
         return card
@@ -450,9 +452,11 @@ class AttendeePage:
         expect(self.page.locator("#ep-board .bulletin-card", has_text=title)).to_be_visible()
 
     def comment_on_bulletin(self, bulletin_title: str, author: str, body: str) -> None:
-        """Expand the bulletin card and post a comment from the attendee view."""
+        """Post a comment from the attendee view. The card starts expanded; the
+        head click only toggles from collapsed."""
         card = self.page.locator("#ep-board .bulletin-card", has_text=bulletin_title).first
-        card.locator(".bulletin-head").click()
+        if not card.locator(".bulletin-body").is_visible():
+            card.locator(".bulletin-head").click()
         card.locator(".comment-form").wait_for(state="visible")
         card.locator("input.cf-author").fill(author)
         card.locator("input.cf-body").fill(body)

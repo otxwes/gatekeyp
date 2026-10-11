@@ -424,6 +424,18 @@ function bindOrganizeEntry() {
                 title: created.title || title,
                 meta: { description, locationData: location_data },
             };
+            // Optional flyer: upload it onto the event so it appears on the board.
+            const flyerInput = $("#create-flyer");
+            if (flyerInput && flyerInput.files && flyerInput.files.length) {
+                const fd = new FormData();
+                fd.append("file", flyerInput.files[0]);
+                const url = `/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.organizerKey })}`;
+                const resp = await fetch(url, { method: "POST", body: fd });
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || "Flyer upload failed");
+                }
+            }
             createForm.reset();
             saveSession();
             goWorkspace();
@@ -508,10 +520,6 @@ function renderWorkspace() {
         `<button class="btn btn-danger" type="button" id="ws-decommission">Decommission</button>` +
         `</div>` +
         `</header>` +
-        `<div class="organizer-banner" role="note">` +
-        `<span class="badge badge-warn">Organizer</span>` +
-        `<span class="field-hint">Your organizer card is the only way back in — keep the PNG safe.</span>` +
-        `</div>` +
         `<nav class="tabs" role="tablist" aria-label="Workspace sections">` +
         WS_TABS.map(([id, label]) =>
             `<button class="tab" type="button" role="tab" data-tab="${id}" aria-selected="${id === wsTab}">${esc(label)}</button>`
@@ -617,7 +625,6 @@ async function wsBoard(main) {
 
     main.innerHTML =
         `<section class="card">` +
-        `<h3 class="card-title">${esc(event.title || "Event")}</h3>` +
         `<p class="section-text">${esc(event.description || "")}</p>` +
         (event.location_data
             ? `<p class="field-hint">${esc(event.location_data)}</p>`
@@ -745,15 +752,14 @@ async function bindBulletinCard(card, manage) {
     const countEl = $("[data-count]", card);
     const commentsBox = $("[data-comments]", card);
     const bodyText = $("[data-body-text]", card);
-    let open = false;
+    // Posts are expanded by default so the content is visible without a click.
+    let open = true;
     let loaded = false;
+    body.hidden = false;
+    card.classList.add("bulletin-open");
+    head.setAttribute("aria-expanded", "true");
 
-    const toggle = async () => {
-        open = !open;
-        body.hidden = !open;
-        card.classList.toggle("bulletin-open", open);
-        head.setAttribute("aria-expanded", String(open));
-        if (!open) return;
+    const load = async () => {
         if (loaded) return;
         commentsBox.innerHTML = `<span class="badge badge-neutral">Loading…</span>`;
         try {
@@ -770,6 +776,14 @@ async function bindBulletinCard(card, manage) {
             commentsBox.innerHTML = `<span class="badge badge-revoked">Could not load comments</span>`;
         }
     };
+
+    const toggle = async () => {
+        open = !open;
+        body.hidden = !open;
+        card.classList.toggle("bulletin-open", open);
+        head.setAttribute("aria-expanded", String(open));
+        if (open) await load();
+    };
     head.addEventListener("click", toggle);
     head.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -777,6 +791,9 @@ async function bindBulletinCard(card, manage) {
             toggle();
         }
     });
+
+    // Load content immediately since the post starts expanded.
+    load();
 
     if (manage) {
         const delBtn = $('[data-act="delete-bulletin"]', card);
@@ -1757,10 +1774,10 @@ function renderEventPage() {
         `<p class="eyebrow ep-eyebrow">You're invited</p>` +
         `<h2 class="ep-title">${esc(event.title || "Untitled event")}</h2>` +
         `<p class="ep-lede">${esc(event.description || "")}</p>` +
-        `<div class="ep-meta">` +
-        (event.location_data ? `<span class="ep-meta-item">${esc(event.location_data)}</span>` : "") +
-        `<button class="btn btn-ghost btn-sm" type="button" id="attendee-end">Leave (drop key)</button>` +
-        `</div>` +
+        (event.location_data
+            ? `<p class="ep-meta">${esc(event.location_data)}</p>`
+            : "") +
+        `<div class="ep-actions"><button class="btn btn-ghost btn-sm" type="button" id="attendee-end">Leave</button></div>` +
         `</header>` +
         `<div class="ep-main">` +
         `<section class="card"><h3 class="card-title">Board</h3>` +
