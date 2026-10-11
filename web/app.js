@@ -620,7 +620,7 @@ async function wsBoard(main) {
         `<h3 class="card-title">${esc(event.title || "Event")}</h3>` +
         `<p class="section-text">${esc(event.description || "")}</p>` +
         (event.location_data
-            ? `<p class="field-hint">📍 ${esc(event.location_data)}</p>`
+            ? `<p class="field-hint">${esc(event.location_data)}</p>`
             : "") +
         `<p><button class="btn btn-secondary btn-sm" type="button" id="ws-organizer-card">Organizer card</button></p>` +
         `</section>` +
@@ -1057,15 +1057,20 @@ function openCardCoverModal(card) {
 function keyRowHTML(key) {
     const expires = key.expires_at ? new Date(key.expires_at) : null;
     const expired = Boolean(expires) && expires.getTime() < Date.now();
+    const active = !key.revoked && !expired;
     const label = key.revoked ? "Revoked" : expired ? "Expired" : "Active";
     const badgeClass = key.revoked ? "badge-revoked" : expired ? "badge-warn" : "badge-active";
     const owner = key.owner_id ? key.owner_id : "unnamed key";
-    return `<div class="key-detail-row" data-key-id="${esc(key.id || key.hash_key)}">` +
+    const revokeBtn = active
+        ? `<button class="btn btn-danger btn-sm" type="button" data-act="revoke-key" aria-label="Revoke ${esc(owner)}">Revoke</button>`
+        : "";
+    return `<div class="key-detail-row" data-key-hash="${esc(key.id || key.hash_key)}">` +
         `<span class="badge ${badgeClass}">${esc(label)}</span>` +
         `<div class="kd-info">` +
         `<div class="kd-name">${esc(owner)}</div>` +
         `<div class="kd-sub">created ${esc(fmtDate(key.created_at))} · expires ${esc(fmtDate(key.expires_at))}</div>` +
         `</div>` +
+        revokeBtn +
         `</div>`;
 }
 
@@ -1088,14 +1093,6 @@ async function wsKeys(main) {
         `<div class="field"><label for="key-days">Lifetime (days)</label>` +
         `<input id="key-days" name="days" type="number" min="1" max="365" value="30"></div>` +
         `<button class="btn btn-primary" type="submit" id="gen-key-btn">Generate</button>` +
-        `</form>` +
-        `</section>` +
-        `<section class="card">` +
-        `<h3 class="card-title">Revoke a key</h3>` +
-        `<form id="revoke-key-form" class="inline-form" autocomplete="off">` +
-        `<div class="field"><label for="revoke-key">Access key</label>` +
-        `<input id="revoke-key" name="access_key" type="password" maxlength="2048" required spellcheck="false" autocomplete="off"></div>` +
-        `<button class="btn btn-danger" type="submit" id="revoke-key-btn">Revoke</button>` +
         `</form>` +
         `</section>`;
 
@@ -1124,24 +1121,32 @@ async function wsKeys(main) {
         }
     });
 
-    $("#revoke-key-form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const form = event.currentTarget;
-        const access_key = getField(form, "access_key");
-        if (!access_key) return;
-        const btn = $("#revoke-key-btn");
-        btnBusy(btn, true, "Revoking…");
-        try {
-            await api(`/api/events/${encodeURIComponent(org.eventId)}/access-keys/revoke`, {
-                method: "POST",
-                body: { organizer_key: org.organizerKey, event_id: org.eventId, access_key },
+    // Revoke an active key by its stored hash (the raw key is only in
+    // card pixels, so there's nothing to type).
+    $$("[data-act=revoke-key]", main).forEach((revokeBtn) => {
+        revokeBtn.addEventListener("click", () => {
+            const row = revokeBtn.closest("[data-key-hash]");
+            const hash = row ? row.dataset.keyHash : "";
+            if (!hash) return;
+            openModal({
+                title: "Revoke access key",
+                body: `Revoke this access key? The attendee's card will stop working immediately.`,
+                confirmText: "Revoke",
+                danger: true,
+                onConfirm: async () => {
+                    try {
+                        await api(`/api/events/${encodeURIComponent(org.eventId)}/access-keys/revoke-by-hash`, {
+                            method: "POST",
+                            body: { organizer_key: org.organizerKey, event_id: org.eventId, key_hash: hash },
+                        });
+                        toast("Access key revoked.", "ok", "Done");
+                        await wsKeys(main);
+                    } catch (err) {
+                        toast(err.message, "error", "Could not revoke");
+                    }
+                },
             });
-            toast("Access key revoked.", "ok", "Done");
-            await wsKeys(main);
-        } catch (err) {
-            toast(err.message, "error", "Could not revoke");
-            btnBusy(btn, false);
-        }
+        });
     });
 }
 
@@ -1195,11 +1200,11 @@ async function wsRsvps(main) {
         `<h3 class="card-title">Gate settings</h3>` +
         `<form id="rsvp-settings-form" class="inline-form" autocomplete="off">` +
         `<div class="field">` +
-        `<label for="rsvp-pass-on">` +
+        `<label class="check-wrap" for="rsvp-pass-on">` +
         `<input type="checkbox" id="rsvp-pass-on"${settings.passphrase_required ? " checked" : ""}>` +
-        ` Require a passphrase to RSVP</label>` +
+        `<span>Require a passphrase to RSVP</span>` +
+        `</label>` +
         `<input type="password" id="rsvp-pass" placeholder="${settings.passphrase_required ? "Passphrase is set — type to replace it" : "Choose a passphrase"}" autocomplete="off">` +
-        `<p class="field-hint">Stored as a keyed hash only. Untick the box and save to remove the gate.</p>` +
         `</div>` +
         `<div class="field">` +
         `<label for="rsvp-auto">Auto-approve the first N RSVPs</label>` +
@@ -1753,7 +1758,7 @@ function renderEventPage() {
         `<h2 class="ep-title">${esc(event.title || "Untitled event")}</h2>` +
         `<p class="ep-lede">${esc(event.description || "")}</p>` +
         `<div class="ep-meta">` +
-        (event.location_data ? `<span class="ep-meta-item">📍 ${esc(event.location_data)}</span>` : "") +
+        (event.location_data ? `<span class="ep-meta-item">${esc(event.location_data)}</span>` : "") +
         `<button class="btn btn-ghost btn-sm" type="button" id="attendee-end">Leave (drop key)</button>` +
         `</div>` +
         `</header>` +

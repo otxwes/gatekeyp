@@ -357,6 +357,46 @@ class EventLifecycleManager:
         # Revoke the access key
         return self.key_manager.revoke_key(access_key)
 
+    def revoke_access_key_by_hash(
+        self,
+        organizer_key: str,
+        event_id: str,
+        key_hash: str,
+    ) -> bool:
+        """
+        Revoke an attendee access key by its stored hash.
+
+        The organizer does not hold the raw access key (it exists only in the
+        attendee's card pixels), so revocation revokes by the key's hash
+        returned in the access-key list.
+
+        Args:
+            organizer_key: The event's organizer key.
+            event_id: The event ID.
+            key_hash: The stored hash of the access key to revoke.
+
+        Returns:
+            True if the key was revoked.
+        """
+        # Verify the organizer key grants access to the event
+        validation = self.key_manager.validate_key(organizer_key)
+        if validation["status"] != "valid":
+            message = validation.get("message", "Invalid organizer key")
+            raise EventLifecycleError(message)
+
+        org_hash = validation["hash"]
+        content_ids = self.db.get_content_ids_for_key(org_hash)
+        if not any(c["content_id"] == event_id for c in content_ids):
+            raise EventLifecycleError(_ACCESS_DENIED_MSG)
+
+        # Verify the target key belongs to this event before revoking.
+        target_content = self.db.get_content_ids_for_key(key_hash)
+        if not any(c["content_id"] == event_id for c in target_content):
+            other_event_msg = "Key does not belong to this event"
+            raise EventLifecycleError(other_event_msg)
+
+        return self.key_manager.revoke_key_by_hash(key_hash)
+
     # ------------------------------------------------------------------
     # Event Decommissioning
     # ------------------------------------------------------------------

@@ -79,6 +79,15 @@ class RevokeAccessKeyRequest(BaseModel):
     access_key: str = Field(..., min_length=1, max_length=2048)
 
 
+class RevokeAccessKeyByHashRequest(BaseModel):
+    """Request to revoke an attendee access key by its stored hash (organizer
+    holds no raw key text — keys exist only as card pixels)."""
+
+    organizer_key: str = Field(..., min_length=1, max_length=2048)
+    event_id: str = Field(..., min_length=1, max_length=256)
+    key_hash: str = Field(..., min_length=1, max_length=256)
+
+
 class DecommissionEventRequest(BaseModel):
     """Request to decommission an event."""
 
@@ -317,6 +326,20 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
                 organizer_key=request.organizer_key,
                 event_id=event_id,
                 access_key=request.access_key,
+            )
+        except EventLifecycleError as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+        else:
+            return {"revoked": revoked}
+
+    @app.post("/api/events/{event_id}/access-keys/revoke-by-hash")
+    def revoke_access_key_by_hash(event_id: str, request: RevokeAccessKeyByHashRequest) -> dict:
+        """Revoke an attendee access key by its stored hash (revoke-by-button)."""
+        try:
+            revoked = lifecycle.revoke_access_key_by_hash(
+                organizer_key=request.organizer_key,
+                event_id=event_id,
+                key_hash=request.key_hash,
             )
         except EventLifecycleError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err

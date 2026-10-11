@@ -285,10 +285,12 @@ class OrganizerPage:
         ).to_be_visible()
         return url
 
-    def revoke_key(self, key: str) -> None:
+    def revoke_key(self, _key: str | None = None) -> None:
+        """Revoke the first active access key via its row button (the raw key
+        text isn't retrievable — keys live only in card pixels)."""
         self.tab("keys")
-        self.page.fill("#revoke-key", key)
-        self.page.click("#revoke-key-btn")
+        self.page.locator('[data-act="revoke-key"]').first.click()
+        self.confirm_modal()
         expect(self.page.locator(".toast", has_text="Access key revoked.")).to_be_visible()
         expect(self.page.locator(".badge-revoked").first).to_be_visible()
 

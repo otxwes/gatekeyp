@@ -287,3 +287,12 @@ class KeyManager:
         _, local_key = self.resolve_federation_prefix(input_key)
         hashed = self.hash_key(local_key)
         return self.db.revoke_key(hashed)
+
+    def revoke_key_by_hash(self, key_hash: str) -> bool:
+        """
+        Revoke a key by its already-stored hash (no re-hashing).
+
+        Used by organizer revoke-by-button, where the raw key value is not
+        available (keys exist only as card pixels). Returns True if revoked.
+        """
+        return self.db.revoke_key(key_hash)
