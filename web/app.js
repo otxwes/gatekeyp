@@ -422,7 +422,7 @@ function bindOrganizeEntry() {
                 eventId: created.event_id,
                 organizerKey: created.organizer_key,
                 title: created.title || title,
-                meta: { description, locationData: location_data },
+                meta: { description, locationData: location_data, flyerId: null },
             };
             // Optional flyer: upload it onto the event, then record it as the
             // event's flyer so card covers can reuse it.
@@ -437,10 +437,12 @@ function bindOrganizeEntry() {
                     throw new Error(data.detail || "Flyer upload failed");
                 }
                 const uploaded = await resp.json();
+                const newId = (uploaded && uploaded.id) || null;
                 await api(`/api/events/${encodeURIComponent(org.eventId)}/flyer`, {
                     method: "POST",
-                    body: { organizer_key: org.organizerKey, asset_id: (uploaded && uploaded.id) || null },
+                    body: { organizer_key: org.organizerKey, asset_id: newId },
                 });
+                org.meta.flyerId = newId;
             }
             createForm.reset();
             saveSession();
@@ -521,6 +523,9 @@ function renderWorkspace() {
         `<h2 class="ws-title">${esc(org.title || "Event workspace")}</h2>` +
         (org.meta && org.meta.description ? `<p class="ws-sub">${esc(org.meta.description)}</p>` : "") +
         (org.meta && org.meta.locationData ? `<p class="ws-loc">${esc(org.meta.locationData)}</p>` : "") +
+        (org.meta && org.meta.flyerId
+            ? `<img id="ws-flyer" class="event-flyer" src="${esc(mediaUrl(org.meta.flyerId))}" alt="Event flyer" loading="lazy" referrerpolicy="no-referrer">`
+            : "") +
         `<span id="ws-event-id" hidden>${esc(org.eventId)}</span>` +
         `</div>` +
         `<div class="ws-actions">` +
@@ -600,7 +605,6 @@ function bulletinMediaHTML(bulletin, assetsById) {
         `<span class="mt-name" title="${esc(asset.filename)}">${esc(asset.filename)}</span>` +
         `<span class="mt-size">${fmtBytes(asset.size_bytes)} · ${esc(asset.mime_type)}</span>` +
         `</div>` +
-        `<div class="mt-actions"><a class="btn btn-ghost btn-sm" href="${esc(mediaUrl(asset.id))}" target="_blank" rel="noopener">Open</a></div>` +
         `</div></div>`;
 }
 
@@ -638,22 +642,18 @@ async function wsBoard(main) {
     const flyerAsset = (details.event && details.event.flyer_asset_id)
         ? (assetsById[details.event.flyer_asset_id] || null)
         : null;
+    const flyerId = (details.event && details.event.flyer_asset_id) || null;
     const attached = new Set(bulletins.map((b) => b.media_id).filter(Boolean));
     const blocks = (details.content_blocks || []).map((b) => ({ ...b, _type: "block" }));
     const posts = [
         ...blocks,
         ...bulletins.map((b) => ({ ...b, _type: "bulletin" })),
-        ...assets.filter((a) => !attached.has(a.id)).map((a) => ({ ...a, _type: "media" })),
+        ...assets.filter((a) => !attached.has(a.id) && a.id !== flyerId).map((a) => ({ ...a, _type: "media" })),
     ].sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
 
-    const flyerCurrent = flyerAsset
-        ? `<div class="media-tile flyer-current" data-asset="${esc(flyerAsset.id)}">` +
-          `${(flyerAsset.mime_type || "").startsWith("image/")
-              ? `<img class="mt-preview" src="${esc(mediaUrl(flyerAsset.id))}" alt="${esc(flyerAsset.filename)}" loading="lazy" referrerpolicy="no-referrer">`
-              : `<div class="mt-fallback" aria-hidden="true">📄</div>`}` +
-          `<div class="mt-info"><span class="mt-name">${esc(flyerAsset.filename)}</span></div>` +
-          `</div>`
-        : emptyState("No flyer yet", "Upload one to use as the card cover.");
+    const flyerNote = flyerAsset
+        ? `<p class="field-hint">Current flyer: ${esc(flyerAsset.filename)}</p>`
+        : "";
 
     main.innerHTML =
         (posts.length
@@ -664,7 +664,7 @@ async function wsBoard(main) {
 
         `<section class="card">` +
         `<h3 class="card-title">Event flyer</h3>` +
-        `<div id="board-flyer-current">${flyerCurrent}</div>` +
+        `<div id="board-flyer-current">${flyerNote}</div>` +
         `<form id="board-flyer-form" autocomplete="off">` +
         `<div class="field"><label for="board-flyer-file">Upload or replace the event flyer</label>` +
         `<input type="file" id="board-flyer-file" accept="image/*,application/pdf,text/plain"></div>` +
@@ -717,8 +717,12 @@ async function wsBoard(main) {
             if (oldId && oldId !== newId) {
                 await api(`/api/media/${encodeURIComponent(oldId)}${qs({ key: org.organizerKey })}`, { method: "DELETE" }).catch(() => {});
             }
+            // Refresh the centered header flyer too.
+            org.meta = org.meta || {};
+            org.meta.flyerId = newId;
+            saveSession();
             toast("Event flyer updated.", "ok", "Saved");
-            await wsBoard(main);
+            renderWorkspace();
         } catch (err) {
             toast(err.message, "error", "Could not upload flyer");
             btnBusy(btn, false);
@@ -941,7 +945,6 @@ function mediaTile(asset) {
         `<span class="mt-size">${fmtBytes(asset.size_bytes)} · ${esc(asset.mime_type)}</span>` +
         `</figcaption>` +
         `<div class="mt-actions">` +
-        `<button class="btn btn-ghost btn-sm" type="button" data-act="copy-url">Copy link</button>` +
         `<button class="btn btn-danger btn-sm" type="button" data-act="delete-media">Delete</button>` +
         `</div>` +
         `</figure>`;
@@ -959,14 +962,6 @@ function bindMediaTiles(root) {
     });
     $$("[data-asset]", root).forEach((tile) => {
         const assetId = tile.dataset.asset;
-        const copyBtn = $('[data-act="copy-url"]', tile);
-        if (copyBtn) {
-            copyBtn.addEventListener("click", async () => {
-                const url = location.origin + mediaUrl(assetId);
-                const ok = await copyText(url);
-                toast(ok ? "Media link copied — only usable with a key." : "Copy blocked.", ok ? "ok" : "error", "Copy");
-            });
-        }
         const delBtn = $('[data-act="delete-media"]', tile);
         if (delBtn) {
             delBtn.addEventListener("click", () => {
@@ -1446,6 +1441,7 @@ async function openOrganizerWorkspace(eventId, organizerKey) {
             description: eventInfo.description || "",
             locationData: eventInfo.location_data || "",
             createdAt: eventInfo.created_at || "",
+            flyerId: eventInfo.flyer_asset_id || null,
         },
     };
     saveSession();
@@ -1851,6 +1847,9 @@ function renderEventPage() {
         `<p class="eyebrow ep-eyebrow">You're invited</p>` +
         `<h2 class="ep-title">${esc(event.title || "Untitled event")}</h2>` +
         `<p class="ep-lede">${esc(event.description || "")}</p>` +
+        (event.flyer_asset_id
+            ? `<img class="event-flyer" src="${esc(mediaUrl(event.flyer_asset_id))}" alt="Event flyer" loading="lazy" referrerpolicy="no-referrer">`
+            : "") +
         (event.location_data
             ? `<p class="ep-meta">${esc(event.location_data)}</p>`
             : "") +
@@ -1894,11 +1893,12 @@ async function loadAttendeeBoard() {
         const assetsById = {};
         assets.forEach((a) => { assetsById[a.id] = a; });
         const attached = new Set(bulletins.map((b) => b.media_id).filter(Boolean));
+        const flyerId = (attendee.event && attendee.event.flyer_asset_id) || null;
 
         const posts = [
             ...blocks.map((b) => ({ ...b, _type: "block" })),
             ...bulletins.map((b) => ({ ...b, _type: "bulletin" })),
-            ...assets.filter((a) => !attached.has(a.id)).map((a) => ({ ...a, _type: "media" })),
+            ...assets.filter((a) => !attached.has(a.id) && a.id !== flyerId).map((a) => ({ ...a, _type: "media" })),
         ].sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
 
         if (!posts.length) {
@@ -1953,7 +1953,6 @@ function attendeeMediaTile(asset) {
         `<span class="mt-name" title="${esc(asset.filename)}">${esc(asset.filename)}</span>` +
         `<span class="mt-size">${fmtBytes(asset.size_bytes)} · ${esc(asset.mime_type)}</span>` +
         `</div>` +
-        `<div class="mt-actions"><a class="btn btn-ghost btn-sm" href="${esc(mediaUrl(asset.id))}" target="_blank" rel="noopener">Open</a></div>` +
         `</div>`;
 }
 

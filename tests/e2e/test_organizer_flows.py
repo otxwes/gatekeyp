@@ -50,13 +50,16 @@ def test_post_with_media_then_delete(organizer_context, server, tmp_path):
 
 
 def test_flyer_upload_shows_cover_option(organizer_context, server, tmp_path):
-    """Uploading an event flyer makes it available as a card-cover option."""
+    """Uploading an event flyer shows it centered in the header and makes it
+    available as a card-cover option."""
     org = OrganizerPage(organizer_context.new_page(), server.base_url)
     org.create_event("Flyer Fest", "A story.")
     png = tmp_path / "poster.png"
     png.write_bytes(MEDIA_PNG)
     org.upload_flyer(png)
-    expect(org.page.locator("#board-flyer-current img.mt-preview")).to_be_visible()
+    # The flyer renders centered in the workspace header, not as a board post.
+    expect(org.page.locator("#ws-flyer")).to_be_visible()
+    expect(org.page.locator("#board-posts img.mt-preview")).to_have_count(0)
     # Opening the organizer card from the header offers the Flyer cover chip.
     org.page.click("#ws-organizer-card")
     org.page.locator("#card-preview").wait_for(state="visible", timeout=10_000)
