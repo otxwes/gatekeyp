@@ -31,13 +31,6 @@ if TYPE_CHECKING:
     from src.ephemeral.lxmf_delivery import LXMFKeyDeliverer
     from src.ephemeral.service import EphemeralService
 
-_FAVICON = (
-    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E"
-    "%3Ccircle cx='12' cy='4' r='2' fill='%23f5f5f5'/%3E"
-    "%3Cpath fill='none' stroke='%23f5f5f5' stroke-linecap='round' stroke-linejoin='round'"
-    " stroke-width='2' d='M5 20V11a7 7 0 0 1 14 0v9'/%3E%3C/svg%3E"
-)
-
 _PAGE_STYLE = (
     "body{font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;"
     "background:#0b0b0b;color:#f5f5f5}"
@@ -54,7 +47,6 @@ def _render_page(title: str, head_html: str, body_html: str) -> str:
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         '<meta name="color-scheme" content="dark">'
-        f'<link rel="icon" href="{_FAVICON}">'
         f"<title>{html.escape(title)}</title>{head_html}"
         f"<style>{_PAGE_STYLE}</style></head><body>{body_html}</body></html>"
     )

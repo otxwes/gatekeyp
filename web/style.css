@@ -300,21 +300,6 @@ p {
     text-decoration: none;
 }
 
-.brand-mark {
-    width: 24px;
-    height: 24px;
-    fill: none;
-    stroke: var(--accent);
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-
-.brand-mark circle {
-    fill: var(--accent);
-    stroke: none;
-}
-
 .brand-name {
     font-family: var(--font-serif);
     font-weight: 600;

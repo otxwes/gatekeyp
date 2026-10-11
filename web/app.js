@@ -596,8 +596,7 @@ async function wsBoard(main) {
         (event.location_data
             ? `<p class="field-hint">📍 ${esc(event.location_data)}</p>`
             : "") +
-        `<p><button class="btn btn-secondary btn-sm" type="button" id="ws-organizer-card">Organizer card</button>` +
-        ` — a stamped copy of this organizer key, hidden in the pixels.</p>` +
+        `<p><button class="btn btn-secondary btn-sm" type="button" id="ws-organizer-card">Organizer card</button></p>` +
         `</section>` +
 
         (posts.length
@@ -1190,9 +1189,6 @@ async function wsRsvps(main) {
         api(`/api/events/${eventId}/rsvp/settings${qs({ key: org.organizerKey })}`),
     ]);
     const shareUrl = `${location.href.split("#")[0]}#/rsvp/${org.eventId}`;
-    const pending = rsvps.filter((r) => r.status === "pending").length;
-    const approved = rsvps.filter((r) => r.status === "approved").length;
-    const denied = rsvps.length - pending - approved;
     const dial = settings.auto_approve;
     main.innerHTML =
         `<section class="card">` +
@@ -1213,7 +1209,6 @@ async function wsRsvps(main) {
         `<label for="rsvp-auto">Auto-approve the first N RSVPs</label>` +
         `<input type="number" id="rsvp-auto" min="0" step="1" placeholder="Off — every request waits for you"` +
         `${Number.isInteger(dial) ? ` value="${dial}"` : ""}>` +
-        `<p class="field-hint">Leave empty for a manual gate. While the dial is on, each new RSVP's key is granted immediately and the attendee's card opens the event on the spot.</p>` +
         `</div>` +
         `<p id="rsvp-settings-note" class="form-note" role="status" aria-live="polite"></p>` +
         `<button class="btn btn-primary" type="submit" id="rsvp-settings-btn">Save gate settings</button>` +
@@ -1221,7 +1216,6 @@ async function wsRsvps(main) {
         `</section>` +
         `<section class="card">` +
         `<h3 class="card-title">RSVP queue</h3>` +
-        `<p class="field-hint">${pending} pending · ${approved} approved${denied ? ` · ${denied} denied` : ""}. Approving grants the attendee's pre-minted key; denying revokes it for good — a denied attendee submits a fresh RSVP instead.</p>` +
         `<div class="key-list">` +
         (rsvps.length ? rsvps.map(rsvpRowHTML).join("") : emptyState("No RSVPs yet", "Share the funnel link above.")) +
         `</div>` +
