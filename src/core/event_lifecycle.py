@@ -229,6 +229,35 @@ class EventLifecycleManager:
             "content_blocks": blocks,
         }
 
+    def set_flyer(
+        self,
+        organizer_key: str,
+        event_id: str,
+        asset_id: str,
+    ) -> dict:
+        """
+        Set (or clear, when asset_id is None) the event's flyer media asset,
+        used as a card-cover option. Verifies the organizer's access and that
+        the asset belongs to this event.
+        """
+        validation = self.key_manager.validate_key(organizer_key)
+        if validation["status"] != "valid":
+            message = validation.get("message", "Invalid organizer key")
+            raise EventLifecycleError(message)
+        org_hash = validation["hash"]
+        content_ids = self.db.get_content_ids_for_key(org_hash)
+        if not any(c["content_id"] == event_id for c in content_ids):
+            raise EventLifecycleError(_ACCESS_DENIED_MSG)
+
+        if asset_id:
+            asset = self.db.get_media_asset(asset_id)
+            if asset is None or asset.get("event_id") != event_id:
+                other_event_msg = "Flyer asset does not belong to this event"
+                raise EventLifecycleError(other_event_msg)
+
+        self.db.set_event_flyer(event_id, asset_id)
+        return {"event_id": event_id, "flyer_asset_id": asset_id}
+
     # ------------------------------------------------------------------
     # Access Management
     # ------------------------------------------------------------------

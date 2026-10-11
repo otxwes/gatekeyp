@@ -15,6 +15,7 @@ from cryptography.fernet import Fernet
 _KEY_RSVP_MIN_COLS = 7  # keys.rsvp_id lives at column index 7
 _EVENT_RPH_MIN_COLS = 8  # events.rsvp_passphrase_hash lives at column index 8
 _EVENT_RAA_MIN_COLS = 9  # events.rsvp_auto_approve lives at column index 9
+_EVENT_FLYER_MIN_COLS = 10  # events.flyer_asset_id lives at column index 10
 _RSVP_MSG_MIN_COLS = 8  # rsvps.message lives at column index 8
 
 
@@ -135,7 +136,10 @@ class DatabaseHandler:
                 location_data TEXT,
                 created_at TEXT,
                 mode TEXT DEFAULT 'standard',
-                expires_at TEXT
+                expires_at TEXT,
+                rsvp_passphrase_hash TEXT,
+                rsvp_auto_approve INTEGER,
+                flyer_asset_id TEXT
             )
         """)
         self.cursor.execute("""
@@ -231,6 +235,10 @@ class DatabaseHandler:
         # Phase B: RSVP funnel settings (per-event, defaults off/manual)
         self._ensure_column("events", "rsvp_passphrase_hash", "TEXT")
         self._ensure_column("events", "rsvp_auto_approve", "INTEGER")
+
+        # Flyer cover: the event flyer uploaded at creation is referenced by
+        # asset id so card covers can reuse it.
+        self._ensure_column("events", "flyer_asset_id", "TEXT")
 
         # Phase B: RSVP requests link back to their pre-minted access keys
         self._ensure_column("keys", "rsvp_id", "TEXT")
@@ -457,8 +465,17 @@ class DatabaseHandler:
                 "expires_at": result[7],
                 "rsvp_passphrase_hash": result[8] if len(result) > _EVENT_RPH_MIN_COLS else None,
                 "rsvp_auto_approve": result[9] if len(result) > _EVENT_RAA_MIN_COLS else None,
+                "flyer_asset_id": result[10] if len(result) > _EVENT_FLYER_MIN_COLS else None,
             }
         return None
+
+    def set_event_flyer(self, event_id: str, asset_id: str | None) -> None:
+        """Point an event at its flyer media asset (None clears it)."""
+        self.cursor.execute(
+            "UPDATE events SET flyer_asset_id = ? WHERE event_id = ?",
+            (asset_id, event_id),
+        )
+        self.connection.commit()
 
     def add_event(
         self,

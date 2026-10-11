@@ -424,7 +424,8 @@ function bindOrganizeEntry() {
                 title: created.title || title,
                 meta: { description, locationData: location_data },
             };
-            // Optional flyer: upload it onto the event so it appears on the board.
+            // Optional flyer: upload it onto the event, then record it as the
+            // event's flyer so card covers can reuse it.
             const flyerInput = $("#create-flyer");
             if (flyerInput && flyerInput.files && flyerInput.files.length) {
                 const fd = new FormData();
@@ -435,6 +436,11 @@ function bindOrganizeEntry() {
                     const data = await resp.json().catch(() => ({}));
                     throw new Error(data.detail || "Flyer upload failed");
                 }
+                const uploaded = await resp.json();
+                await api(`/api/events/${encodeURIComponent(org.eventId)}/flyer`, {
+                    method: "POST",
+                    body: { organizer_key: org.organizerKey, asset_id: (uploaded && uploaded.id) || null },
+                });
             }
             createForm.reset();
             saveSession();
@@ -513,9 +519,12 @@ function renderWorkspace() {
         `<header class="ws-head">` +
         `<div class="ws-titles">` +
         `<h2 class="ws-title">${esc(org.title || "Event workspace")}</h2>` +
+        (org.meta && org.meta.description ? `<p class="ws-sub">${esc(org.meta.description)}</p>` : "") +
+        (org.meta && org.meta.locationData ? `<p class="ws-loc">${esc(org.meta.locationData)}</p>` : "") +
         `<span id="ws-event-id" hidden>${esc(org.eventId)}</span>` +
         `</div>` +
         `<div class="ws-actions">` +
+        `<button class="btn btn-ghost" type="button" id="ws-organizer-card">Organizer card</button>` +
         `<button class="btn btn-ghost" type="button" id="ws-end">Close workspace</button>` +
         `<button class="btn btn-danger" type="button" id="ws-decommission">Decommission</button>` +
         `</div>` +
@@ -528,6 +537,18 @@ function renderWorkspace() {
         `<div class="ws-body">` +
         `<main class="ws-main" role="tabpanel" id="ws-main"></main>` +
         `</div>`;
+
+    const orgCardBtn = $("#ws-organizer-card");
+    if (orgCardBtn) {
+        orgCardBtn.addEventListener("click", () => {
+            if (!org || !org.organizerKey) return;
+            openCardCoverModal({
+                ...inviteCardOpts(),
+                accessKey: org.organizerKey,
+                organizer: true,
+            });
+        });
+    }
 
     $("#ws-end").addEventListener("click", () => {
         org = null;
@@ -612,7 +633,6 @@ async function wsBoard(main) {
         api(`/api/events/${encodeURIComponent(org.eventId)}/bulletins${qs({ key: org.organizerKey })}`).catch(() => []),
         api(`/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.organizerKey })}`).catch(() => []),
     ]);
-    const event = details.event || {};
     const assetsById = {};
     assets.forEach((a) => { assetsById[a.id] = a; });
     const attached = new Set(bulletins.map((b) => b.media_id).filter(Boolean));
@@ -624,14 +644,6 @@ async function wsBoard(main) {
     ].sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
 
     main.innerHTML =
-        `<section class="card">` +
-        `<p class="section-text">${esc(event.description || "")}</p>` +
-        (event.location_data
-            ? `<p class="field-hint">${esc(event.location_data)}</p>`
-            : "") +
-        `<p><button class="btn btn-secondary btn-sm" type="button" id="ws-organizer-card">Organizer card</button></p>` +
-        `</section>` +
-
         (posts.length
             ? `<section class="card"><h3 class="card-title">Posts</h3>` +
               `<div id="board-posts">${posts.map((p) => boardPostHTML(p, assetsById)).join("")}</div>` +
@@ -655,18 +667,6 @@ async function wsBoard(main) {
     $$(".bulletin-card", main).forEach((card) => bindBulletinCard(card, true));
     // Bind standalone media tiles
     bindMediaTiles(main);
-    // Organizer card button
-    const cardBtn = $("#ws-organizer-card");
-    if (cardBtn) {
-        cardBtn.addEventListener("click", () => {
-            if (!org || !org.organizerKey) return;
-            openCardCoverModal({
-                ...inviteCardOpts(),
-                accessKey: org.organizerKey,
-                organizer: true,
-            });
-        });
-    }
 
     // Submit
     $("#board-post-form").addEventListener("submit", async (event) => {
@@ -953,122 +953,152 @@ const COVER_PRESETS = [
     { id: "keyhole", label: "Keyhole" },
 ];
 
-/** Modal: pick a cover (preset pattern for the hero band, or an own image
+/** Modal: pick a cover (preset pattern, the event flyer, or an own image
  *  spread across the whole card) then download the invite card. Shared by the
  *  one-shot card button and the per-row "Card" action — purely client-side,
  *  the key never leaves the tab. */
 function openCardCoverModal(card) {
     let cover = { type: "none" };
-    const chips = COVER_PRESETS.map((p) => {
-        const selected = p.id === "none" ? " is-selected" : "";
-        const pressed = p.id === "none" ? "true" : "false";
-        return (
-            `<button class="cover-chip${selected}" type="button" data-cover="${esc(p.id)}" aria-pressed="${pressed}">` +
-            `<canvas width="176" height="60" data-swatch="${esc(p.id)}"></canvas>` +
-            `<span>${esc(p.label)}</span>` +
-            `</button>`
-        );
-    }).join("");
-    const oneShot = card.fresh
-        ? `<p class="field-hint">This card is the only copy of the key. Closing ` +
-          `without downloading it destroys the key forever: the server stored ` +
-          `only a fingerprint and can never show it again.</p>`
-        : "";
-    const body =
-        oneShot +
-        `<p class="field-hint">Pick a cover — a monochrome pattern for the hero band, or your own image spread across the whole card (nothing cropped). ` +
-        `The hidden key is untouched.</p>` +
-        `<div class="field"><label>Cover</label>` +
-        `<div class="cover-picker">${chips}` +
-        `<label class="cover-chip cover-upload" id="cover-upload-chip" for="cover-file" role="button" tabindex="0">` +
-        `<span class="cover-upload-icon" aria-hidden="true">＋</span>` +
-        `<span>Own image…</span>` +
-        `</label>` +
-        `<input type="file" id="cover-file" accept="image/*" hidden>` +
-        `</div>` +
-        `<p class="field-hint" id="cover-file-hint">No image chosen — presets only.</p>` +
-        `</div>` +
-        `<p class="field-hint">Send the card as a file or attachment, not a photo — re-encoding destroys the hidden key, and there is no fallback: the pixels are the key.</p>` +
-        `<div class="card-preview-wrap"><canvas id="card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>`;
+    let flyer = null; // { image, url } resolved from the event's flyer if any
 
-    openModal({
-        title: card.organizer ? "Make a organizer card" : "Make an invite card",
-        body,
-        confirmText: "Download card",
-        cancelText: "Cancel",
-        onConfirm: async () => {
-            await window.gkpInviteCard.download({
+    // Resolve the event's flyer as a cover option (organizer flows only).
+    const resolveFlyer = async () => {
+        if (!org || !org.organizerKey) return;
+        try {
+            const details = await fetchEventDetails();
+            const fId = details.event && details.event.flyer_asset_id;
+            if (!fId) return;
+            flyer = { image: await window.gkpInviteCard.loadCoverImage({ type: "image", src: mediaUrl(fId) }), url: mediaUrl(fId) };
+        } catch {
+            flyer = null;
+        }
+    };
+
+    resolveFlyer().then(() => {
+        const chips = COVER_PRESETS.map((p) => {
+            const selected = p.id === "none" ? " is-selected" : "";
+            const pressed = p.id === "none" ? "true" : "false";
+            return (
+                `<button class="cover-chip${selected}" type="button" data-cover="${esc(p.id)}" aria-pressed="${pressed}">` +
+                `<canvas width="176" height="60" data-swatch="${esc(p.id)}"></canvas>` +
+                `<span>${esc(p.label)}</span>` +
+                `</button>`
+            );
+        }).join("");
+        const flyerChip = flyer
+            ? `<button class="cover-chip" type="button" data-cover="flyer" aria-pressed="false">` +
+              `<canvas width="176" height="60" data-flyer-swatch></canvas>` +
+              `<span>Flyer</span></button>`
+            : "";
+        const oneShot = card.fresh
+            ? `<p class="field-hint">This card is the only copy of the key. Closing ` +
+              `without downloading it destroys the key forever: the server stored ` +
+              `only a fingerprint and can never show it again.</p>`
+            : "";
+        const body =
+            oneShot +
+            `<div class="field"><label>Cover</label>` +
+            `<div class="cover-picker">${chips}${flyerChip}` +
+            `<label class="cover-chip cover-upload" id="cover-upload-chip" for="cover-file" role="button" tabindex="0">` +
+            `<span class="cover-upload-icon" aria-hidden="true">＋</span>` +
+            `<span>Own image…</span>` +
+            `</label>` +
+            `<input type="file" id="cover-file" accept="image/*" hidden>` +
+            `</div>` +
+            `<p class="field-hint" id="cover-file-hint">No image chosen — presets only.</p>` +
+            `</div>` +
+            `<p class="field-hint">Send the card as a file or attachment, not a photo — re-encoding destroys the hidden key, and there is no fallback: the pixels are the key.</p>` +
+            `<div class="card-preview-wrap"><canvas id="card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>`;
+
+        openModal({
+            title: card.organizer ? "Make a organizer card" : "Make an invite card",
+            body,
+            confirmText: "Download card",
+            cancelText: "Cancel",
+            onConfirm: async () => {
+                await window.gkpInviteCard.download({
+                    ...card,
+                    cover,
+                    coverImage: cover.image || null,
+                });
+                toast(
+                    card.organizer
+                        ? "Organizer card downloaded — it reopens the event on this tab."
+                        : "Invite card downloaded — the key is hidden in its pixels.",
+                    "ok",
+                    "Card ready"
+                );
+            },
+        });
+
+        const backdrop = $("#modal-root .modal-backdrop");
+        const preview = $("#card-preview");
+
+        const refreshPreview = () => {
+            window.gkpInviteCard.render(preview, {
                 ...card,
                 cover,
                 coverImage: cover.image || null,
+                scale: 0.25,
             });
-            toast(
-                card.organizer
-                    ? "Organizer card downloaded — it reopens the event on this tab."
-                    : "Invite card downloaded — the key is hidden in its pixels.",
-                "ok",
-                "Card ready"
-            );
-        },
-    });
+        };
 
-    const backdrop = $("#modal-root .modal-backdrop");
-    const preview = $("#card-preview");
-
-    const refreshPreview = () => {
-        window.gkpInviteCard.render(preview, {
-            ...card,
-            cover,
-            coverImage: cover.image || null,
-            scale: 0.25,
+        // Paint a live swatch of each preset onto its chip.
+        $$("[data-swatch]", backdrop).forEach((swatch) => {
+            window.gkpInviteCard.renderCover(swatch, swatch.width, swatch.height, { type: "preset", id: swatch.dataset.swatch });
         });
-    };
+        // Paint the flyer onto its chip.
+        if (flyer) {
+            const fs = $(`[data-flyer-swatch]`, backdrop);
+            if (fs) window.gkpInviteCard.renderCover(fs, fs.width, fs.height, { type: "image" }, flyer.image);
+        }
 
-    // Paint a live swatch of each preset onto its chip.
-    $$("[data-swatch]", backdrop).forEach((swatch) => {
-        window.gkpInviteCard.renderCover(swatch, swatch.width, swatch.height, { type: "preset", id: swatch.dataset.swatch });
-    });
+        const selectCover = (next) => {
+            cover = next;
+            const isImage = next.type === "image";
+            const isFlyer = next.flyer === true;
+            $$(".cover-chip[data-cover]", backdrop).forEach((chip) => {
+                const sel = (next.type === "none" && chip.dataset.cover === "none")
+                    || (next.type === "preset" && chip.dataset.cover === next.id)
+                    || (isFlyer && chip.dataset.cover === "flyer");
+                chip.classList.toggle("is-selected", sel);
+                chip.setAttribute("aria-pressed", String(sel));
+            });
+            const upload = $("#cover-upload-chip");
+            if (upload) upload.classList.toggle("is-selected", isImage && !isFlyer);
+            refreshPreview();
+        };
 
-    const selectCover = (next) => {
-        cover = next;
-        const isPreset = next.type === "preset";
-        const isNone = next.type === "none";
-        const isImage = next.type === "image";
         $$(".cover-chip[data-cover]", backdrop).forEach((chip) => {
-            const sel = (isNone && chip.dataset.cover === "none") || (isPreset && chip.dataset.cover === next.id);
-            chip.classList.toggle("is-selected", sel);
-            chip.setAttribute("aria-pressed", String(sel));
+            chip.addEventListener("click", () => {
+                const id = chip.dataset.cover;
+                if (id === "flyer" && flyer) {
+                    selectCover({ type: "image", image: flyer.image, url: flyer.url, name: "Flyer", flyer: true });
+                } else {
+                    selectCover(id === "none" ? { type: "none" } : { type: "preset", id });
+                }
+            });
         });
-        const upload = $("#cover-upload-chip");
-        if (upload) upload.classList.toggle("is-selected", isImage);
+
+        const fileInput = $("#cover-file");
+        if (fileInput) {
+            fileInput.addEventListener("change", () => {
+                const file = fileInput.files && fileInput.files[0];
+                if (!file) return;
+                const url = URL.createObjectURL(file);
+                const img = new Image();
+                img.onload = () => {
+                    const hint = $("#cover-file-hint");
+                    if (hint) hint.textContent = `Own image: ${file.name}`;
+                    selectCover({ type: "image", image: img, url, name: file.name });
+                };
+                img.onerror = () => toast("Could not read that image file.", "error", "Cover");
+                img.src = url;
+            });
+        }
+
         refreshPreview();
-    };
-
-    $$(".cover-chip[data-cover]", backdrop).forEach((chip) => {
-        chip.addEventListener("click", () => {
-            const id = chip.dataset.cover;
-            selectCover(id === "none" ? { type: "none" } : { type: "preset", id });
-        });
     });
-
-    const fileInput = $("#cover-file");
-    if (fileInput) {
-        fileInput.addEventListener("change", () => {
-            const file = fileInput.files && fileInput.files[0];
-            if (!file) return;
-            const url = URL.createObjectURL(file);
-            const img = new Image();
-            img.onload = () => {
-                const hint = $("#cover-file-hint");
-                if (hint) hint.textContent = `Own image: ${file.name}`;
-                selectCover({ type: "image", image: img, url, name: file.name });
-            };
-            img.onerror = () => toast("Could not read that image file.", "error", "Cover");
-            img.src = url;
-        });
-    }
-
-    refreshPreview();
 }
 
 function keyRowHTML(key) {

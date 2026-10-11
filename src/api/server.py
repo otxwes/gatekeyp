@@ -41,6 +41,13 @@ class CreateEventRequest(BaseModel):
     location_data: str | None = Field(default=None, max_length=1024)
 
 
+class SetFlyerRequest(BaseModel):
+    """Request to set an event's flyer media asset (card-cover source)."""
+
+    organizer_key: str = Field(..., min_length=1, max_length=2048)
+    asset_id: str | None = Field(default=None, max_length=256)
+
+
 class AddContentRequest(BaseModel):
     """Request to add a content block to an event."""
 
@@ -289,6 +296,18 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             raise HTTPException(status_code=422, detail="organizer_key is required")
         try:
             return lifecycle.get_event_details(organizer_key=organizer_key, event_id=event_id)
+        except EventLifecycleError as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+
+    @app.post("/api/events/{event_id}/flyer")
+    def set_event_flyer(event_id: str, request: SetFlyerRequest) -> dict:
+        """Point an event at its flyer media asset (used as a card-cover)."""
+        try:
+            return lifecycle.set_flyer(
+                organizer_key=request.organizer_key,
+                event_id=event_id,
+                asset_id=request.asset_id,
+            )
         except EventLifecycleError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err
 
