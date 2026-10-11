@@ -49,6 +49,22 @@ def test_post_with_media_then_delete(organizer_context, server, tmp_path):
     org.watcher.expect_clean()
 
 
+def test_flyer_upload_shows_cover_option(organizer_context, server, tmp_path):
+    """Uploading an event flyer makes it available as a card-cover option."""
+    org = OrganizerPage(organizer_context.new_page(), server.base_url)
+    org.create_event("Flyer Fest", "A story.")
+    png = tmp_path / "poster.png"
+    png.write_bytes(MEDIA_PNG)
+    org.upload_flyer(png)
+    expect(org.page.locator("#board-flyer-current img.mt-preview")).to_be_visible()
+    # Opening the organizer card from the header offers the Flyer cover chip.
+    org.page.click("#ws-organizer-card")
+    org.page.locator("#card-preview").wait_for(state="visible", timeout=10_000)
+    expect(org.page.locator('#modal-root .cover-chip[data-cover="flyer"]')).to_be_visible()
+    org.page.locator('[data-act="cancel"]').click()
+    org.watcher.expect_clean()
+
+
 def test_bulletin_comment_and_cleanup(organizer_context, attendee_context, server):
     """A6: organizer posts, attendee comments, organizer deletes the comment
     and then the whole bulletin; the attendee page reflects both removals."""
@@ -144,10 +160,8 @@ def test_mint_modal_never_shows_key_text(organizer_context, server):
     assert org.keys.latest(org.page)  # key did arrive — but only on the wire
     expect(org.page.locator("#modal-root .kc-value")).to_have_count(0)
     expect(org.page.locator("#modal-root #key-copy-btn")).to_have_count(0)
-    # The one-shot warning moved here with the modal hop removed.
-    expect(
-        org.page.locator("#modal-root .modal", has_text="destroys the key forever")
-    ).to_be_visible()
+    # The cover modal is open (download is the confirm action).
+    expect(org.page.locator('#modal-root [data-act="confirm"]')).to_be_visible()
     org.page.locator('[data-act="cancel"]').click()
     expect(org.page.locator(".ws-banner #ws-copy-key, #ws-copy-key")).to_have_count(0)
     org.watcher.expect_clean()

@@ -635,6 +635,9 @@ async function wsBoard(main) {
     ]);
     const assetsById = {};
     assets.forEach((a) => { assetsById[a.id] = a; });
+    const flyerAsset = (details.event && details.event.flyer_asset_id)
+        ? (assetsById[details.event.flyer_asset_id] || null)
+        : null;
     const attached = new Set(bulletins.map((b) => b.media_id).filter(Boolean));
     const blocks = (details.content_blocks || []).map((b) => ({ ...b, _type: "block" }));
     const posts = [
@@ -643,12 +646,31 @@ async function wsBoard(main) {
         ...assets.filter((a) => !attached.has(a.id)).map((a) => ({ ...a, _type: "media" })),
     ].sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
 
+    const flyerCurrent = flyerAsset
+        ? `<div class="media-tile flyer-current" data-asset="${esc(flyerAsset.id)}">` +
+          `${(flyerAsset.mime_type || "").startsWith("image/")
+              ? `<img class="mt-preview" src="${esc(mediaUrl(flyerAsset.id))}" alt="${esc(flyerAsset.filename)}" loading="lazy" referrerpolicy="no-referrer">`
+              : `<div class="mt-fallback" aria-hidden="true">📄</div>`}` +
+          `<div class="mt-info"><span class="mt-name">${esc(flyerAsset.filename)}</span></div>` +
+          `</div>`
+        : emptyState("No flyer yet", "Upload one to use as the card cover.");
+
     main.innerHTML =
         (posts.length
             ? `<section class="card"><h3 class="card-title">Posts</h3>` +
               `<div id="board-posts">${posts.map((p) => boardPostHTML(p, assetsById)).join("")}</div>` +
               `</section>`
             : `<section class="card">${emptyState("No posts yet", "Write the first one below.")}</section>`) +
+
+        `<section class="card">` +
+        `<h3 class="card-title">Event flyer</h3>` +
+        `<div id="board-flyer-current">${flyerCurrent}</div>` +
+        `<form id="board-flyer-form" autocomplete="off">` +
+        `<div class="field"><label for="board-flyer-file">Upload or replace the event flyer</label>` +
+        `<input type="file" id="board-flyer-file" accept="image/*,application/pdf,text/plain"></div>` +
+        `<button class="btn btn-primary" type="submit" id="board-flyer-btn">Upload flyer</button>` +
+        `</form>` +
+        `</section>` +
 
         `<section class="card">` +
         `<h3 class="card-title">New post</h3>` +
@@ -667,6 +689,41 @@ async function wsBoard(main) {
     $$(".bulletin-card", main).forEach((card) => bindBulletinCard(card, true));
     // Bind standalone media tiles
     bindMediaTiles(main);
+
+    // Upload or replace the event flyer.
+    $("#board-flyer-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const input = $("#board-flyer-file");
+        if (!input || !input.files || !input.files.length) return;
+        const btn = $("#board-flyer-btn");
+        btnBusy(btn, true, "Uploading…");
+        try {
+            const fd = new FormData();
+            fd.append("file", input.files[0]);
+            const url = `/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.organizerKey })}`;
+            const resp = await fetch(url, { method: "POST", body: fd });
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
+                throw new Error(data.detail || `Upload failed (${resp.status})`);
+            }
+            const uploaded = await resp.json();
+            const newId = (uploaded && uploaded.id) || null;
+            await api(`/api/events/${encodeURIComponent(org.eventId)}/flyer`, {
+                method: "POST",
+                body: { organizer_key: org.organizerKey, asset_id: newId },
+            });
+            // Replace removes the old flyer asset to avoid bloat.
+            const oldId = flyerAsset ? flyerAsset.id : null;
+            if (oldId && oldId !== newId) {
+                await api(`/api/media/${encodeURIComponent(oldId)}${qs({ key: org.organizerKey })}`, { method: "DELETE" }).catch(() => {});
+            }
+            toast("Event flyer updated.", "ok", "Saved");
+            await wsBoard(main);
+        } catch (err) {
+            toast(err.message, "error", "Could not upload flyer");
+            btnBusy(btn, false);
+        }
+    });
 
     // Submit
     $("#board-post-form").addEventListener("submit", async (event) => {
@@ -990,13 +1047,7 @@ function openCardCoverModal(card) {
               `<canvas width="176" height="60" data-flyer-swatch></canvas>` +
               `<span>Flyer</span></button>`
             : "";
-        const oneShot = card.fresh
-            ? `<p class="field-hint">This card is the only copy of the key. Closing ` +
-              `without downloading it destroys the key forever: the server stored ` +
-              `only a fingerprint and can never show it again.</p>`
-            : "";
         const body =
-            oneShot +
             `<div class="field"><label>Cover</label>` +
             `<div class="cover-picker">${chips}${flyerChip}` +
             `<label class="cover-chip cover-upload" id="cover-upload-chip" for="cover-file" role="button" tabindex="0">` +
@@ -1005,9 +1056,7 @@ function openCardCoverModal(card) {
             `</label>` +
             `<input type="file" id="cover-file" accept="image/*" hidden>` +
             `</div>` +
-            `<p class="field-hint" id="cover-file-hint">No image chosen — presets only.</p>` +
             `</div>` +
-            `<p class="field-hint">Send the card as a file or attachment, not a photo — re-encoding destroys the hidden key, and there is no fallback: the pixels are the key.</p>` +
             `<div class="card-preview-wrap"><canvas id="card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>`;
 
         openModal({
@@ -1088,8 +1137,6 @@ function openCardCoverModal(card) {
                 const url = URL.createObjectURL(file);
                 const img = new Image();
                 img.onload = () => {
-                    const hint = $("#cover-file-hint");
-                    if (hint) hint.textContent = `Own image: ${file.name}`;
                     selectCover({ type: "image", image: img, url, name: file.name });
                 };
                 img.onerror = () => toast("Could not read that image file.", "error", "Cover");

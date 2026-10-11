@@ -191,6 +191,13 @@ class OrganizerPage:
         self.page.click("#board-post-btn")
         expect(self.page.locator(".bulletin-card", has_text=title)).to_be_visible()
 
+    def upload_flyer(self, file_path: str | Path) -> None:
+        """Upload (or replace) the event flyer from the board's flyer card."""
+        self.tab("board")
+        self.page.locator("#board-flyer-file").set_input_files(file_path)
+        self.page.click("#board-flyer-btn")
+        expect(self.page.locator(".toast", has_text="Event flyer updated.")).to_be_visible()
+
     def mint_key(self, owner: str, days: int = 30) -> str:
         """Mint an access key; the raw value arrives only via the POST response
         (the UI never renders it as text). Closes the card-centric modal."""
