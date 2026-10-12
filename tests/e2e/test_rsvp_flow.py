@@ -66,6 +66,27 @@ def test_approved_rsvp_unlocks_and_content_blocks_surface(
     attendee.watcher.expect_clean()
 
 
+def test_revoked_rsvp_key_shows_revoked_in_queue(organizer_context, attendee_context, server):
+    """An approved RSVP's access key is named after the attendee, and when the
+    key is revoked the RSVP queue reflects it as Revoked, not Approved."""
+    organizer = OrganizerPage(organizer_context.new_page(), server.base_url)
+    organizer.create_event("Gate Audit", "Trace the key.")
+    funnel = organizer.set_gate_settings()  # manual gate
+    attendee = AttendeePage(attendee_context.new_page(), server.base_url)
+    attendee.rsvp(funnel, name="Pat Pal")
+    attendee.rsvp_key()
+    organizer.approve_rsvp("Pat Pal")
+    # The access key carries the attendee's name, not 'unnamed key'.
+    organizer.tab("keys")
+    expect(organizer.page.locator(".key-detail-row", has_text="Pat Pal")).to_have_count(1)
+    # Revoking the key flips the RSVP queue row to Revoked.
+    organizer.revoke_key()
+    organizer.tab("rsvps")
+    row = organizer.page.locator(".key-detail-row", has_text="Pat Pal")
+    expect(row.locator(".badge-revoked")).to_be_visible()
+    organizer.watcher.expect_clean()
+
+
 def test_stego_png_invite_unlock(organizer_context, attendee_context, server, tmp_path):
     organizer = OrganizerPage(organizer_context.new_page(), server.base_url)
     organizer.create_event("Stego Salon", "Pixels as proof.")

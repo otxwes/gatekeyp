@@ -599,6 +599,13 @@ class DatabaseHandler:
             message = f"Failed to decrypt message for RSVP {rsvp_id}"
             raise DecryptionError(message) from err
 
+    def _rsvp_key_revoked(self, key_hash: str | None) -> bool:
+        """Whether the access key behind an RSVP row is revoked."""
+        if not key_hash:
+            return False
+        key = self.get_key(key_hash)
+        return bool(key and key.get("revoked"))
+
     def get_rsvp(self, rsvp_id: str) -> dict | None:
         """Retrieve an RSVP row, decrypting the contact and message fields."""
         self.cursor.execute("SELECT * FROM rsvps WHERE rsvp_id = ?", (rsvp_id,))
@@ -647,6 +654,7 @@ class DatabaseHandler:
                     "contact": contact,
                     "status": result[4],
                     "key_hash": result[5],
+                    "key_revoked": self._rsvp_key_revoked(result[5]),
                     "created_at": result[6],
                     "decided_at": result[7],
                     "message": self._rsvp_message(result, result[0]),

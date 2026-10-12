@@ -1268,23 +1268,27 @@ async function wsKeys(main) {
 function rsvpBadge(status) {
     if (status === "approved") return `<span class="badge badge-active">Approved</span>`;
     if (status === "denied") return `<span class="badge badge-revoked">Denied</span>`;
+    if (status === "revoked") return `<span class="badge badge-revoked">Revoked</span>`;
     return `<span class="badge badge-neutral">Pending</span>`;
 }
 
 function rsvpRowHTML(rsvp) {
+    const revoked = rsvp.key_revoked === true;
     const actions =
-        rsvp.status === "pending"
-            ? `<button class="btn btn-secondary btn-sm" type="button" data-act="approve" data-rsvp="${esc(rsvp.id)}">Approve</button>` +
-              `<button class="btn btn-danger btn-sm" type="button" data-act="deny" data-rsvp="${esc(rsvp.id)}">Deny</button>`
-            : rsvp.status === "approved"
-              ? `<button class="btn btn-danger btn-sm" type="button" data-act="deny" data-rsvp="${esc(rsvp.id)}">Deny</button>`
-              : "";
+        revoked
+            ? ""
+            : rsvp.status === "pending"
+              ? `<button class="btn btn-secondary btn-sm" type="button" data-act="approve" data-rsvp="${esc(rsvp.id)}">Approve</button>` +
+                `<button class="btn btn-danger btn-sm" type="button" data-act="deny" data-rsvp="${esc(rsvp.id)}">Deny</button>`
+              : rsvp.status === "approved"
+                ? `<button class="btn btn-danger btn-sm" type="button" data-act="deny" data-rsvp="${esc(rsvp.id)}">Deny</button>`
+                : "";
     const decided = rsvp.status === "pending" ? "" : ` · decided ${esc(fmtDate(rsvp.decided_at))}`;
     const note = rsvp.message
         ? `<div class="kd-sub kd-msg">“${esc(rsvp.message)}”</div>`
         : "";
     return `<div class="key-detail-row" data-rsvp-id="${esc(rsvp.id)}">` +
-        rsvpBadge(rsvp.status) +
+        rsvpBadge(revoked ? "revoked" : rsvp.status) +
         `<div class="kd-info">` +
         `<div class="kd-name">${esc(rsvp.display_name || "Unnamed")}</div>` +
         `<div class="kd-sub">${rsvp.contact ? `${esc(rsvp.contact)} · ` : ""}asked ${esc(fmtDate(rsvp.created_at))}${decided}</div>` +

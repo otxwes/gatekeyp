@@ -261,7 +261,7 @@ class RsvpService:
             hash_key=access_hash,
             key_type="access",
             expires_at=expires_at,
-            owner_id=None,
+            owner_id=name,
             rsvp_id=rsvp_id,
         )
         if auto_approved:
