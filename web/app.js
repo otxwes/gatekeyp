@@ -1281,26 +1281,70 @@ async function wsKeys(main) {
     const coverPicker = $("#bulk-cover-picker");
     let sharedCover = { type: "none" };
     if (coverPicker) {
-        // Paint the shared-cover preset chips.
+        // Preset chips + a Flyer option (if one exists) + Own image upload.
         coverPicker.innerHTML = COVER_PRESETS.map((p) =>
             `<button type="button" class="cover-chip${p.id === "none" ? " is-selected" : ""}" data-cover="${esc(p.id)}" aria-pressed="${p.id === "none"}">` +
             `<canvas width="88" height="30" data-swatch="${esc(p.id)}"></canvas>` +
             `<span>${esc(p.label)}</span></button>`
-        ).join("");
+        ).join("") +
+            `<button type="button" class="cover-chip" data-cover="bulkflyer" aria-pressed="false" hidden>` +
+            `<canvas width="88" height="30" data-flyer-swatch></canvas>` +
+            `<span>Flyer</span></button>` +
+            `<label class="cover-chip cover-upload" id="bulk-cover-upload" for="bulk-cover-file" role="button" tabindex="0">` +
+            `<span class="cover-upload-icon" aria-hidden="true">＋</span>` +
+            `<span>Own image…</span></label>` +
+            `<input type="file" id="bulk-cover-file" accept="image/*" hidden>`;
+
         $$("canvas[data-swatch]", coverPicker).forEach((swatch) => {
             window.gkpInviteCard.renderCover(swatch, swatch.width, swatch.height, { type: "preset", id: swatch.dataset.swatch });
         });
+
+        const selectCover = (next, activeCover) => {
+            sharedCover = next;
+            $$(".cover-chip[data-cover]", coverPicker).forEach((c) => {
+                const sel = c.dataset.cover === activeCover;
+                c.classList.toggle("is-selected", sel);
+                c.setAttribute("aria-pressed", String(sel));
+            });
+        };
         $$(".cover-chip[data-cover]", coverPicker).forEach((chip) => {
             chip.addEventListener("click", () => {
                 const id = chip.dataset.cover;
-                sharedCover = id === "none" ? { type: "none" } : { type: "preset", id };
-                $$(".cover-chip[data-cover]", coverPicker).forEach((c) => {
-                    const sel = c.dataset.cover === id;
-                    c.classList.toggle("is-selected", sel);
-                    c.setAttribute("aria-pressed", String(sel));
-                });
+                if (id === "bulkflyer" || id === "bulkimage") return;
+                selectCover(id === "none" ? { type: "none" } : { type: "preset", id }, id);
             });
         });
+
+        // Own image as the shared cover.
+        const bulkCoverFile = $("#bulk-cover-file");
+        if (bulkCoverFile) {
+            bulkCoverFile.addEventListener("change", () => {
+                const file = bulkCoverFile.files && bulkCoverFile.files[0];
+                if (!file) return;
+                const url = URL.createObjectURL(file);
+                const img = new Image();
+                img.onload = () => selectCover({ type: "image", image: img, url, name: file.name }, "bulkimage");
+                img.onerror = () => toast("Could not read that image file.", "error", "Cover");
+                img.src = url;
+            });
+        }
+
+        // The event flyer as the shared cover (only if one is set).
+        const flyerId = org && org.meta && org.meta.flyerId;
+        if (flyerId) {
+            const flyerBtn = coverPicker.querySelector('[data-cover="bulkflyer"]');
+            if (flyerBtn) {
+                const src = mediaUrl(flyerId);
+                const img = new Image();
+                img.onload = () => {
+                    flyerBtn.hidden = false;
+                    const fs = flyerBtn.querySelector("canvas");
+                    if (fs) window.gkpInviteCard.renderCover(fs, fs.width, fs.height, { type: "image" }, img);
+                    flyerBtn.addEventListener("click", () => selectCover({ type: "image", image: img, url: src }, "bulkflyer"));
+                };
+                img.src = src;
+            }
+        }
     }
     const bulkMode = $("#bulk-cover-mode");
     if (bulkMode) {
