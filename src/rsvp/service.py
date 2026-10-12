@@ -402,3 +402,11 @@ class RsvpService:
             },
             "passphrase_required": bool(event.get("rsvp_passphrase_hash")),
         }
+
+    def get_public_view_by_slug(self, slug: str) -> dict:
+        """Resolve a human-readable share slug to an event's public view."""
+        event = self.db.get_event_by_slug(slug)
+        if event is None:
+            message = f"Event not found: {slug}"
+            raise RsvpNotFoundError(message)
+        return self.get_public_view(event["id"])

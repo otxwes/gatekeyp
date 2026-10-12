@@ -71,7 +71,7 @@ class RsvpSettingsRequest(BaseModel):
     auto_approve: int | None = Field(default=None, ge=0, le=MAX_AUTO_APPROVE)
 
 
-def build_rsvp_router(  # noqa: C901 - many routes
+def build_rsvp_router(  # noqa: C901, PLR0915 - many routes
     service: RsvpService,
 ) -> APIRouter:
     """Build the RSVP funnel router bound to the shared service."""
@@ -115,6 +115,15 @@ def build_rsvp_router(  # noqa: C901 - many routes
         """Minimal public RSVP-page data: title, description, gate flags."""
         try:
             view = service.get_public_view(event_id)
+        except RsvpNotFoundError as err:
+            raise HTTPException(status_code=404, detail="Event not found") from err
+        return JSONResponse(view, headers={"Cache-Control": "no-store"})
+
+    @router.get("/api/events/by-slug/{slug}/rsvp/view")
+    def rsvp_public_view_by_slug(slug: str) -> JSONResponse:
+        """Resolve a human-readable share slug to an event's public RSVP view."""
+        try:
+            view = service.get_public_view_by_slug(slug)
         except RsvpNotFoundError as err:
             raise HTTPException(status_code=404, detail="Event not found") from err
         return JSONResponse(view, headers={"Cache-Control": "no-store"})

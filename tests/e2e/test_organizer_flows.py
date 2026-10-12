@@ -105,9 +105,10 @@ def test_mint_produces_downloadable_stego_card(organizer_context, server, tmp_pa
 def test_rsvp_funnel_link_is_shareable(organizer_context, server):
     """A8: the RSVP tab exposes the funnel URL and the copy affordance fires."""
     org = OrganizerPage(organizer_context.new_page(), server.base_url)
-    handle = org.create_event("Funnel Link Check", "Pass it along.")
+    org.create_event("Funnel Link Check", "Pass it along.")
     url = org.copy_rsvp_link()
-    assert f"#/rsvp/{handle.event_id}" in url, url
+    assert "#/rsvp/" in url, url
+    assert "event_" not in url.split("#")[1], f"funnel link not human-readable: {url}"
     org.watcher.expect_clean()
 
 

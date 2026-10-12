@@ -165,3 +165,14 @@ def test_decided_rsvp_row_is_final(organizer_context, attendee_context, server):
     expect(row.locator('[data-act="approve"]')).to_have_count(0)
     expect(row.locator(".kd-sub")).to_contain_text("decided")
     organizer.watcher.expect_clean()
+
+
+def test_funnel_url_uses_slug(organizer_context, server):
+    """The RSVP share link uses the event's human-readable slug, not the raw id."""
+    org = OrganizerPage(organizer_context.new_page(), server.base_url)
+    org.create_event("Kitchen Table Rundown", "A cozy one.")
+    funnel = org.set_gate_settings()
+    assert "/#/rsvp/" in funnel
+    hash_part = funnel.split("#")[1]
+    assert "event_" not in hash_part, f"share link still uses a raw event id: {funnel}"
+    org.watcher.expect_clean()

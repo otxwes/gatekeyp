@@ -1,5 +1,6 @@
 # Copyright (c) 2026 gatekeyp contributors
 
+import re
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -61,6 +62,14 @@ class EventLifecycleManager:
         """Generate a unique ID with a prefix."""
         return f"{prefix}_{secrets.token_hex(16)}"
 
+    @staticmethod
+    def _make_slug(title: str) -> str:
+        """A human-readable share slug from a title (lowercase, dashed, with
+        a short random suffix so titles never collide)."""
+        base = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+        base = base[:40].strip("-") or "event"
+        return f"{base}-{secrets.token_hex(3)}"
+
     # ------------------------------------------------------------------
     # Event Creation
     # ------------------------------------------------------------------
@@ -103,6 +112,7 @@ class EventLifecycleManager:
 
         # Generate event ID
         event_id = self._generate_id("event")
+        slug = self._make_slug(title)
 
         # Create the event record
         self.db.add_event(
@@ -111,6 +121,7 @@ class EventLifecycleManager:
             description=description,
             organizer_id=organizer_id,
             location_data=location_data,
+            slug=slug,
         )
 
         # Generate a organizer key for this event
@@ -135,6 +146,7 @@ class EventLifecycleManager:
             "organizer_id": organizer_id,
             "organizer_key": f"local:{organizer_key}",
             "organizer_key_hash": organizer_hash,
+            "slug": slug,
             "expires_at": expires_at,
         }
 

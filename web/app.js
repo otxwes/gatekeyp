@@ -422,6 +422,7 @@ function bindOrganizeEntry() {
                 eventId: created.event_id,
                 organizerKey: created.organizer_key,
                 title: created.title || title,
+                slug: created.slug || "",
                 meta: { description, locationData: location_data, flyerId: null },
             };
             // Optional flyer: upload it onto the event, then record it as the
@@ -1465,7 +1466,7 @@ async function wsRsvps(main) {
         api(`/api/events/${eventId}/rsvp/list${qs({ key: org.organizerKey })}`),
         api(`/api/events/${eventId}/rsvp/settings${qs({ key: org.organizerKey })}`),
     ]);
-    const shareUrl = `${location.href.split("#")[0]}#/rsvp/${org.eventId}`;
+    const shareUrl = `${location.href.split("#")[0]}#/rsvp/${org.slug || org.eventId}`;
     const dial = settings.auto_approve;
     main.innerHTML =
         `<section class="card">` +
@@ -1624,6 +1625,7 @@ async function openOrganizerWorkspace(eventId, organizerKey) {
         eventId,
         organizerKey,
         title: eventInfo.title || "Untitled event",
+        slug: eventInfo.slug || "",
         meta: {
             description: eventInfo.description || "",
             locationData: eventInfo.location_data || "",
@@ -1891,7 +1893,21 @@ async function renderRsvp() {
     }
     root.innerHTML = emptyState("Loading…");
     try {
-        const view = await api(`/api/events/${encodeURIComponent(eventId)}/rsvp/view`);
+        // The share segment is a human-readable slug (never "event_...");
+        // links that still carry a raw event id go straight to the id route
+        // so we don't fire a 404 probe that trips console watchers.
+        let view;
+        let resolvedEventId = eventId;
+        if (/^event_/.test(eventId)) {
+            view = await api(`/api/events/${encodeURIComponent(eventId)}/rsvp/view`);
+        } else {
+            try {
+                view = await api(`/api/events/by-slug/${encodeURIComponent(eventId)}/rsvp/view`);
+                if (view && view.event && view.event.id) resolvedEventId = view.event.id;
+            } catch {
+                view = await api(`/api/events/${encodeURIComponent(eventId)}/rsvp/view`);
+            }
+        }
         if (view.status === "ended") {
             root.innerHTML = emptyState("Event ended", "All data for this event was wiped at the end of its life.");
             return;
@@ -1934,7 +1950,7 @@ async function renderRsvp() {
             `<p id="rsvp-note" class="form-note" role="status" aria-live="polite"></p>` +
             `<button type="submit" class="btn btn-primary btn-block" id="rsvp-btn">Request invite</button>` +
             `</form>`;
-        bindRsvpForm(eventId, event, Boolean(view.passphrase_required));
+        bindRsvpForm(resolvedEventId, event, Boolean(view.passphrase_required));
     } catch (err) {
         root.innerHTML = emptyState("Could not load this event", err.message);
     }
