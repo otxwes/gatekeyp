@@ -530,6 +530,7 @@ function renderWorkspace() {
         `</div>` +
         `<div class="ws-actions">` +
         `<button class="btn btn-ghost" type="button" id="ws-organizer-card">Organizer card</button>` +
+        `<button class="btn btn-ghost" type="button" id="ws-preview">Preview</button>` +
         `<button class="btn btn-ghost" type="button" id="ws-end">Close workspace</button>` +
         `<button class="btn btn-danger" type="button" id="ws-decommission">Decommission</button>` +
         `</div>` +
@@ -542,6 +543,28 @@ function renderWorkspace() {
         `<div class="ws-body">` +
         `<main class="ws-main" role="tabpanel" id="ws-main"></main>` +
         `</div>`;
+
+    const previewBtn = $("#ws-preview");
+    if (previewBtn) {
+        previewBtn.addEventListener("click", async () => {
+            try {
+                if (!org || !org.eventId || !org.organizerKey) return;
+                const details = await fetchEventDetails();
+                const ev = { ...(details.event || {}), content_blocks: details.content_blocks || [] };
+                // Preview as an attendee in a new tab: seed the attendee
+                // session (a same-origin popup inherits this tab's sessionStorage)
+                // using the organizer key, which grants read access.
+                sessionStorage.setItem(SESSION_ATTENDEE, JSON.stringify({
+                    eventId: org.eventId,
+                    accessKey: org.organizerKey,
+                    event: ev,
+                }));
+                window.open("#/join", "_blank");
+            } catch (err) {
+                toast(err.message, "error", "Could not open preview");
+            }
+        });
+    }
 
     const orgCardBtn = $("#ws-organizer-card");
     if (orgCardBtn) {
