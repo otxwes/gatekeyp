@@ -74,6 +74,16 @@ class GenerateAccessKeyRequest(BaseModel):
     owner_id: str | None = Field(default=None, max_length=256)
 
 
+class GenerateAccessKeysBulkRequest(BaseModel):
+    """Request to generate several attendee access keys at once."""
+
+    organizer_key: str = Field(..., min_length=1, max_length=2048)
+    event_id: str = Field(..., min_length=1, max_length=256)
+    count: int = Field(..., ge=1, le=100)
+    days: int = Field(default=30, ge=1, le=365)
+    owners: list[str | None] = Field(default_factory=list)
+
+
 class RevokeAccessKeyRequest(BaseModel):
     """Request to revoke an attendee access key."""
 
@@ -320,6 +330,22 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
                 event_id=event_id,
                 days=request.days,
                 owner_id=request.owner_id,
+            )
+        except EventLifecycleError as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+
+    @app.post("/api/events/{event_id}/access-keys/bulk")
+    def generate_access_keys_bulk(
+        event_id: str, request: GenerateAccessKeysBulkRequest
+    ) -> list[dict]:
+        """Generate several attendee access keys at once."""
+        try:
+            return lifecycle.generate_access_keys_bulk(
+                organizer_key=request.organizer_key,
+                event_id=event_id,
+                count=request.count,
+                days=request.days,
+                owners=request.owners,
             )
         except EventLifecycleError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err

@@ -311,6 +311,35 @@ class TestAccessKeys:
         assert validation["status"] == "invalid"
         assert "revoked" in validation["message"]
 
+    def test_generate_access_keys_bulk(self, lifecycle, created_event):
+        """Bulk generation mints the requested number of named keys."""
+        owners = ["Ava", "Ben", "Cal"]
+        results = lifecycle.generate_access_keys_bulk(
+            organizer_key=created_event["organizer_key"],
+            event_id=created_event["event_id"],
+            count=3,
+            days=14,
+            owners=owners,
+        )
+        assert len(results) == 3
+        for result, owner in zip(results, owners, strict=True):
+            assert result["access_key"].startswith("local:")
+            assert result["owner_id"] == owner
+            assert result["expires_at"]
+            # Each minted key is usable for the event.
+            validation = lifecycle.key_manager.validate_key(result["access_key"])
+            assert validation["status"] == "valid"
+
+    def test_generate_access_keys_bulk_bad_count(self, lifecycle, created_event):
+        """Bulk generation rejects out-of-range counts."""
+        with pytest.raises(EventLifecycleError, match="count must be between"):
+            lifecycle.generate_access_keys_bulk(
+                organizer_key=created_event["organizer_key"],
+                event_id=created_event["event_id"],
+                count=0,
+                days=14,
+            )
+
 
 # ------------------------------------------------------------------
 # Decommissioning

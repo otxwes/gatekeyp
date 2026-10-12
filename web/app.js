@@ -1186,6 +1186,29 @@ function keyRowHTML(key) {
         `</div>`;
 }
 
+/** Build `count` unique owner names from a base, avoiding any used names. */
+function makeUniqueNames(base, count, used) {
+    const taken = new Set((used || []).filter(Boolean).map((n) => String(n).trim().toLowerCase()));
+    const names = [];
+    let i = 1;
+    while (names.length < count) {
+        const candidate = (i === 1 && base) ? base : (base ? `${base} ${i}` : `Guest ${i}`);
+        const key = candidate.trim().toLowerCase();
+        if (!taken.has(key)) {
+            names.push(candidate.trim());
+            taken.add(key);
+        }
+        i += 1;
+    }
+    return names;
+}
+
+/** Pick a random preset cover for a bulk-generated card. */
+function randomCoverPreset() {
+    const id = COVER_PRESETS[Math.floor(Math.random() * COVER_PRESETS.length)].id;
+    return id === "none" ? { type: "none" } : { type: "preset", id };
+}
+
 async function wsKeys(main) {
     const keys = await api(`/api/events/${encodeURIComponent(org.eventId)}/access-keys${qs({ organizer_key: org.organizerKey })}`);
     main.innerHTML =
@@ -1206,6 +1229,25 @@ async function wsKeys(main) {
         `<input id="key-days" name="days" type="number" min="1" max="365" value="30"></div>` +
         `<button class="btn btn-primary" type="submit" id="gen-key-btn">Generate</button>` +
         `</form>` +
+        `</section>` +
+        `<section class="card">` +
+        `<h3 class="card-title">Generate multiple keys</h3>` +
+        `<form id="bulk-key-form" class="inline-form" autocomplete="off">` +
+        `<div class="field"><label for="bulk-count">Number of keys</label>` +
+        `<input id="bulk-count" name="count" type="number" min="1" max="50" value="5"></div>` +
+        `<div class="field"><label for="bulk-name">Name base <span class="opt">optional</span></label>` +
+        `<input id="bulk-name" name="base" type="text" maxlength="200" placeholder="e.g. Guest — each key gets a unique number"></div>` +
+        `<div class="field"><label for="bulk-days">Lifetime (days)</label>` +
+        `<input id="bulk-days" name="days" type="number" min="1" max="365" value="30"></div>` +
+        `<div class="field"><label for="bulk-cover-mode">Card cover</label>` +
+        `<select id="bulk-cover-mode" class="field-input">` +
+        `<option value="diff">Random per key</option>` +
+        `<option value="same">Same cover for all</option>` +
+        `</select></div>` +
+        `<div id="bulk-cover-picker" class="cover-picker" hidden></div>` +
+        `<p class="field-hint" id="bulk-note"></p>` +
+        `<button class="btn btn-primary" type="submit" id="bulk-key-btn">Generate &amp; download</button>` +
+        `</form>` +
         `</section>`;
 
     $("#gen-key-form").addEventListener("submit", async (event) => {
@@ -1224,6 +1266,7 @@ async function wsKeys(main) {
                 ...inviteCardOpts(),
                 accessKey: key.access_key,
                 fresh: true,
+                fileName: owner_id || "",
             });
             toast("Access key generated.", "ok", "New key");
             await wsKeys(main);
@@ -1232,6 +1275,79 @@ async function wsKeys(main) {
             btnBusy(btn, false);
         }
     });
+
+    // Bulk generation: unique names, same or random cover per key.
+    const bulkForm = $("#bulk-key-form");
+    const coverPicker = $("#bulk-cover-picker");
+    let sharedCover = { type: "none" };
+    if (coverPicker) {
+        // Paint the shared-cover preset chips.
+        coverPicker.innerHTML = COVER_PRESETS.map((p) =>
+            `<button type="button" class="cover-chip${p.id === "none" ? " is-selected" : ""}" data-cover="${esc(p.id)}" aria-pressed="${p.id === "none"}">` +
+            `<canvas width="88" height="30" data-swatch="${esc(p.id)}"></canvas>` +
+            `<span>${esc(p.label)}</span></button>`
+        ).join("");
+        $$("canvas[data-swatch]", coverPicker).forEach((swatch) => {
+            window.gkpInviteCard.renderCover(swatch, swatch.width, swatch.height, { type: "preset", id: swatch.dataset.swatch });
+        });
+        $$(".cover-chip[data-cover]", coverPicker).forEach((chip) => {
+            chip.addEventListener("click", () => {
+                const id = chip.dataset.cover;
+                sharedCover = id === "none" ? { type: "none" } : { type: "preset", id };
+                $$(".cover-chip[data-cover]", coverPicker).forEach((c) => {
+                    const sel = c.dataset.cover === id;
+                    c.classList.toggle("is-selected", sel);
+                    c.setAttribute("aria-pressed", String(sel));
+                });
+            });
+        });
+    }
+    const bulkMode = $("#bulk-cover-mode");
+    if (bulkMode) {
+        bulkMode.addEventListener("change", () => {
+            if (coverPicker) coverPicker.hidden = bulkMode.value !== "same";
+        });
+    }
+
+    if (bulkForm) {
+        bulkForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const f = event.currentTarget;
+            const count = Math.min(Math.max(parseInt(getField(f, "count"), 10) || 1, 1), 50);
+            const base = (getField(f, "base") || "").trim();
+            const days = Math.min(Math.max(parseInt(getField(f, "days"), 10) || 30, 1), 365);
+            const mode = bulkMode ? bulkMode.value : "diff";
+            const btn = $("#bulk-key-btn");
+            const noteEl = $("#bulk-note");
+            if (noteEl) noteEl.textContent = "";
+            btnBusy(btn, true, "Generating…");
+            try {
+                const names = makeUniqueNames(base, count, keys.map((k) => k.owner_id));
+                const results = await api(`/api/events/${encodeURIComponent(org.eventId)}/access-keys/bulk`, {
+                    method: "POST",
+                    body: { organizer_key: org.organizerKey, event_id: org.eventId, count, days, owners: names },
+                });
+                if (noteEl) noteEl.textContent = `Generated ${results.length} keys. Downloading cards…`;
+                for (let i = 0; i < results.length; i += 1) {
+                    const cover = mode === "same" ? sharedCover : randomCoverPreset();
+                    const owner = results[i].owner_id || "";
+                    await window.gkpInviteCard.download({
+                        ...inviteCardOpts(),
+                        accessKey: results[i].access_key,
+                        cover,
+                        fileName: owner || `card-${i + 1}`,
+                    });
+                    // Small spacing between downloads for the browser.
+                    await new Promise((r) => setTimeout(r, 120));
+                }
+                toast(`${results.length} invite cards ready.`, "ok", "Cards saved");
+                await wsKeys(main);
+            } catch (err) {
+                toast(err.message, "error", "Could not generate");
+                btnBusy(btn, false);
+            }
+        });
+    }
 
     // Revoke an active key by its stored hash (the raw key is only in
     // card pixels, so there's nothing to type).

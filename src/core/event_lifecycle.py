@@ -9,6 +9,7 @@ from src.db.database_handler import DatabaseHandler
 
 # Default key lifetime for access keys (30 days)
 DEFAULT_ACCESS_KEY_DAYS = 30
+MAX_BULK_KEYS = 100
 
 # Default key lifetime for organizer keys (365 days)
 DEFAULT_ORGANIZER_KEY_DAYS = 365
@@ -317,6 +318,58 @@ class EventLifecycleManager:
             "event_id": event_id,
             "expires_at": expires_at,
         }
+
+    def generate_access_keys_bulk(
+        self,
+        organizer_key: str,
+        event_id: str,
+        *,
+        count: int,
+        days: int = DEFAULT_ACCESS_KEY_DAYS,
+        owners: list[str | None] | None = None,
+    ) -> list[dict]:
+        """
+        Generate several attendee access keys in one call; each may carry an
+        owner name. Verifies the organizer's access once, then mints `count`
+        keys (linked to the event's content) with the matching owner names.
+        """
+        validation = self.key_manager.validate_key(organizer_key)
+        if validation["status"] != "valid":
+            message = validation.get("message", "Invalid organizer key")
+            raise EventLifecycleError(message)
+        org_hash = validation["hash"]
+        content_ids = self.db.get_content_ids_for_key(org_hash)
+        if not any(c["content_id"] == event_id for c in content_ids):
+            raise EventLifecycleError(_ACCESS_DENIED_MSG)
+
+        if count < 1 or count > MAX_BULK_KEYS:
+            message = f"count must be between 1 and {MAX_BULK_KEYS}"
+            raise EventLifecycleError(message)
+
+        results: list[dict] = []
+        for i in range(count):
+            owner = (owners[i] or None) if owners and i < len(owners) else None
+            access_key = self.key_manager.generate_key()
+            access_hash = self.key_manager.hash_key(access_key)
+            expires_at = (datetime.now(UTC) + timedelta(days=days)).isoformat()
+            self.db.add_key(
+                hash_key=access_hash,
+                key_type="access",
+                expires_at=expires_at,
+                owner_id=owner,
+            )
+            for link in content_ids:
+                self.db.add_key_content_link(access_hash, link["content_id"], link["content_type"])
+            results.append(
+                {
+                    "access_key": f"local:{access_key}",
+                    "access_key_hash": access_hash,
+                    "event_id": event_id,
+                    "owner_id": owner,
+                    "expires_at": expires_at,
+                }
+            )
+        return results
 
     def list_access_keys(
         self,

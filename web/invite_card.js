@@ -376,7 +376,7 @@ window.gkpInviteCard = (function () {
         const url = URL.createObjectURL(stegoBlob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `${safeFileName(opts.title)}-${o.organizer ? "organizer card" : "invite"}.png`;
+        a.download = `${safeFileName(o.fileName || o.title)}-${o.organizer ? "organizer card" : "invite"}.png`;
         document.body.appendChild(a);
         a.click();
         a.remove();
