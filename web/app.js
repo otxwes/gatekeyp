@@ -2007,7 +2007,7 @@ function showRsvpResult(eventId, event, result) {
             : `<a class="btn btn-ghost btn-block" href="#/join">Go to the door →</a>`);
     // Immediate card creation: the fresh key's only artifact is its card, so
     // the cover modal opens on top of the result without a button hop.
-    openCardCoverModal({ eventId, title: event.title, accessKey: key, fresh: true });
+    openCardCoverModal({ eventId, title: event.title, accessKey: key, fresh: true, fileName: result.display_name || "" });
     const unlock = $("#rsvp-unlock");
     if (unlock) {
         unlock.addEventListener("click", () => {
