@@ -87,10 +87,35 @@ jobs:
         run: uv run pip-audit
 
   docker-build:
-    name: Docker build
+    name: Docker build + smoke test
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Build image
         run: docker build -t gatekeyp:ci .
+      - name: Smoke test — run container and assert /health
+        # Build alone wouldn't have caught the old `python -m src.api.gateway`
+        # CMD (a library with no __main__ that exited silently). Start the
+        # container with a synthetic key/secret and confirm GET /health is 200.
+        run: |
+          set -euo pipefail
+          ORG_KEY="$(openssl rand -base64 32 | tr '+/' '-_')"
+          HMAC_KEY="$(openssl rand -hex 32)"
+          docker run -d --name gatekeyp-smoke -p 8123:8000 \
+            -e GATEKEYP_ORGANIZER_KEY="$ORG_KEY" \
+            -e GATEKEYP_HMAC_SECRET="$HMAC_KEY" \
+            -e GATEKEYP_DB_PATH=/tmp/keys.db \
+            gatekeyp:ci
+          for _ in $(seq 1 60); do
+            if body="$(curl -sf http://127.0.0.1:8123/health 2>/dev/null)"; then
+              echo "health OK: $body"
+              docker stop gatekeyp-smoke >/dev/null 2>&1 || true
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "FAILED: /health never came up" >&2
+          docker logs gatekeyp-smoke 2>&1 | tail -40 || true
+          docker stop gatekeyp-smoke >/dev/null 2>&1 || true
+          exit 1
