@@ -42,12 +42,6 @@ function fmtBytes(n) {
     return `${(v / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Short display form of a long id. */
-function fmtId(id) {
-    const s = String(id || "");
-    return s.length > 26 ? `${s.slice(0, 13)}…${s.slice(-12)}` : s;
-}
-
 async function copyText(text) {
     try {
         await navigator.clipboard.writeText(text);
@@ -252,10 +246,6 @@ function note(elNode, message, kind) {
 function getField(form, name) {
     const input = form.elements[name];
     return input ? input.value.trim() : "";
-}
-
-function factRow(key, value) {
-    return `<div class="fact-row"><span class="f-key">${esc(key)}</span><span class="f-val">${esc(value)}</span></div>`;
 }
 
 function emptyState(title, sub) {
