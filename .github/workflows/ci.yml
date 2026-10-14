@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint / typecheck / format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install dependencies
+        run: uv sync --all-groups
+      - name: Lint (ruff check)
+        run: uv run ruff check src/ tests/
+      - name: Typecheck (ty)
+        # Mirrors `make typecheck`; currently passes once the parallel
+        # RNS/LXMF import fix lands in src/.
+        run: uv run ty check src/
+      - name: Format check (ruff format)
+        run: uv run ruff format --check src/ tests/
+      - name: Pre-commit hooks
+        run: uv run pre-commit run --all-files
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install dependencies
+        run: uv sync --all-groups
+      - name: Run tests
+        # pytest.ini already applies `-m 'not e2e'` to the default selection;
+        # -v matches `make test-verbose`.
+        run: uv run pytest -v
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install dependencies
+        run: uv sync --all-groups
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            ms-playwright-${{ runner.os }}-
+      - name: Install Playwright chromium
+        run: uv run playwright install --with-deps chromium
+      - name: Generate .env.dev (gitignored, required by e2e fixtures)
+        run: |
+          # Organizer key must be a valid 32-byte url-safe base64 Fernet key;
+          # HMAC secret is a plain 32-byte hex value.
+          echo "GATEKEYP_ORGANIZER_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" > .env.dev
+          echo "GATEKEYP_HMAC_SECRET=$(openssl rand -hex 32)" >> .env.dev
+      - name: Run e2e tests
+        run: uv run pytest tests/e2e -m e2e -v
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install dependencies
+        run: uv sync --all-groups
+      - name: pip-audit (make audit)
+        run: uv run pip-audit
+
+  docker-build:
+    name: Docker build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t gatekeyp:ci .

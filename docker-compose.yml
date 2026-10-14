@@ -12,6 +12,9 @@ services:
       # Fail-secure: these MUST be provided. The app refuses to start without them.
       GATEKEYP_ORGANIZER_KEY: ${GATEKEYP_ORGANIZER_KEY:?GATEKEYP_ORGANIZER_KEY is required}
       GATEKEYP_HMAC_SECRET: ${GATEKEYP_HMAC_SECRET:?GATEKEYP_HMAC_SECRET is required}
+      # DatabaseHandler resolves path as: explicit arg > GATEKEYP_DB_PATH > "keys.db".
+      # The rootfs is read_only, so SQLite must land on the writable named volume.
+      GATEKEYP_DB_PATH: /app/data/keys.db
     ports:
       - "8000:8000"
     volumes:
@@ -24,6 +27,20 @@ services:
       - /tmp
     cap_drop:
       - ALL
+    healthcheck:
+      # urllib GET /health only (writes nothing), so it works under read_only: true.
+      # The slim image has no curl; use the bundled venv python.
+      test:
+        [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status==200 else 1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   gatekeyp-data:

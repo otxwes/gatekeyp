@@ -41,5 +41,7 @@ USER gatekeyp
 # Expose API port (when gateway is run as a service)
 EXPOSE 8000
 
-# Default command (override as needed)
-CMD ["python", "-m", "src.api.gateway"]
+# Default command: serve the ASGI app with uvicorn.
+# (src.api.gateway is a library module with no __main__/main(); the real
+# entrypoint is src.api.server:app, used by the Makefile `serve` target.)
+CMD ["uvicorn", "src.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
