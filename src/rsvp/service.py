@@ -21,6 +21,9 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from argon2 import PasswordHasher
+from argon2.exceptions import VerificationError
+
 from src.core.event_lifecycle import DEFAULT_ACCESS_KEY_DAYS
 from src.core.key_manager import InvalidKeyFormatError
 
@@ -48,6 +51,35 @@ RSVP_STATUS_PENDING = "pending"
 RSVP_STATUS_APPROVED = "approved"
 RSVP_STATUS_DENIED = "denied"
 
+# RSVP passphrases are human-chosen, low-entropy secrets, so they must NOT use
+# the fast keyed HMAC (which would leave them open to offline brute-force).
+# Hash them with Argon2id at the OWASP/RFC 9106 low-memory parameters
+# (m=19 MiB, t=2, p=1). Machine-generated access keys stay on fast HMAC —
+# high-entropy material needs no memory-hard KDF.
+_rsvp_argon2 = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
+
+
+def _hash_rsvp_passphrase(passphrase: str) -> str:
+    """Argon2id-hash an RSVP passphrase for storage."""
+    return _rsvp_argon2.hash(passphrase)
+
+
+def _passphrase_matches(key_manager: KeyManager, given: str, stored_hash: str) -> bool:
+    """Verify a passphrase against its stored hash.
+
+    Argon2id hashes are recognized by their ``$argon2`` prefix. Rows written
+    before argon2 adoption stored a fast keyed HMAC; we keep accepting those
+    (via :meth:`key_manager.hash_key`) so existing databases keep working
+    until an organizer re-sets the passphrase. Verification failure always
+    denies, even for a tampered hash (fail-closed).
+    """
+    if stored_hash.startswith("$argon2"):
+        try:
+            return _rsvp_argon2.verify(stored_hash, given)
+        except VerificationError:
+            return False
+    return hmac.compare_digest(key_manager.hash_key(given), stored_hash)
+
 
 class RsvpValidationError(ValueError):
     """Raised when RSVP input fails validation (message is safe to surface)."""
@@ -59,10 +91,6 @@ class RsvpNotFoundError(LookupError):
 
 class RsvpGoneError(LookupError):
     """Raised when the requested event has been wiped (tombstone only)."""
-
-
-class RsvpRateLimitError(RuntimeError):
-    """Raised when a client exceeds the RSVP submission rate limit."""
 
 
 class RsvpRateLimiter:
@@ -160,7 +188,7 @@ class RsvpService:
         if not given:
             message = "This event requires an RSVP passphrase"
             raise RsvpValidationError(message)
-        if not hmac.compare_digest(self.key_manager.hash_key(given), stored_hash):
+        if not _passphrase_matches(self.key_manager, given, stored_hash):
             message = "That RSVP passphrase is not correct"
             raise RsvpValidationError(message)
 
@@ -356,7 +384,7 @@ class RsvpService:
         """
         self._verify_organizer(organizer_key, event_id)
         clean_passphrase = self._validate_text(passphrase, "passphrase", MAX_CONTACT_LENGTH)
-        passphrase_hash = self.key_manager.hash_key(clean_passphrase) if clean_passphrase else None
+        passphrase_hash = _hash_rsvp_passphrase(clean_passphrase) if clean_passphrase else None
         if auto_approve is None:
             dial: int | None = None
         elif not isinstance(auto_approve, int) or isinstance(auto_approve, bool):

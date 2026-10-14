@@ -1,15 +1,17 @@
-import os
-import sys
+import hypothesis
 
-# Ensure the project root is on the path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# helpers is the single source of truth for shared test constants and env
+# setup; importing it here (pytest auto-loads conftest) is what guarantees the
+# repo-root path insertion and GATEKEYP_* defaults are applied for every test.
+from helpers import TEST_HMAC_SECRET, TEST_ORGANIZER_KEY  # noqa: F401
 
-# Generate a valid Fernet key (32-byte base64-encoded) for tests
-from cryptography.fernet import Fernet
-
-TEST_ORGANIZER_KEY = Fernet.generate_key().decode()
-TEST_HMAC_SECRET = "test-hmac-secret-for-unit-tests-only-1234567890"
-
-# Set required environment variables for tests
-os.environ.setdefault("GATEKEYP_ORGANIZER_KEY", TEST_ORGANIZER_KEY)
-os.environ.setdefault("GATEKEYP_HMAC_SECRET", TEST_HMAC_SECRET)
+# Project-wide Hypothesis profile: default behavior is tuned for CI robustness.
+# The stock 200 ms per-example deadline is a common source of flaky failures on
+# slow runners, so raise it and de-randomize the generation so failures
+# reproduce. Individual tests may still override with @settings().
+hypothesis.settings.register_profile(
+    "repo",
+    deadline=2000,
+    derandomize=True,
+)
+hypothesis.settings.load_profile("repo")

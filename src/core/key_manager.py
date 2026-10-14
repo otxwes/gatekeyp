@@ -6,20 +6,10 @@ import os
 import secrets
 from datetime import UTC, datetime
 
-from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
-
 from src.db.database_handler import DatabaseHandler
-
-# Constants for Key Types
-KEY_TYPE_ACCESS = "access"
-KEY_TYPE_ORGANIZER = "organizer"
 
 # Minimum entropy requirement: 128 bits (16 bytes) of randomness
 MIN_KEY_ENTROPY_BYTES = 16
-
-# Default HMAC secret length in bytes
-HMAC_SECRET_LENGTH = 32
 
 
 class MissingHMACSecretError(ValueError):
@@ -42,13 +32,6 @@ class InsufficientKeyEntropyError(ValueError):
         )
 
 
-class Argon2NotEnabledError(RuntimeError):
-    """Raised when Argon2id is used but not enabled."""
-
-    def __init__(self) -> None:
-        super().__init__("Argon2id hashing not enabled. Set use_argon2=True.")
-
-
 class InvalidKeyFormatError(ValueError):
     """Raised when a key has an invalid format."""
 
@@ -63,8 +46,7 @@ class KeyManager:
     Security hardening (Phase 1):
     - HMAC-SHA256 keyed by a per-instance secret for stored key verification
       (replaces plain SHA-256, which is vulnerable to offline brute-force).
-    - Argon2id for password-style key verification (optional, higher cost).
-    - Key rotation and revocation support.
+    - Revocation and expiry enforcement.
     - Minimum key entropy enforcement at generation.
     """
 
@@ -72,8 +54,6 @@ class KeyManager:
         self,
         db: DatabaseHandler | None = None,
         hmac_secret: str | None = None,
-        *,
-        use_argon2: bool = False,
     ) -> None:
         """
         Initialize the KeyManager.
@@ -85,7 +65,6 @@ class KeyManager:
         Args:
             db: Optional shared DatabaseHandler instance.
             hmac_secret: Per-instance secret for HMAC keyed hashing.
-            use_argon2: If True, use Argon2id for key verification instead of HMAC.
         """
         self.db = db if db is not None else DatabaseHandler()
         if hmac_secret is None:
@@ -93,8 +72,6 @@ class KeyManager:
         if hmac_secret is None:
             raise MissingHMACSecretError
         self.hmac_secret = hmac_secret.encode() if isinstance(hmac_secret, str) else hmac_secret
-        self.use_argon2 = use_argon2
-        self.argon2_hasher = PasswordHasher() if use_argon2 else None
 
     # ------------------------------------------------------------------
     # Key Generation
@@ -128,36 +105,6 @@ class KeyManager:
             input_key.encode(),
             hashlib.sha256,
         ).hexdigest()
-
-    def verify_key(self, input_key: str, stored_hash: str) -> bool:
-        """
-        Verify an input key against a stored hash using constant-time comparison.
-
-        Uses hmac.compare_digest to prevent timing attacks.
-        """
-        computed = self.hash_key(input_key)
-        return hmac.compare_digest(computed, stored_hash)
-
-    # ------------------------------------------------------------------
-    # Argon2id (optional, higher-cost verification)
-    # ------------------------------------------------------------------
-
-    def hash_key_argon2(self, input_key: str) -> str:
-        """Hash a key using Argon2id (memory-hard, resistant to GPU brute-force)."""
-        if not self.argon2_hasher:
-            raise Argon2NotEnabledError
-        return self.argon2_hasher.hash(input_key)
-
-    def verify_key_argon2(self, input_key: str, stored_hash: str) -> bool:
-        """Verify a key against an Argon2id hash."""
-        if not self.argon2_hasher:
-            raise Argon2NotEnabledError
-        try:
-            self.argon2_hasher.verify(stored_hash, input_key)
-        except VerifyMismatchError:
-            return False
-        else:
-            return True
 
     # ------------------------------------------------------------------
     # Federation Prefix Resolution
@@ -243,40 +190,8 @@ class KeyManager:
         }
 
     # ------------------------------------------------------------------
-    # Key Rotation & Revocation
+    # Key Revocation
     # ------------------------------------------------------------------
-
-    def rotate_key(
-        self,
-        old_key_hash: str,
-        new_key: str,
-        key_type: str = KEY_TYPE_ACCESS,
-        expires_at: str | None = None,
-        owner_id: str | None = None,
-    ) -> str:
-        """
-        Rotate a key: revoke the old key and create a new one.
-
-        Returns the new key hash.
-        """
-        # Revoke the old key
-        self.db.revoke_key(old_key_hash)
-
-        # Create the new key
-        new_hash = self.hash_key(new_key)
-        self.db.add_key(
-            hash_key=new_hash,
-            key_type=key_type,
-            expires_at=expires_at,
-            owner_id=owner_id,
-        )
-
-        # Re-link content from the old key to the new key
-        content_ids = self.db.get_content_ids_for_key(old_key_hash)
-        for content in content_ids:
-            self.db.add_key_content_link(new_hash, content["content_id"], content["content_type"])
-
-        return new_hash
 
     def revoke_key(self, input_key: str) -> bool:
         """

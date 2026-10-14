@@ -110,5 +110,63 @@ class TestDatabaseHandler(unittest.TestCase):
                 os.environ["GATEKEYP_ORGANIZER_KEY"] = old
 
 
+class TestSchemaMigration(unittest.TestCase):
+    """Opening a pre-migration database applies additive column migrations."""
+
+    def test_migrate_old_schema_adds_columns_without_data_loss(self):
+        import sqlite3
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as handle:
+            path = handle.name
+        db = None
+        try:
+            # Reproduce an old schema lacking every column added in Phase A/B.
+            conn = sqlite3.connect(path)
+            conn.execute(
+                "CREATE TABLE events (event_id TEXT PRIMARY KEY, title TEXT, "
+                "description TEXT, organizer_id TEXT)"
+            )
+            conn.execute(
+                "CREATE TABLE keys (hash_key TEXT PRIMARY KEY, type TEXT, expires_at TEXT)"
+            )
+            conn.execute(
+                "INSERT INTO events (event_id, title, description, organizer_id) "
+                "VALUES ('e1', 'Legacy', 'd', 'o1')"
+            )
+            conn.commit()
+            conn.close()
+
+            db = DatabaseHandler(path, organizer_key=TEST_ORGANIZER_KEY)
+            event_cols = {r[1] for r in db.cursor.execute("PRAGMA table_info(events)")}
+            key_cols = {r[1] for r in db.cursor.execute("PRAGMA table_info(keys)")}
+
+            for col in (
+                "mode",
+                "expires_at",
+                "rsvp_passphrase_hash",
+                "rsvp_auto_approve",
+                "flyer_asset_id",
+                "slug",
+                "location_data",
+            ):
+                self.assertIn(col, event_cols)
+            for col in ("created_at", "revoked", "revoked_at", "owner_id", "rsvp_id"):
+                self.assertIn(col, key_cols)
+            # The human-readable slug index is created during migration.
+            index = db.cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_events_slug'"
+            ).fetchone()
+            self.assertIsNotNone(index)
+            # The pre-existing row survives the migration intact.
+            row = db.cursor.execute("SELECT title FROM events WHERE event_id='e1'").fetchone()
+            self.assertEqual(row[0], "Legacy")
+        finally:
+            if db is not None:
+                db.close()
+            Path(path).unlink(missing_ok=True)
+
+
 if __name__ == "__main__":
     unittest.main()

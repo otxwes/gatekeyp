@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import threading
 
-from tests.helpers import TEST_ORGANIZER_KEY
+from helpers import TEST_ORGANIZER_KEY
 
 
 class _Collector(threading.Thread):

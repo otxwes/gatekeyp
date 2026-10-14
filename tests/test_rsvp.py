@@ -382,6 +382,18 @@ class TestPublicView:
         with pytest.raises(RsvpNotFoundError):
             rsvp.get_public_view("event_nope")
 
+    def test_get_public_view_by_slug(self, rsvp, lifecycle):
+        """A human-readable share slug resolves to the same live public view."""
+        created = _make_event(lifecycle)
+        view = rsvp.get_public_view_by_slug(created["slug"])
+        assert view["status"] == "live"
+        assert view["event"]["id"] == created["event_id"]
+
+    def test_get_public_view_by_slug_unknown(self, rsvp):
+        """An unknown slug raises the not-found error."""
+        with pytest.raises(RsvpNotFoundError):
+            rsvp.get_public_view_by_slug("no-such-event")
+
 
 class TestRsvpRateLimiter:
     """5 submissions per 600 s per client, with an injectable clock."""

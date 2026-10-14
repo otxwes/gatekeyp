@@ -11,7 +11,6 @@ from src.ephemeral.service import (
     LiteGoneError,
     LiteNotFoundError,
     LiteRateLimiter,
-    LiteRateLimitError,
     LiteValidationError,
 )
 
@@ -22,7 +21,6 @@ __all__ = [
     "EphemeralService",
     "LiteGoneError",
     "LiteNotFoundError",
-    "LiteRateLimitError",
     "LiteRateLimiter",
     "LiteValidationError",
     "build_ephemeral_router",

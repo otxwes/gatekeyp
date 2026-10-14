@@ -311,6 +311,35 @@ class TestAccessKeys:
         assert validation["status"] == "invalid"
         assert "revoked" in validation["message"]
 
+    def test_revoke_access_key_by_hash(self, lifecycle, created_event):
+        """Revoking an access key by its stored hash (organizer holds no raw key)."""
+        access = lifecycle.generate_access_key(
+            organizer_key=created_event["organizer_key"],
+            event_id=created_event["event_id"],
+        )
+        key_hash = lifecycle.key_manager.validate_key(access["access_key"])["hash"]
+
+        assert lifecycle.key_manager.validate_key(access["access_key"])["status"] == "valid"
+        revoked = lifecycle.revoke_access_key_by_hash(
+            organizer_key=created_event["organizer_key"],
+            event_id=created_event["event_id"],
+            key_hash=key_hash,
+        )
+        assert revoked is True
+
+        validation = lifecycle.key_manager.validate_key(access["access_key"])
+        assert validation["status"] == "invalid"
+        assert "revoked" in validation["message"]
+
+    def test_revoke_access_key_by_hash_not_in_event(self, lifecycle, created_event):
+        """A hash not linked to this event is rejected (defends against cross-event revoke)."""
+        with pytest.raises(EventLifecycleError, match="does not belong"):
+            lifecycle.revoke_access_key_by_hash(
+                organizer_key=created_event["organizer_key"],
+                event_id=created_event["event_id"],
+                key_hash="0" * 64,
+            )
+
     def test_generate_access_keys_bulk(self, lifecycle, created_event):
         """Bulk generation mints the requested number of named keys."""
         owners = ["Ava", "Ben", "Cal"]

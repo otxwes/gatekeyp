@@ -11,7 +11,6 @@ from src.rsvp.service import (
     RsvpGoneError,
     RsvpNotFoundError,
     RsvpRateLimiter,
-    RsvpRateLimitError,
     RsvpService,
     RsvpValidationError,
 )
@@ -23,7 +22,6 @@ __all__ = [
     "MAX_PENDING_RSVP_PER_EVENT",
     "RsvpGoneError",
     "RsvpNotFoundError",
-    "RsvpRateLimitError",
     "RsvpRateLimiter",
     "RsvpService",
     "RsvpValidationError",

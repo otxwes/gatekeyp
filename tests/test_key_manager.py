@@ -70,45 +70,6 @@ class TestKeyManager(unittest.TestCase):
         key = "test_key"
         self.assertNotEqual(self.km.hash_key(key), km2.hash_key(key))
 
-    def test_verify_key_correct(self):
-        """verify_key returns True for the correct key."""
-        key = "test_key"
-        hashed = self.km.hash_key(key)
-        self.assertTrue(self.km.verify_key(key, hashed))
-
-    def test_verify_key_incorrect(self):
-        """verify_key returns False for an incorrect key."""
-        hashed = self.km.hash_key("correct_key")
-        self.assertFalse(self.km.verify_key("wrong_key", hashed))
-
-    def test_verify_key_constant_time(self):
-        """verify_key uses constant-time comparison."""
-        import hmac
-
-        key = "test_key"
-        hashed = self.km.hash_key(key)
-        # hmac.compare_digest is constant-time; verify it's used
-        self.assertTrue(hmac.compare_digest(self.km.hash_key(key), hashed))
-
-    # ------------------------------------------------------------------
-    # Argon2id (optional)
-    # ------------------------------------------------------------------
-
-    def test_argon2_hash_and_verify(self):
-        """Argon2id hashing and verification roundtrip."""
-        km_argon = KeyManager(db=self.db, hmac_secret=TEST_HMAC_SECRET, use_argon2=True)
-        key = "test_key"
-        hashed = km_argon.hash_key_argon2(key)
-        self.assertTrue(km_argon.verify_key_argon2(key, hashed))
-        self.assertFalse(km_argon.verify_key_argon2("wrong_key", hashed))
-
-    def test_argon2_not_enabled_raises(self):
-        """Argon2 methods raise if not enabled."""
-        with self.assertRaises(RuntimeError):
-            self.km.hash_key_argon2("test")
-        with self.assertRaises(RuntimeError):
-            self.km.verify_key_argon2("test", "hash")
-
     # ------------------------------------------------------------------
     # Federation Prefix Resolution
     # ------------------------------------------------------------------
@@ -198,7 +159,7 @@ class TestKeyManager(unittest.TestCase):
         self.assertEqual(result["status"], "invalid")
 
     # ------------------------------------------------------------------
-    # Key Rotation & Revocation
+    # Key Revocation
     # ------------------------------------------------------------------
 
     def test_revoke_key(self):
@@ -209,23 +170,6 @@ class TestKeyManager(unittest.TestCase):
         result = self.km.revoke_key(raw_key)
         self.assertTrue(result)
         self.assertTrue(self.db.is_key_revoked(hashed))
-
-    def test_rotate_key(self):
-        """Rotating a key revokes the old and creates a new one."""
-        old_hash = self.km.hash_key("old_key")
-        self.db.add_key(old_hash, "access")
-        self.db.add_content_block("block_rot", "event_1", old_hash, "location", "data")
-
-        new_hash = self.km.rotate_key(old_hash, "new_key")
-
-        # Old key is revoked
-        self.assertTrue(self.db.is_key_revoked(old_hash))
-        # New key exists
-        self.assertIsNotNone(self.db.get_key(new_hash))
-        # Content is re-linked to the new key
-        content_ids = self.db.get_content_ids_for_key(new_hash)
-        self.assertEqual(len(content_ids), 1)
-        self.assertEqual(content_ids[0]["content_id"], "block_rot")
 
     # ------------------------------------------------------------------
     # Fail-Secure Behavior
@@ -263,9 +207,12 @@ class TestKeyManagerPropertyBased(unittest.TestCase):
     @given(st.text(min_size=1, max_size=100))
     @settings(max_examples=50)
     def test_hash_key_roundtrip(self, key):
-        """verify_key(hash_key(k), k) == True for all valid keys."""
+        """hash_key is deterministic and yields a fixed-length, constant-time match."""
+        import hmac
+
         hashed = self.km.hash_key(key)
-        self.assertTrue(self.km.verify_key(key, hashed))
+        self.assertEqual(len(hashed), 64)  # SHA-256 output length
+        self.assertTrue(hmac.compare_digest(self.km.hash_key(key), hashed))
 
     @given(st.text(min_size=1, max_size=100), st.text(min_size=1, max_size=100))
     @settings(max_examples=50)

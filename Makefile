@@ -1,4 +1,4 @@
-.PHONY: setup install test test-verbose lint audit security serve serve-lite backup clean docker-build docker-up docker-down typecheck format check
+.PHONY: setup install test test-verbose lint audit security coverage serve serve-lite backup clean docker-build docker-up docker-down typecheck format check
 
 # Default target: show available commands
 .DEFAULT_GOAL := help
@@ -15,6 +15,7 @@ help:
 	@echo "  make format       - Auto-format code with ruff"
 	@echo "  make audit        - Run dependency vulnerability audit (pip-audit)"
 	@echo "  make security     - Run security audit tests only"
+	@echo "  make coverage     - Run tests with coverage report (src/)"
 	@echo "  make docker-build - Build the Docker image"
 	@echo "  make docker-up    - Start services with docker compose"
 	@echo "  make docker-down  - Stop services with docker compose"
@@ -44,6 +45,11 @@ test-verbose:
 # Run security audit tests only
 security:
 	uv run pytest tests/test_security_audit.py -v
+
+# Run the test suite with coverage over src/ (branch coverage, failing if the
+# configured floor drops below [tool.coverage.report] fail_under).
+coverage:
+	uv run pytest --cov=src --cov-report=term-missing --cov-report=html
 
 # Run ruff linter
 lint:

@@ -59,10 +59,6 @@ class LiteGoneError(LookupError):
     """Raised when a requested event has expired or been wiped."""
 
 
-class LiteRateLimitError(RuntimeError):
-    """Raised when a client exceeds the lite creation rate limit."""
-
-
 class LiteRateLimiter:
     """
     Fixed-window, per-client rate limiter for lite event creation.

@@ -257,6 +257,20 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
 
     app = _new_app()
 
+    # Per-IP throttle for content write routes (media, bulletin, comment,
+    # deletes). Kept separate from gateway.rate_limiter on purpose: the
+    # read/access path resets its buckets on success, which would otherwise
+    # let a client escape write throttling between successful operations.
+    write_limiter = RateLimiter(max_attempts=20, window_seconds=60.0)
+
+    def _rate_limit_write(http_request: Request) -> str:
+        """Enforce a per-IP write quota, returning the client IP."""
+        client_ip = http_request.client.host if http_request.client else "unknown"
+        if not write_limiter.check(client_ip):
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+        write_limiter.record_attempt(client_ip)
+        return client_ip
+
     # Health
     @app.get("/health")
     def health() -> dict:
@@ -265,9 +279,10 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
 
     # -- Access (Gateway) --
     @app.post("/api/access")
-    def access_content(request: AccessRequest) -> dict:
-        """Process an access request with a key."""
-        return gateway.process_request(request.model_dump())
+    def access_content(request: AccessRequest, http_request: Request) -> dict:
+        """Process an access request with a key (per-IP rate limited)."""
+        client_ip = http_request.client.host if http_request.client else None
+        return gateway.process_request(request.model_dump(), client_ip=client_ip)
 
     # Event Lifecycle
     @app.post("/api/events")
@@ -408,8 +423,10 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
         event_id: str,
         key: str,
         file: UploadFile,
+        http_request: Request,
     ) -> dict:
         """Upload a media asset (flyer, image, document) for an event."""
+        _rate_limit_write(http_request)
         data = await file.read()
         try:
             return content_manager.upload_media(
@@ -441,8 +458,11 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
         )
 
     @app.post("/api/events/{event_id}/bulletins")
-    def create_bulletin(event_id: str, request: CreateBulletinRequest) -> dict:
+    def create_bulletin(
+        event_id: str, request: CreateBulletinRequest, http_request: Request
+    ) -> dict:
         """Create a bulletin on an event's communication board."""
+        _rate_limit_write(http_request)
         try:
             return content_manager.create_bulletin(
                 input_key=request.key,
@@ -464,8 +484,9 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             raise HTTPException(status_code=400, detail=str(err)) from err
 
     @app.post("/api/bulletins/{bulletin_id}/comments")
-    def post_comment(bulletin_id: str, request: AddCommentRequest) -> dict:
+    def post_comment(bulletin_id: str, request: AddCommentRequest, http_request: Request) -> dict:
         """Post a comment on a bulletin."""
+        _rate_limit_write(http_request)
         try:
             return content_manager.post_comment(
                 input_key=request.key,
@@ -493,8 +514,9 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             raise HTTPException(status_code=400, detail=str(err)) from err
 
     @app.delete("/api/bulletins/{bulletin_id}")
-    def delete_bulletin(bulletin_id: str, key: str) -> dict:
+    def delete_bulletin(bulletin_id: str, key: str, http_request: Request) -> dict:
         """Delete a bulletin and its comments."""
+        _rate_limit_write(http_request)
         try:
             deleted = content_manager.delete_bulletin(input_key=key, bulletin_id=bulletin_id)
         except (ContentValidationError, ContentAccessError) as err:
@@ -503,8 +525,9 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             return {"deleted": deleted}
 
     @app.delete("/api/comments/{comment_id}")
-    def delete_comment(comment_id: str, key: str) -> dict:
+    def delete_comment(comment_id: str, key: str, http_request: Request) -> dict:
         """Delete a single comment."""
+        _rate_limit_write(http_request)
         try:
             deleted = content_manager.delete_comment(input_key=key, comment_id=comment_id)
         except (ContentValidationError, ContentAccessError) as err:
@@ -521,8 +544,9 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             raise HTTPException(status_code=400, detail=str(err)) from err
 
     @app.delete("/api/media/{asset_id}")
-    def delete_media(asset_id: str, key: str) -> dict:
+    def delete_media(asset_id: str, key: str, http_request: Request) -> dict:
         """Delete a media asset."""
+        _rate_limit_write(http_request)
         try:
             deleted = content_manager.delete_media(input_key=key, asset_id=asset_id)
         except (ContentValidationError, ContentAccessError) as err:

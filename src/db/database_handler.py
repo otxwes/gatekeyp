@@ -394,6 +394,38 @@ class DatabaseHandler:
             for r in results
         ]
 
+    def list_access_keys_for_event(self, event_id: str) -> list[dict]:
+        """Access keys (type='access') linked to an event's content, in one query.
+
+        Replaces the N+1 pattern of listing every key then probing each key's
+        content links. ``DISTINCT`` guards against a key carrying more than one
+        link to the same content id under different content types.
+        """
+        self.cursor.execute(
+            """
+            SELECT DISTINCT k.*
+            FROM keys k
+            JOIN key_content_links l ON l.key_hash = k.hash_key
+            WHERE k.type = 'access' AND l.content_id = ?
+            """,
+            (event_id,),
+        )
+        results = self.cursor.fetchall()
+        return [
+            {
+                "id": r[0],
+                "hash_key": r[0],
+                "type": r[1],
+                "expires_at": r[2],
+                "created_at": r[3],
+                "revoked": bool(r[4]),
+                "revoked_at": r[5],
+                "owner_id": r[6],
+                "rsvp_id": r[7] if len(r) > _KEY_RSVP_MIN_COLS else None,
+            }
+            for r in results
+        ]
+
     # ------------------------------------------------------------------
     # Content Blocks
     # ------------------------------------------------------------------
@@ -686,11 +718,6 @@ class DatabaseHandler:
         )
         self.connection.commit()
         return self.cursor.rowcount > 0
-
-    def delete_rsvps_for_event(self, event_id: str) -> int:
-        """Delete every RSVP row for an event. Returns the deletion count."""
-        self.cursor.execute("DELETE FROM rsvps WHERE event_id = ?", (event_id,))
-        return self.cursor.rowcount
 
     def list_content_blocks_for_event(self, event_id: str) -> list[dict]:
         """List all content blocks for an event, decrypting payloads."""

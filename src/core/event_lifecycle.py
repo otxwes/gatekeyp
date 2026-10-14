@@ -246,7 +246,7 @@ class EventLifecycleManager:
         self,
         organizer_key: str,
         event_id: str,
-        asset_id: str,
+        asset_id: str | None,
     ) -> dict:
         """
         Set (or clear, when asset_id is None) the event's flyer media asset,
@@ -409,16 +409,9 @@ class EventLifecycleManager:
         if not any(c["content_id"] == event_id for c in content_ids):
             raise EventLifecycleError(_ACCESS_DENIED_MSG)
 
-        # Get all keys linked to this event's content
-        all_keys = self.db.list_keys()
-        event_keys = []
-        for key in all_keys:
-            if key["type"] == "access":
-                key_content = self.db.get_content_ids_for_key(key["hash_key"])
-                if any(c["content_id"] == event_id for c in key_content):
-                    event_keys.append(key)
-
-        return event_keys
+        # Get all access keys linked to this event's content (single join query
+        # rather than a per-key probe — keeps listing O(1) queries instead of O(n)).
+        return self.db.list_access_keys_for_event(event_id)
 
     def revoke_access_key(
         self,
@@ -526,15 +519,12 @@ class EventLifecycleManager:
         # Revoke the organizer key
         self.db.revoke_key(key_hash)
 
-        # Revoke all access keys linked to this event's content
+        # Revoke all access keys linked to this event's content (single query)
         revoked_count = 0
-        all_keys = self.db.list_keys()
-        for key in all_keys:
-            if key["type"] == "access" and not key["revoked"]:
-                key_content = self.db.get_content_ids_for_key(key["hash_key"])
-                if any(c["content_id"] == event_id for c in key_content):
-                    self.db.revoke_key(key["hash_key"])
-                    revoked_count += 1
+        for key in self.db.list_access_keys_for_event(event_id):
+            if not key["revoked"]:
+                self.db.revoke_key(key["hash_key"])
+                revoked_count += 1
 
         # Wipe every trace of the event and leave a tombstone, so the RSVP
         # funnel (public view, submissions, the door) answers as "ended"
