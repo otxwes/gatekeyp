@@ -287,18 +287,18 @@ def parse_payload(payload: str) -> tuple[str, str] | None:
 
 
 REJECT_RE_ENCODE = (
-    "This looks like a re-encoded copy of a card — the hidden key was lost to "
+    "This looks like a re-encoded copy of a card. The hidden key was lost to "
     "compression. Share the original PNG as a file."
 )
 REJECT = {
     "png": (
-        "This looks like a cellar card, but no key could be read from it — "
-        "the card may have been altered or re-encoded. Share the original PNG as a file."
+        "This looks like a cellar card, but no key could be read from it. "
+        "The card may have been altered or re-encoded. Share the original PNG as a file."
     ),
     "jpeg": REJECT_RE_ENCODE,
     "webp": REJECT_RE_ENCODE,
-    "gif": "That's a GIF — invite cards are PNGs. Share the original PNG as a file.",
-    "bmp": "That's a BMP — invite cards are PNGs. Share the original PNG as a file.",
+    "gif": "That's a GIF. Invite cards are PNGs. Share the original PNG as a file.",
+    "bmp": "That's a BMP. Invite cards are PNGs. Share the original PNG as a file.",
     "other": "That doesn't look like an invite card. Drop the card PNG here.",
 }
 

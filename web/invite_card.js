@@ -291,7 +291,7 @@ window.gkpInviteCard = (function () {
         ctx.globalAlpha = 0.72;
         ctx.font = "italic 400 17px Georgia, 'Times New Roman', serif";
         ctx.textAlign = "center";
-        ctx.fillText("The one key this event answers to — keep it private.", CARD_W / 2, CARD_H - 128);
+        ctx.fillText("The one key this event answers to. Keep it private.", CARD_W / 2, CARD_H - 128);
         ctx.restore();
     }
 

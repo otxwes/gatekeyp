@@ -26,7 +26,7 @@ function esc(value) {
 
 /** Full readable timestamp from an ISO string. */
 function fmtDate(iso) {
-    if (!iso) return "—";
+    if (!iso) return "";
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return String(iso);
     return d.toLocaleString(undefined, {
@@ -111,7 +111,7 @@ async function api(path, options = {}) {
     try {
         response = await fetch(path, req);
     } catch {
-        throw new Error("Network error — is the cellar server running?");
+        throw new Error("Network error. Is the cellar server running?");
     }
     let data = null;
     try {
@@ -376,7 +376,7 @@ function bindOrganizeEntry() {
                         } else {
                             toast(
                                 parsed
-                                    ? "That is an attendee invite — attendee cards belong on the Join tab."
+                                    ? "That is an attendee invite. Attendee cards belong on the Join tab."
                                     : "No event found in that image.",
                                 "error",
                                 "Could not read the card"
@@ -1059,8 +1059,8 @@ function openCardCoverModal(card) {
             : "";
         const body =
             (card.organizer
-                ? `<p class="field-hint ep-card-note">This card is the only copy of your organizer key — it's how you reopen the event.</p>`
-                : `<p class="field-hint ep-card-note">This card is what identifies you and gets your invite approved — keep it safe.</p>`) +
+                ? `<p class="field-hint ep-card-note">This card is the only copy of your organizer key. It's how you reopen the event.</p>`
+                : `<p class="field-hint ep-card-note">This card is what identifies you and gets your invite approved. Keep it safe.</p>`) +
             `<div class="field"><label>Cover</label>` +
             `<div class="cover-picker">${chips}${flyerChip}` +
             `<label class="cover-chip cover-upload" id="cover-upload-chip" for="cover-file" role="button" tabindex="0">` +
@@ -1085,8 +1085,8 @@ function openCardCoverModal(card) {
                 });
                 toast(
                     card.organizer
-                        ? "Organizer card downloaded — it reopens the event on this tab."
-                        : "Invite card downloaded — the key is hidden in its pixels.",
+                        ? "Organizer card downloaded. It reopens the event on this tab."
+                        : "Invite card downloaded. The key is hidden in its pixels.",
                     "ok",
                     "Card ready"
                 );
@@ -1231,7 +1231,7 @@ async function wsKeys(main) {
         `<div class="field"><label for="bulk-count">Number of keys</label>` +
         `<input id="bulk-count" name="count" type="number" min="1" max="50" value="5"></div>` +
         `<div class="field"><label for="bulk-name">Name base <span class="opt">optional</span></label>` +
-        `<input id="bulk-name" name="base" type="text" maxlength="200" placeholder="e.g. Guest — each key gets a unique number"></div>` +
+        `<input id="bulk-name" name="base" type="text" maxlength="200" placeholder="e.g. Guest (each key gets a unique number)"></div>` +
         `<div class="field"><label for="bulk-days">Lifetime (days)</label>` +
         `<input id="bulk-days" name="days" type="number" min="1" max="365" value="30"></div>` +
         `<div class="field"><label for="bulk-cover-mode">Card cover</label>` +
@@ -1475,11 +1475,11 @@ async function wsRsvps(main) {
         `<input type="checkbox" id="rsvp-pass-on"${settings.passphrase_required ? " checked" : ""}>` +
         `<span>Require a passphrase to RSVP</span>` +
         `</label>` +
-        `<input type="password" id="rsvp-pass" placeholder="${settings.passphrase_required ? "Passphrase is set — type to replace it" : "Choose a passphrase"}" autocomplete="off">` +
+        `<input type="password" id="rsvp-pass" placeholder="${settings.passphrase_required ? "Passphrase is set (type to replace it)" : "Choose a passphrase"}" autocomplete="off">` +
         `</div>` +
         `<div class="field">` +
         `<label for="rsvp-auto">Auto-approve the first N RSVPs</label>` +
-        `<input type="number" id="rsvp-auto" min="0" step="1" placeholder="Off — every request waits for you"` +
+        `<input type="number" id="rsvp-auto" min="0" step="1" placeholder="Off (every request waits for you)"` +
         `${Number.isInteger(dial) ? ` value="${dial}"` : ""}>` +
         `</div>` +
         `<p id="rsvp-settings-note" class="form-note" role="status" aria-live="polite"></p>` +
@@ -1496,7 +1496,7 @@ async function wsRsvps(main) {
 
     $("#rsvp-copy-link").addEventListener("click", async () => {
         const ok = await copyText(shareUrl);
-        toast(ok ? "RSVP link copied to clipboard." : "Copy blocked — select the link manually.", ok ? "ok" : "error", "Copy");
+        toast(ok ? "RSVP link copied to clipboard." : "Copy blocked. Select the link manually.", ok ? "ok" : "error", "Copy");
     });
 
     // Approve / deny per row. Approving grants the pre-minted key (idempotent);
@@ -1513,8 +1513,8 @@ async function wsRsvps(main) {
                 });
                 toast(
                     decision === "approve"
-                        ? "RSVP approved — the attendee's card opens the event now."
-                        : "RSVP denied — that card will be rejected at the door.",
+                        ? "RSVP approved. The attendee's card opens the event now."
+                        : "RSVP denied. That card will be rejected at the door.",
                     "ok",
                     "Decision saved",
                 );
@@ -1711,7 +1711,7 @@ async function handleOrganizerCardFile(file) {
         }
         if (!parsed) throw new Error(window.gkpStego.inviteRejectReason(kind));
         if (parsed.role !== "organizer") {
-            throw new Error("That is an attendee invite — attendee cards belong on the Join tab.");
+            throw new Error("That is an attendee invite. Attendee cards belong on the Join tab.");
         }
         await openOrganizerWorkspace(parsed.eventId, parsed.accessKey);
         toast("Workspace restored from your organizer card.", "ok", "Welcome back");
@@ -2011,8 +2011,8 @@ function showRsvpResult(eventId, event, result) {
         `<p class="eyebrow ep-eyebrow">RSVP received</p>` +
         `<h2 class="ep-title">${esc(result.display_name || "You're on the list")}</h2>` +
         `<p class="ep-lede">${approved
-            ? "You're approved — the card below opens the event right now. It's how the organizer recognizes you at the door."
-            : "Your card works the moment the organizer approves your RSVP. It's how they identify and approve your request — keep it safe."}</p>` +
+            ? "You're approved. The card below opens the event right now. It's how the organizer recognizes you at the door."
+            : "Your card works the moment the organizer approves your RSVP. It's how they identify and approve your request. Keep it safe."}</p>` +
         `</header>` +
         (approved
             ? `<button class="btn btn-secondary btn-block" type="button" id="rsvp-unlock">Open the event now</button>`
@@ -2230,7 +2230,7 @@ async function renderFlyer() {
         if (whenDate && !Number.isNaN(whenDate.getTime())) {
             const wipes = new Date(whenDate.getTime() + ttl * 3600 * 1000);
             if (wipes.getTime() <= Date.now()) {
-                note(noteEl, "The event time has already passed — pick a time in the future.", "error");
+                note(noteEl, "The event time has already passed. Pick a time in the future.", "error");
                 return;
             }
         }
@@ -2251,7 +2251,7 @@ async function renderFlyer() {
         flyerFileEl.addEventListener("change", () => {
             const f = flyerFileEl.files?.[0];
             if (f && f.size > MAX_FLYER_BYTES) {
-                note(noteEl, `Flyer is too large (${fmtBytes(f.size)}). Pick a file under 25 MB — every invitee downloads it.`, "error");
+                note(noteEl, `Flyer is too large (${fmtBytes(f.size)}). Pick a file under 25 MB (every invitee downloads it).`, "error");
             } else {
                 updateNote();
             }
@@ -2274,7 +2274,7 @@ async function renderFlyer() {
             fd.set("ttl_hours", String(Number($("#flyer-ttl")?.value || 48)));
             const file = $("#flyer-file")?.files?.[0];
             if (file && file.size > MAX_FLYER_BYTES) {
-                throw new Error(`Flyer is too large (${fmtBytes(file.size)}). Pick a file under 25 MB — every invitee downloads it.`);
+                throw new Error(`Flyer is too large (${fmtBytes(file.size)}). Pick a file under 25 MB (every invitee downloads it).`);
             }
             if (file) fd.set("flyer", file, file.name);
             const resp = await fetch("/api/lite/events", { method: "POST", body: fd });
