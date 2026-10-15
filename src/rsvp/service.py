@@ -428,6 +428,9 @@ class RsvpService:
                 "title": event["title"],
                 "description": event["description"],
                 "organizer_name": event.get("organizer_name", ""),
+                # Asset id only (no URL): the funnel fetches the poster from
+                # the unauthenticated flyer route when it is set.
+                "flyer_asset_id": event.get("flyer_asset_id"),
             },
             "passphrase_required": bool(event.get("rsvp_passphrase_hash")),
         }

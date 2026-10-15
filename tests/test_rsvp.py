@@ -27,6 +27,13 @@ from src.rsvp.service import (
 TEST_ORGANIZER_KEY = Fernet.generate_key().decode()
 TEST_HMAC_SECRET = "test-hmac-secret-for-unit-tests-only-1234567890"
 
+# A minimal valid 1x1 PNG (stand-in for an uploaded event flyer).
+_FLYER_BYTES = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+    b"\x00\x00\x05\x00\x01\r\n\x2d\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
 os.environ.setdefault("GATEKEYP_ORGANIZER_KEY", TEST_ORGANIZER_KEY)
 os.environ.setdefault("GATEKEYP_HMAC_SECRET", TEST_HMAC_SECRET)
 
@@ -94,6 +101,23 @@ def _make_event(lifecycle: EventLifecycleManager, title: str = "Launch") -> dict
 def _key_hash(rsvp_service: RsvpService, raw_access_key: str) -> str:
     """Hash a `local:` access key the way storage does."""
     return rsvp_service.key_manager.hash_key(raw_access_key.removeprefix("local:"))
+
+
+def _set_flyer_over_http(client: TestClient, created: dict) -> str:
+    """Organizer flow over HTTP: upload a flyer asset, point the event at it."""
+    uploaded = client.post(
+        f"/api/events/{created['event_id']}/media",
+        params={"key": created["organizer_key"]},
+        files={"file": ("flyer.png", _FLYER_BYTES, "image/png")},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    asset_id = uploaded.json()["id"]
+    set_flyer = client.post(
+        f"/api/events/{created['event_id']}/flyer",
+        json={"organizer_key": created["organizer_key"], "asset_id": asset_id},
+    )
+    assert set_flyer.status_code == 200, set_flyer.text
+    return asset_id
 
 
 class TestSubmitRsvp:
@@ -368,8 +392,25 @@ class TestPublicView:
             "title": "Launch",
             "description": "A test event",
             "organizer_name": "",
+            "flyer_asset_id": None,
         }
         assert view["passphrase_required"] is False
+
+    def test_public_view_flyer_asset_id_when_set(self, rsvp, lifecycle):
+        """A set flyer is exposed to the funnel by asset id."""
+        created = _make_event(lifecycle)
+        asset = lifecycle.content_manager.upload_media(
+            input_key=created["organizer_key"],
+            event_id=created["event_id"],
+            filename="flyer.png",
+            mime_type="image/png",
+            data=_FLYER_BYTES,
+        )
+        lifecycle.set_flyer(created["organizer_key"], created["event_id"], asset["id"])
+        view = rsvp.get_public_view(created["event_id"])
+        assert view["event"]["flyer_asset_id"] == asset["id"]
+        by_slug = rsvp.get_public_view_by_slug(created["slug"])
+        assert by_slug["event"]["flyer_asset_id"] == asset["id"]
 
     def test_public_view_includes_organizer_name_when_set(self, rsvp, lifecycle):
         """A named organizer is exposed to attendees on the public view."""
@@ -529,6 +570,7 @@ class TestAppWiring:
         {
             "/api/events/{event_id}/rsvp",
             "/api/events/{event_id}/rsvp/view",
+            "/api/events/{event_id}/rsvp/flyer",
             "/api/events/{event_id}/rsvp/decide",
             "/api/events/{event_id}/rsvp/settings",
             "/api/events/{event_id}/rsvp/list",
@@ -633,6 +675,37 @@ class TestRoutes:
         response = client.get(f"/api/events/{created['event_id']}/rsvp/view")
         assert response.status_code == 200
         assert response.json()["status"] == "ended"
+
+    def test_flyer_served_publicly_without_key(self, client, lifecycle):
+        """The funnel poster needs no key; bytes round-trip, cacheable."""
+        created = _make_event(lifecycle)
+        asset_id = _set_flyer_over_http(client, created)
+        resp = client.get(f"/api/events/{created['event_id']}/rsvp/flyer")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/png"
+        assert resp.headers["content-disposition"].startswith("inline")
+        assert resp.headers["cache-control"] == "public, max-age=86400"
+        assert resp.headers["etag"] == f'"{asset_id}"'
+        assert resp.headers["x-content-type-options"] == "nosniff"
+        assert resp.content == _FLYER_BYTES
+
+    def test_flyer_410_after_wipe(self, client, lifecycle, db):
+        """A tombstoned event stops serving its poster with a 410."""
+        created = _make_event(lifecycle)
+        _set_flyer_over_http(client, created)
+        db.wipe_event(created["event_id"])
+        resp = client.get(f"/api/events/{created['event_id']}/rsvp/flyer")
+        assert resp.status_code == 410
+        assert resp.json()["detail"] == "This event has ended"
+
+    def test_flyer_unknown_event_is_404(self, client):
+        """Unknown event ids are 404 on the public flyer route."""
+        assert client.get("/api/events/event_nope/rsvp/flyer").status_code == 404
+
+    def test_flyer_404_when_absent(self, client, lifecycle):
+        """Live events without a flyer report 404 on the flyer route."""
+        created = _make_event(lifecycle)
+        assert client.get(f"/api/events/{created['event_id']}/rsvp/flyer").status_code == 404
 
     def test_decide_approve_flow(self, client, lifecycle):
         """Organizer approval works end-to-end over HTTP."""

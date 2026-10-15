@@ -66,6 +66,36 @@ runs the event.
 
 ## Status: DONE (2026-10-14)
 
+## Round 2 (2026-10-15): mobile UX from iPhone testing
+
+Approved direction (user, in chat):
+- **R2a (done, commit `b732d05`)**: "Save to Photos" is the first action in the
+  card modal (above "Download to Files"); bottom confirm row dropped when
+  share-capable; `openModal` supports `confirmText: null`.
+- **R2b (this section)**: the RSVP funnel shows the event flyer in the request
+  form, and the flyer is a cover option when the attendee makes their invite
+  card. Standard-event flyers become publicly fetchable via a new no-key route
+  (modeled on the lite public flyer route); threat-model note required.
+
+### R2b tasks — DONE (implemented by subagent ses_ec22108a1ffeduLRJ3hjman0DV, which
+### completed the work but its final report was lost to a provider error; verified
+### in the main session 2026-10-15 before commit)
+- [x] T1. `src/rsvp/service.py` `get_public_view`: include `flyer_asset_id`.
+- [x] T2. `src/rsvp/routes.py`: `GET /api/events/{event_id}/rsvp/flyer` (no
+      auth): 404 unknown event, 410 ended, 404 no flyer; serve decrypted bytes
+      (inline, Cache-Control public max-age=86400, ETag, nosniff) modeled on
+      the lite route (`src/ephemeral/routes.py` get_lite_flyer).
+- [x] T3. `web/app.js`: renderRsvp renders the flyer image under the lede
+      (class `event-flyer`, referrerpolicy no-referrer); attendee card-modal
+      path resolves the flyer from the public route (`card.flyerAssetId` set at
+      the showRsvpResult call site) so the Flyer cover chip appears.
+- [x] T4. Tests: route (200/410/404s, headers), public view flyer id, e2e
+      (flyer on request page + Flyer chip in the rsvp card modal).
+- [x] T5. `docs/threat_model.md` note: funnel flyers are public (consistent
+      with title/description already public on the funnel).
+- [x] T6. Verify: pytest 315 passed + e2e 40 passed + ruff clean + JXA-OK +
+      node --check OK (real output, run before commit).
+
 Verified (real output, run in main checkout):
 - `uv run pytest` → 310 passed, 34 deselected
 - `uv run ruff check src/ tests/` → clean

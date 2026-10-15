@@ -13,11 +13,13 @@ organizer key.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from src.db.database_handler import DecryptionError
 from src.rsvp.service import (
     MAX_AUTO_APPROVE,
     MAX_CONTACT_LENGTH,
@@ -127,6 +129,42 @@ def build_rsvp_router(  # noqa: C901, PLR0915 - many routes
         except RsvpNotFoundError as err:
             raise HTTPException(status_code=404, detail="Event not found") from err
         return JSONResponse(view, headers={"Cache-Control": "no-store"})
+
+    @router.get("/api/events/{event_id}/rsvp/flyer")
+    def rsvp_public_flyer(event_id: str) -> Response:
+        """Serve the event poster on the public funnel (no key; a poster)."""
+        try:
+            view = service.get_public_view(event_id)
+        except RsvpNotFoundError as err:
+            raise HTTPException(status_code=404, detail="Event not found") from err
+        if view["status"] == "ended":
+            raise HTTPException(status_code=410, detail="This event has ended")
+        asset_id = view["event"]["flyer_asset_id"]
+        if asset_id is None:
+            raise HTTPException(status_code=404, detail="No flyer for this event")
+        try:
+            asset = service.db.get_media_asset(asset_id)
+        except DecryptionError as err:
+            message = "Flyer could not be decrypted"
+            raise HTTPException(status_code=500, detail=message) from err
+        if asset is None:
+            raise HTTPException(status_code=404, detail="Flyer not found")
+        filename = quote(asset["filename"])
+        return Response(
+            content=asset["data"],
+            media_type=asset["mime_type"],
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                # Public poster, immutable per asset id: browsers may cache it
+                # for a day instead of re-downloading + re-decrypting the blob
+                # on every funnel visit. The view stays no-store; a wiped
+                # event's funnel renders "Event ended" while a visitor's
+                # cached poster copy is beyond server control anyway.
+                "Cache-Control": "public, max-age=86400",
+                "ETag": f'"{asset_id}"',
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     @router.post("/api/events/{event_id}/rsvp/decide")
     def decide_rsvp(event_id: str, body: RsvpDecisionRequest) -> dict:

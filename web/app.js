@@ -1038,9 +1038,22 @@ function openCardCoverModal(card) {
     let cover = { type: "none" };
     let flyer = null; // { image, url } resolved from the event's flyer if any
 
-    // Resolve the event's flyer as a cover option (organizer flows only).
+    // Resolve the event's flyer as a cover option: organizer flows fetch the
+    // keyed event details; the attendee funnel path falls back to the public
+    // poster route when the card carries a flyer asset id.
     const resolveFlyer = async () => {
-        if (!org || !org.organizerKey) return;
+        if (!org || !org.organizerKey) {
+            const pubUrl = card.flyerAssetId
+                ? `/api/events/${encodeURIComponent(card.eventId)}/rsvp/flyer`
+                : null;
+            if (!pubUrl) return;
+            try {
+                flyer = { image: await window.gkpInviteCard.loadCoverImage({ type: "image", src: pubUrl }), url: pubUrl };
+            } catch {
+                flyer = null;
+            }
+            return;
+        }
         try {
             const details = await fetchEventDetails();
             const fId = details.event && details.event.flyer_asset_id;
@@ -1996,6 +2009,9 @@ async function renderRsvp() {
             `<h2 class="ep-title">${esc(event.title || "Untitled event")}</h2>` +
             (event.organizer_name ? `<p class="ep-organizer">organized by ${esc(event.organizer_name)}</p>` : "") +
             `<p class="ep-lede">${esc(event.description || "")}</p>` +
+            (event.flyer_asset_id
+                ? `<img class="event-flyer" src="/api/events/${encodeURIComponent(resolvedEventId)}/rsvp/flyer" alt="Event flyer" loading="lazy" referrerpolicy="no-referrer">`
+                : "") +
             `</header>` +
             `<form id="rsvp-form" class="card form-card" autocomplete="off">` +
             `<h3 class="card-title">Request an invite</h3>` +
@@ -2101,7 +2117,14 @@ function showRsvpResult(eventId, event, result) {
             : `<a class="btn btn-ghost btn-block" href="#/join">Go to the door →</a>`);
     // Immediate card creation: the fresh key's only artifact is its card, so
     // the cover modal opens on top of the result without a button hop.
-    openCardCoverModal({ eventId, title: event.title, accessKey: key, fresh: true, fileName: result.display_name || "" });
+    openCardCoverModal({
+        eventId,
+        title: event.title,
+        accessKey: key,
+        fresh: true,
+        fileName: result.display_name || "",
+        flyerAssetId: event.flyer_asset_id || null,
+    });
     const unlock = $("#rsvp-unlock");
     if (unlock) {
         unlock.addEventListener("click", () => {
