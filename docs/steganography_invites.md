@@ -13,9 +13,12 @@ card and in the attendee's tab while unlocking.
 
 **Card-first UI (current):** the web UI never displays or copies raw key text —
 creation and minting flow **immediately into card creation** (the one-shot
-warning + cover picker + download), so the invite card is the *sole* artifact
-and the *sole* credential path. There is no text fallback: a card that is
-damaged or lost is replaced by re-submitting.
+warning + cover picker + save), so the invite card is the *sole* artifact and
+the *sole* credential path. The step is enforced: once a fresh key is minted,
+the card dialog has no dismissal path (no Cancel, no close button, backdrop
+clicks inert, and the page behind goes inert so keyboard focus cannot escape)
+— producing the card is the only way forward. There is no text
+fallback: a card that is damaged or lost is replaced by re-submitting.
 
 ---
 

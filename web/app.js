@@ -166,34 +166,65 @@ function toast(message, type = "info", title = "") {
 /* ------------------------------------------------------------------
  * Modal
  * ------------------------------------------------------------------ */
-function closeModal() {
-    const backdrop = $("#modal-root .modal-backdrop");
-    if (backdrop) backdrop.remove();
+/** Lock/unlock the page behind a non-dismissable dialog: every top-level
+ *  container except the modal root goes inert, so keyboard and pointer users
+ *  cannot reach background controls — any of which could otherwise open
+ *  another modal, force-closing this one and silently destroying the fresh
+ *  key its card is the only copy of. */
+function setBackgroundInert(on) {
+    for (const el of document.body.children) {
+        if (el.id === "modal-root" || el.tagName === "SCRIPT") continue;
+        if (on) el.setAttribute("inert", "");
+        else el.removeAttribute("inert");
+    }
 }
 
-function openModal({ title, body = "", confirmText = "Confirm", cancelText = "Cancel", danger = false, onConfirm }) {
+function closeModal() {
+    const backdrop = $("#modal-root .modal-backdrop");
+    if (backdrop) {
+        setBackgroundInert(false);
+        backdrop.remove();
+    }
+}
+
+function openModal({ title, body = "", confirmText = "Confirm", cancelText = "Cancel", danger = false, dismissable = true, onConfirm }) {
     closeModal();
     const backdrop = document.createElement("div");
     backdrop.className = "modal-backdrop";
+    // A non-dismissable dialog offers no way out except its action buttons:
+    // no ×, no footer cancel, no backdrop click (used while a fresh key's card
+    // is the only artifact and must be made before the flow continues).
+    const showCancel = dismissable && Boolean(cancelText);
     backdrop.innerHTML =
         `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">` +
         `<div class="modal-head"><h3 class="modal-title" id="modal-title">${esc(title)}</h3>` +
-        `<button class="modal-close" type="button" aria-label="Close">×</button></div>` +
+        (dismissable ? `<button class="modal-close" type="button" aria-label="Close">×</button>` : "") +
+        `</div>` +
         `<div class="modal-body">${body}</div>` +
-        `<div class="modal-actions">` +
-        `<button class="btn btn-ghost" type="button" data-act="cancel">${esc(cancelText)}</button>` +
-        (confirmText
-            ? `<button class="btn ${danger ? "btn-danger" : "btn-primary"}" type="button" data-act="confirm">${esc(confirmText)}</button>`
+        (showCancel || confirmText
+            ? `<div class="modal-actions">` +
+              (showCancel ? `<button class="btn btn-ghost" type="button" data-act="cancel">${esc(cancelText)}</button>` : "") +
+              (confirmText
+                  ? `<button class="btn ${danger ? "btn-danger" : "btn-primary"}" type="button" data-act="confirm">${esc(confirmText)}</button>`
+                  : "") +
+              `</div>`
             : "") +
-        `</div></div>`;
+        `</div>`;
     $("#modal-root").appendChild(backdrop);
+    if (!dismissable) setBackgroundInert(true);
 
-    const close = () => backdrop.remove();
-    $(".modal-close", backdrop).addEventListener("click", close);
-    $('[data-act="cancel"]', backdrop).addEventListener("click", close);
-    backdrop.addEventListener("click", (event) => {
-        if (event.target === backdrop) close();
-    });
+    const close = () => {
+        setBackgroundInert(false);
+        backdrop.remove();
+    };
+    if (dismissable) {
+        $(".modal-close", backdrop).addEventListener("click", close);
+        const cancelBtn = $('[data-act="cancel"]', backdrop);
+        if (cancelBtn) cancelBtn.addEventListener("click", close);
+        backdrop.addEventListener("click", (event) => {
+            if (event.target === backdrop) close();
+        });
+    }
     const confirmBtn = $('[data-act="confirm"]', backdrop);
     if (confirmBtn) {
         confirmBtn.addEventListener("click", async () => {
@@ -218,9 +249,10 @@ function openModal({ title, body = "", confirmText = "Confirm", cancelText = "Ca
     }
 }
 
-/** Modal that turns a freshly generated key into its one artifact: the invite
- *  card. The raw key text is never displayed or copied — the card's pixels are
- *  the only copy, so closing without "Make the card" destroys the key. */
+/** Modal that turns a freshly generated key into its one artifact, the card.
+ *  The raw key text is never displayed or copied — the card's pixels are the
+ *  only copy — and the fresh-key dialog is locked (see openCardCoverModal), so
+ *  making the card is the only exit. */
 /* ------------------------------------------------------------------
  * Small UI hooks + render helpers
  * ------------------------------------------------------------------ */
@@ -1084,8 +1116,8 @@ function openCardCoverModal(card) {
         // directly; the sanctioned path is the native share sheet
         // (`navigator.share` with files), whose "Save Image" action lands the
         // card in the photo library. Share-capable platforms get that as the
-        // primary confirm ("Save to Photos" on iOS, "Share card" elsewhere)
-        // with today's anchor download kept as a secondary action.
+        // dialog's single action — "Save to Photos" on iOS, "Save" elsewhere —
+        // so there is no redundant second local-download path.
         const probeBlob = await new Promise((resolve) => {
             const probeCanvas = document.createElement("canvas");
             probeCanvas.width = 1;
@@ -1099,7 +1131,7 @@ function openCardCoverModal(card) {
             navigator.canShare({ files: [new File([probeBlob], "probe.png", { type: "image/png" })] })
         );
         const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
-        const primaryLabel = shareCapable ? (isIOS ? "Save to Photos" : "Share card") : "Download card";
+        const primaryLabel = shareCapable ? (isIOS ? "Save to Photos" : "Save") : "Download card";
 
         const cardOpts = () => ({ ...card, cover, coverImage: cover.image || null });
 
@@ -1141,18 +1173,18 @@ function openCardCoverModal(card) {
             `</div>` +
             `</div>` +
             `<div class="card-preview-wrap"><canvas id="card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>` +
-            // Primary action first (Save to Photos above Download to Files);
-            // the bottom confirm row is dropped entirely when share exists.
+            // Share-capable platforms save through the native share sheet as
+            // their one action; the bottom confirm row is dropped entirely.
             (shareCapable
-                ? `<button class="btn btn-primary btn-block" type="button" data-act="save-share">${esc(primaryLabel)}</button>` +
-                  `<button class="btn btn-ghost btn-block" type="button" data-act="download-files">Download to Files</button>`
+                ? `<button class="btn btn-primary btn-block" type="button" data-act="save-share">${esc(primaryLabel)}</button>`
                 : "");
 
         openModal({
             title: card.organizer ? "Make an organizer card" : "Make an invite card",
             body,
             confirmText: shareCapable ? null : primaryLabel,
-            cancelText: "Cancel",
+            cancelText: null,
+            dismissable: !card.fresh,
             onConfirm: shareCapable ? undefined : doDownload,
         });
 
@@ -1170,19 +1202,6 @@ function openCardCoverModal(card) {
                     } finally {
                         shareBtn.disabled = false;
                         shareBtn.textContent = primaryLabel;
-                    }
-                });
-            }
-            const filesBtn = $('#modal-root [data-act="download-files"]');
-            if (filesBtn) {
-                filesBtn.addEventListener("click", async () => {
-                    filesBtn.disabled = true;
-                    try {
-                        await doDownload();
-                    } catch (err) {
-                        toast(err.message, "error", "Could not download");
-                    } finally {
-                        filesBtn.disabled = false;
                     }
                 });
             }

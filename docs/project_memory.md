@@ -1086,3 +1086,41 @@ Post-rename cleanup, all prototyping state — nothing worth recovering:
 32 e2e deselected; e2e `uv run pytest tests/e2e -q -m e2e --override-ini='addopts='`
 → **32 passed** (first run caught a missing `AttendeePage.keys` grabber — fixed).
 `ty check` only pre-existing LXMF/RNS unresolved-import diagnostics.
+
+### 2026-10-15 — Card dialogs locked after a fresh mint; single save action
+
+**What was done:** card creation can no longer be skipped, and the save action
+is singular.
+- `web/app.js openModal`: new `dismissable` option (default `true`). A locked
+  dialog renders no close button, ignores backdrop clicks, and shows no footer
+  cancel; the footer row renders only when it holds a button; `cancelText:
+  null` hides the cancel (mirrors the existing `confirmText: null`).
+- `web/app.js openCardCoverModal`: `cancelText: null` always;
+  `dismissable: !card.fresh` — the four fresh-key moments (event create, key
+  mint, RSVP result, lite/flyer form) cannot be dismissed, so making the card
+  is the only exit. The workspace "Organizer card" re-open (no fresh key)
+  stays dismissable via its close button.
+- Share-capable platforms: single save action — "Save to Photos" (iOS) /
+  "Save" (other share-capable; renamed from "Share card"); "Download to
+  Files" deleted as redundant. Non-share platforms keep the "Download card"
+  confirm.
+- `tests/e2e/pages.py`: `create_event` / `mint_key` / `unlock_from_rsvp_result`
+  complete the locked dialog via `expect_download()` + confirm (asserting the
+  PNG file name); new `test_fresh_card_modal_is_locked` (no Cancel, no close
+  button, backdrop inert, download-only exit; re-open close button works);
+  flyer test closes the re-open via `.modal-close`; save/share tests pin the
+  single-action labels and the locked RSVP dialog.
+- **Background containment:** while a locked dialog is up, every top-level
+  container except `#modal-root` goes `inert` — keyboard/pointer users cannot
+  reach background controls (a Tab-escape would otherwise force-close the
+  dialog and silently destroy the fresh key).
+- **Kept deliberately:** browser-level exits (reload / close tab / navigate)
+  remain unguarded — no beforeunload trap; bulk key generation already
+  auto-downloads cards and has no dialog.
+
+**Verification:** `node --check web/app.js` OK; `ruff check src tests` clean +
+`ruff format --check` clean; unit `pytest` 315 passed, 41 deselected; e2e
+`uv run pytest tests/e2e -m e2e -q` → **41 passed**. Adversarial review found
+one blocker (keyboard Tab escaped the locked dialog and could destroy the
+fresh key); fixed via the inert background containment above and re-verified
+with the full suite (assertion added to `test_fresh_card_modal_is_locked`).

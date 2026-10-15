@@ -114,3 +114,132 @@ through `src/core/event_lifecycle.py`. Ephemeral/lite path needed no change
 - `uv run ty check src/` clean (if unchanged surface)
 - Manual: create event with organizer name → RSVP link shows it → attendee page
   shows it; RSVP result + card modal show the clarifying line.
+
+---
+
+# Round 3 (2026-10-15) — Card dialogs can't be skipped after a fresh mint
+
+Approved in chat: organizer and invite cards are the *required* credential, so
+once a fresh key is minted the card dialog must be the only way forward. The
+footer Cancel is removed from the card dialog everywhere; fresh-key dialogs are
+fully locked (no ×, backdrop clicks inert); the workspace "Organizer card"
+re-open stays dismissable via × and backdrop as today — no fresh key is at
+stake there.
+
+## Goal
+
+After creating an event, minting a key, an RSVP mint, or the lite/flyer form,
+the card dialog cannot be dismissed — the only exit is producing the card
+(Save to Photos / Save / Download card). "Fresh" =
+the four call sites that already pass `fresh: true` to `openCardCoverModal`.
+
+## Requirements
+
+- [x] `openModal` gains `dismissable = true`. When false: no `.modal-close`
+      (×), backdrop clicks ignored, no footer Cancel. The `.modal-actions` row
+      renders only when it will contain a button; `cancelText: null` hides the
+      cancel button (mirror of the existing `confirmText: null`). Defaults keep
+      every other dialog's markup unchanged.
+- [x] `openCardCoverModal`: pass `cancelText: null` always and
+      `dismissable: !card.fresh`. Fresh call sites: create event (L452),
+      key mint (L1355), RSVP result (L2120), lite/flyer (L2393); organizer
+      re-open (L575) stays dismissable.
+- [x] Share-capable dialogs get a single action: iOS "Save to Photos", other
+      platforms "Save" (renamed from "Share card"). "Download to Files" is
+      removed on every platform as redundant (button, listener and stale
+      comment deleted); share success closes the dialog (existing behavior).
+      Non-share-capable keeps the "Download card" footer confirm.
+- [x] E2E helpers complete the mandatory card step (`expect_download` +
+      confirm) instead of clicking Cancel.
+- [x] E2E: lock pinned by a new test; existing flows updated; docs one-liners.
+
+## Out of scope
+
+- Browser-level exits (reload / close tab / navigation). No beforeunload guard:
+  a reload loses the fresh key exactly as today's Cancel did.
+- Bulk key generation (already auto-downloads card files; no dialog).
+- Copy changes inside the card dialog.
+- `test_lite.py` flows that `goto` away mid-dialog (implicit exit by design).
+
+## Approach
+
+1. `web/app.js` `openModal` (~L174): signature gains `dismissable = true`;
+   render the head × only when dismissable; render the `.modal-actions` block
+   only when ≥1 button will show; render the cancel button only when
+   `dismissable && cancelText`; bind the backdrop close only when dismissable.
+2. `web/app.js` `openCardCoverModal` (~L1102, ~L1144, ~L1176): pass
+   `cancelText: null`, `dismissable: !card.fresh`; `primaryLabel` becomes
+   `shareCapable ? (isIOS ? "Save to Photos" : "Save") : "Download card"`;
+   the share-capable body renders only that single button; delete the
+   "Download to Files" button, its `filesBtn` listener, and the stale
+   share-flow comment (~L1083-1088 rewritten).
+3. `tests/e2e/pages.py`: `create_event` (L148), `mint_key` (L201),
+   `unlock_from_rsvp_result` (L374) finish the locked dialog via
+   `expect_download()` + confirm click; assert the suggested-filename suffix
+   (`organizer card.png` / `invite.png`). Docstrings updated.
+4. `tests/e2e/test_organizer_flows.py`: `test_flyer_upload_shows_cover_option`
+   closes the organizer re-open dialog via `#modal-root .modal-close`;
+   `test_mint_modal_never_shows_key_text` completes via download; NEW
+   `test_fresh_card_modal_is_locked` (no cancel, no ×, backdrop click inert,
+   closes only after download; organizer re-open has a working ×).
+5. `tests/e2e/test_card_save_share.py`: module docstring rewritten; the
+   iPhone test asserts "Save to Photos" is the dialog's only action (no
+   `download-files`, order `["save-share"]`); the abort test's expected
+   desktop label becomes "Save" and it also asserts the locked RSVP dialog
+   offers no cancel/×.
+6. Docs: `docs/project_memory.md` dated entry;
+   `docs/steganography_invites.md` card-first paragraph gains the
+   "unskippable once minted" clause.
+
+## Verification
+
+```bash
+uv run pytest -q                     # unit
+uv run pytest tests/e2e -m e2e -q    # browser e2e
+uv run ruff check src tests
+node --check web/app.js
+```
+
+## Edge cases to test
+
+- Locked fresh dialog: no cancel/×, backdrop inert, exit only via card export.
+- Organizer re-open: × closes it (backdrop still closes, as today).
+- Share-capable locked (all platforms): single action; success closes the
+  dialog; AbortError keeps it open and silent, button re-enabled.
+- iOS share-capable: button says "Save to Photos"; Android/desktop: "Save".
+  No empty footer row on any share-capable dialog.
+- Download failure: dialog stays open, confirm re-enabled (existing behavior).
+
+## Progress
+
+- [x] T1. `openModal` dismissable option + conditional close wiring.
+- [x] T2. `openCardCoverModal` wiring: `cancelText: null`,
+      `dismissable: !card.fresh`, single-action share body ("Save to Photos" /
+      "Save"), delete Download to Files + listener + stale comment.
+- [x] T3. E2E helpers rework (`create_event`, `mint_key`, `unlock_from_rsvp_result`).
+- [x] T4. E2E test updates (lock test, flyer ×, abort + iPhone asserts).
+- [x] T5. Docs one-liners.
+- [x] T6. Full verification, real output reported.
+
+### Status — implemented & verified (2026-10-15)
+
+- `uv run pytest -q` → 315 passed, 41 deselected
+- `uv run pytest tests/e2e -m e2e -q` → 41 passed
+- `uv run ruff check src tests` → clean; `ruff format --check` → clean
+- `node --check web/app.js` → OK
+
+## Review findings (filled by reviewer agent)
+
+- **[fixed — was a blocker]** Keyboard escape from locked dialogs (reviewer
+  repro: Tab ×7 from the minted-key dialog reached `#ws-organizer-card`; Enter
+  opened the re-open modal, whose `openModal` → `closeModal()` force-remove
+  destroyed the fresh dialog and its only copy of the key). Fix: `web/app.js`
+  `setBackgroundInert` — every top-level container except `#modal-root` goes
+  `inert` while a non-dismissable dialog is open (applied in `openModal`,
+  restored in `closeModal` and the dialog's local `close`). Pinned by a new
+  Tab-escape assertion in `test_fresh_card_modal_is_locked` (RED → GREEN);
+  full suite re-run clean after the fix.
+- Non-blocking notes (deferred): "share success closes the dialog" and
+  "re-open backdrop still closes" are not asserted directly (the share close
+  is transitively proven: the toast is emitted inside `doShare`, `closeModal()`
+  is the unconditional next statement).

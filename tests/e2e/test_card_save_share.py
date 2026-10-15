@@ -1,7 +1,7 @@
-"""iPhone save-flow: share-capable platforms get 'Save to Photos' (native
-share sheet, whose 'Save Image' lands the card in the photo library) with
-'Download to Files' as the secondary action; other platforms keep today's
-plain download as the confirm action."""
+"""Save-flow: share-capable platforms get a single save action via the native
+share sheet — 'Save to Photos' on iOS (its 'Save Image' lands the card in the
+photo library), 'Save' elsewhere; other platforms keep the plain 'Download
+card' confirm action."""
 
 import pytest
 from pages import AttendeePage, OrganizerPage
@@ -37,16 +37,16 @@ def test_rsvp_card_share_primary_save_to_photos(
     page.add_init_script(SHARE_OK)
     attendee = AttendeePage(page, server.base_url)
     attendee.rsvp(funnel, name="Photo Pal")
-    # Primary action first: Save to Photos sits above Download to Files in
-    # the modal body, and the bottom confirm row is gone entirely.
+    # The dialog's single action is Save to Photos in the modal body: no
+    # redundant local download, no bottom confirm row.
     save_btn = page.locator('#modal-root [data-act="save-share"]')
     expect(save_btn).to_have_text("Save to Photos")
-    expect(page.locator('#modal-root [data-act="download-files"]')).to_be_visible()
+    expect(page.locator('#modal-root [data-act="download-files"]')).to_have_count(0)
     order = page.evaluate(
         """[...document.querySelectorAll('#modal-root .modal-body [data-act]')]
            .map((b) => b.dataset.act)"""
     )
-    assert order == ["save-share", "download-files"], f"unexpected action order: {order}"
+    assert order == ["save-share"], f"unexpected action order: {order}"
     expect(page.locator('#modal-root [data-act="confirm"]')).to_have_count(0)
     save_btn.click()
     # The confirm path renders the card and embeds the payload asynchronously;
@@ -68,11 +68,14 @@ def test_card_modal_share_abort_keeps_modal(organizer_context, attendee_context,
     attendee = AttendeePage(page, server.base_url)
     attendee.rsvp(funnel, name="Swipe Away")
     save_btn = page.locator('#modal-root [data-act="save-share"]')
-    expect(save_btn).to_have_text("Share card")  # desktop UA label
+    expect(save_btn).to_have_text("Save")  # desktop share-capable label
     save_btn.click()
-    # Sheet dismissed (AbortError): modal stays, button re-enables, no error toast.
+    # Sheet dismissed (AbortError): the locked modal stays (no cancel or close
+    # button to fall back on), the button re-enables, no error toast.
     expect(save_btn).to_be_visible()
-    expect(save_btn).to_have_text("Share card")
+    expect(save_btn).to_have_text("Save")
+    expect(page.locator('#modal-root [data-act="cancel"]')).to_have_count(0)
+    expect(page.locator("#modal-root .modal-close")).to_have_count(0)
     expect(page.locator(".toast", has_text="Could not complete")).to_have_count(0)
 
 

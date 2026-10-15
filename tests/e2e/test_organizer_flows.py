@@ -64,7 +64,8 @@ def test_flyer_upload_shows_cover_option(organizer_context, server, tmp_path):
     org.page.click("#ws-organizer-card")
     org.page.locator("#card-preview").wait_for(state="visible", timeout=10_000)
     expect(org.page.locator('#modal-root .cover-chip[data-cover="flyer"]')).to_be_visible()
-    org.page.locator('[data-act="cancel"]').click()
+    # The workspace re-open keeps its close button (no fresh key at stake).
+    org.page.locator("#modal-root .modal-close").click()
     org.watcher.expect_clean()
 
 
@@ -164,10 +165,56 @@ def test_mint_modal_never_shows_key_text(organizer_context, server):
     assert org.keys.latest(org.page)  # key did arrive — but only on the wire
     expect(org.page.locator("#modal-root .kc-value")).to_have_count(0)
     expect(org.page.locator("#modal-root #key-copy-btn")).to_have_count(0)
-    # The cover modal is open (download is the confirm action).
+    # The cover modal is open (download is the confirm action) and locked:
+    # making the card is the only exit.
     expect(org.page.locator('#modal-root [data-act="confirm"]')).to_be_visible()
-    org.page.locator('[data-act="cancel"]').click()
+    with org.page.expect_download() as dl:
+        org.page.locator('[data-act="confirm"]').click()
+    name = dl.value.suggested_filename
+    assert name.endswith("invite.png"), name
     expect(org.page.locator(".ws-banner #ws-copy-key, #ws-copy-key")).to_have_count(0)
+    org.watcher.expect_clean()
+
+
+def test_fresh_card_modal_is_locked(organizer_context, server):
+    """A fresh key's card dialog has no dismissal path — no Cancel, no close
+    button, backdrop clicks inert — so making the card is required. The
+    workspace organizer-card re-open stays dismissable via its close button."""
+    org = OrganizerPage(organizer_context.new_page(), server.base_url)
+    org.create_event("Locked Exit", "The card is the only way out.")
+    org.tab("keys")
+    org.page.fill("#key-owner", "Sealed Guest")
+    org.page.click("#gen-key-btn")
+    org.page.locator("#card-preview").wait_for(state="visible", timeout=10_000)
+    modal = org.page.locator("#modal-root .modal")
+    expect(org.page.locator('#modal-root [data-act="cancel"]')).to_have_count(0)
+    expect(org.page.locator("#modal-root .modal-close")).to_have_count(0)
+    # Backdrop clicks are inert while a fresh key exists.
+    org.page.locator("#modal-root .modal-backdrop").click(position={"x": 4, "y": 4})
+    expect(modal).to_be_visible()
+    # Keyboard focus cannot escape into the background either: the page behind
+    # the locked dialog is inert, so Tab never reaches workspace controls.
+    for _ in range(12):
+        org.page.keyboard.press("Tab")
+        escaped = org.page.evaluate(
+            """() => {
+                const el = document.activeElement;
+                return !!el && el !== document.body && el.closest("#modal-root") === null;
+            }"""
+        )
+        assert not escaped, "keyboard focus escaped the locked dialog"
+    expect(modal).to_be_visible()
+    # The download confirm is the dialog's only exit.
+    with org.page.expect_download() as dl:
+        org.page.locator('[data-act="confirm"]').click()
+    name = dl.value.suggested_filename
+    assert name.endswith("invite.png"), name
+    expect(modal).to_have_count(0)
+    # The organizer-card re-open from the workspace keeps a working close button.
+    org.page.click("#ws-organizer-card")
+    expect(modal).to_be_visible()
+    org.page.locator("#modal-root .modal-close").click()
+    expect(modal).to_have_count(0)
     org.watcher.expect_clean()
 
 

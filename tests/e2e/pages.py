@@ -146,7 +146,8 @@ class OrganizerPage:
         self.page.goto(f"{self.base}/{route}")
 
     def create_event(self, title: str, description: str, *, location: str = "") -> "EventHandle":
-        """Drive `#create-event-form`; org key comes from the one-show modal."""
+        """Drive `#create-event-form`; the org key arrives on the wire, and the
+        fresh (locked) organizer card modal is completed via its download."""
         self.go()
         self.page.fill("#title", title)
         self.page.fill("#description", description)
@@ -155,9 +156,12 @@ class OrganizerPage:
         self.page.click("#create-btn")
         self.page.locator("#modal-root .modal").wait_for(timeout=10_000)
         org_key = self.keys.latest(self.page)
-        # The fresh organizer card modal opens immediately — Cancel it here;
-        # tests that need the card itself use mint_key_and_card.
-        self.page.locator('[data-act="cancel"]').click()
+        # The fresh organizer card modal cannot be dismissed — making the card
+        # (the download confirm) is its only exit.
+        with self.page.expect_download() as dl:
+            self.page.locator('[data-act="confirm"]').click()
+        name = dl.value.suggested_filename
+        assert name.endswith("organizer card.png"), name
         self.page.locator(".ws-title").wait_for(state="visible")
         event_id = self.page.locator("#ws-event-id").inner_text().strip()
         return EventHandle(event_id, org_key, title)
@@ -200,14 +204,18 @@ class OrganizerPage:
 
     def mint_key(self, owner: str, days: int = 30) -> str:
         """Mint an access key; the raw value arrives only via the POST response
-        (the UI never renders it as text). Closes the card-centric modal."""
+        (the UI never renders it as text). Completes the locked card modal's
+        download — making the card is a fresh key's only exit."""
         self.tab("keys")
         self.page.fill("#key-owner", owner)
         self.page.fill("#key-days", str(days))
         self.page.click("#gen-key-btn")
         self.page.locator("#modal-root .modal").wait_for(timeout=10_000)
         key = self.keys.latest(self.page)
-        self.page.locator('[data-act="cancel"]').click()
+        with self.page.expect_download() as dl:
+            self.page.locator('[data-act="confirm"]').click()
+        name = dl.value.suggested_filename
+        assert name.endswith("invite.png"), name
         return key
 
     def mint_key_and_card(self, file_path: Path, owner: str, days: int = 30) -> str:
@@ -373,8 +381,12 @@ class AttendeePage:
 
     def unlock_from_rsvp_result(self) -> None:
         """'Open the event now' on the approved-RSVP result page. The
-        fresh-key card modal auto-opens on top — dismiss it first."""
-        self.page.locator('[data-act="cancel"]').click()
+        fresh-key card modal auto-opens on top and cannot be dismissed —
+        complete its download first."""
+        with self.page.expect_download() as dl:
+            self.page.locator('[data-act="confirm"]').click()
+        name = dl.value.suggested_filename
+        assert name.endswith("invite.png"), name
         self.page.click("#rsvp-unlock")
         self.page.locator("#join-views .ep-title").first.wait_for(state="visible")
 
