@@ -358,6 +358,27 @@ window.gkpInviteCard = (function () {
     }
 
     /**
+     * Draw, embed the invite payload and return it as a PNG File (no
+     * side effects). Callers either anchor-download it (`download`) or
+     * hand it to the platform share sheet (`navigator.share`).
+     *
+     * opts: { eventId, accessKey, title, cover, coverImage, scale, organizer }
+     * `organizer: true` makes a ORGANIZER card — same viewport, stamped face,
+     * the hidden payload tagged `organizer` (see stego.js).
+     */
+    async function cardFile(opts) {
+        const o = opts || {};
+        const coverImage = o.cover && o.cover.type === "image" ? await loadCoverImage(o.cover) : null;
+        const payload = window.gkpStego.makePayload(o.eventId, o.accessKey, o.organizer ? "organizer" : undefined);
+        const canvas = document.createElement("canvas");
+        render(canvas, { ...o, coverImage });
+        const png = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+        const stegoBlob = await window.gkpStego.embed(png, payload);
+        const name = `${safeFileName(o.fileName || o.title)}-${o.organizer ? "organizer card" : "invite"}.png`;
+        return new File([stegoBlob], name, { type: "image/png" });
+    }
+
+    /**
      * Draw, embed the invite payload and trigger a download of the stego PNG.
      *
      * opts: { eventId, accessKey, title, cover, coverImage, scale, organizer }
@@ -367,22 +388,17 @@ window.gkpInviteCard = (function () {
      */
     async function download(opts) {
         const o = opts || {};
-        const coverImage = o.cover && o.cover.type === "image" ? await loadCoverImage(o.cover) : null;
-        const payload = window.gkpStego.makePayload(o.eventId, o.accessKey, o.organizer ? "organizer" : undefined);
-        const canvas = document.createElement("canvas");
-        render(canvas, { ...o, coverImage });
-        const png = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-        const stegoBlob = await window.gkpStego.embed(png, payload);
-        const url = URL.createObjectURL(stegoBlob);
+        const file = await cardFile(o);
+        const url = URL.createObjectURL(file);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `${safeFileName(o.fileName || o.title)}-${o.organizer ? "organizer card" : "invite"}.png`;
+        a.download = file.name;
         document.body.appendChild(a);
         a.click();
         a.remove();
         window.setTimeout(() => URL.revokeObjectURL(url), 5000);
-        return stegoBlob;
+        return file;
     }
 
-    return { render, download, safeFileName, renderCover, coverFit, containFit, loadCoverImage };
+    return { render, download, cardFile, safeFileName, renderCover, coverFit, containFit, loadCoverImage };
 })();

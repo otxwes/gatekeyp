@@ -184,7 +184,7 @@ def main() -> int:
     # Hook the shipped invite-card module: expose coverFit, containFit and the
     # full-card backdropCrop for the pin.
     card_target = (
-        "    return { render, download, safeFileName, renderCover, coverFit, "
+        "    return { render, download, cardFile, safeFileName, renderCover, coverFit, "
         "containFit, loadCoverImage };"
     )
     card_hooked = (

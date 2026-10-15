@@ -200,9 +200,15 @@ function openModal({ title, body = "", confirmText = "Confirm", cancelText = "Ca
             await onConfirm();
             close();
         } catch (err) {
-            toast(err.message, "error", "Could not complete");
-            confirmBtn.disabled = false;
-            confirmBtn.textContent = confirmText;
+            if (err && err.silent) {
+                // A user dismissal (e.g. share-sheet swipe-away): not an error.
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = confirmText;
+            } else {
+                toast(err.message, "error", "Could not complete");
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = confirmText;
+            }
         }
     });
     confirmBtn.focus();
@@ -1041,7 +1047,7 @@ function openCardCoverModal(card) {
         }
     };
 
-    resolveFlyer().then(() => {
+    resolveFlyer().then(async () => {
         const chips = COVER_PRESETS.map((p) => {
             const selected = p.id === "none" ? " is-selected" : "";
             const pressed = p.id === "none" ? "true" : "false";
@@ -1057,6 +1063,27 @@ function openCardCoverModal(card) {
               `<canvas width="176" height="60" data-flyer-swatch></canvas>` +
               `<span>Flyer</span></button>`
             : "";
+        // iPhone save-flow: a web page cannot write to the Photos library
+        // directly; the sanctioned path is the native share sheet
+        // (`navigator.share` with files), whose "Save Image" action lands the
+        // card in the photo library. Share-capable platforms get that as the
+        // primary confirm ("Save to Photos" on iOS, "Share card" elsewhere)
+        // with today's anchor download kept as a secondary action.
+        const probeBlob = await new Promise((resolve) => {
+            const probeCanvas = document.createElement("canvas");
+            probeCanvas.width = 1;
+            probeCanvas.height = 1;
+            probeCanvas.toBlob(resolve, "image/png");
+        });
+        const shareCapable = Boolean(
+            probeBlob &&
+            typeof navigator.canShare === "function" &&
+            typeof navigator.share === "function" &&
+            navigator.canShare({ files: [new File([probeBlob], "probe.png", { type: "image/png" })] })
+        );
+        const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+        const confirmLabel = shareCapable ? (isIOS ? "Save to Photos" : "Share card") : "Download card";
+
         const body =
             (card.organizer
                 ? `<p class="field-hint ep-card-note">This card is the only copy of your organizer key. It's how you reopen the event.</p>`
@@ -1070,19 +1097,40 @@ function openCardCoverModal(card) {
             `<input type="file" id="cover-file" accept="image/*" hidden>` +
             `</div>` +
             `</div>` +
-            `<div class="card-preview-wrap"><canvas id="card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>`;
+            `<div class="card-preview-wrap"><canvas id="card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>` +
+            (shareCapable
+                ? `<button class="btn btn-ghost btn-block" type="button" data-act="download-files">Download to Files</button>`
+                : "");
 
         openModal({
             title: card.organizer ? "Make an organizer card" : "Make an invite card",
             body,
-            confirmText: "Download card",
+            confirmText: confirmLabel,
             cancelText: "Cancel",
             onConfirm: async () => {
-                await window.gkpInviteCard.download({
+                const opts = {
                     ...card,
                     cover,
                     coverImage: cover.image || null,
-                });
+                };
+                if (shareCapable) {
+                    const file = await window.gkpInviteCard.cardFile(opts);
+                    try {
+                        await navigator.share({ files: [file], title: card.title || "cellar card" });
+                        toast(
+                            card.organizer ? "Organizer card saved." : "Invite card saved.",
+                            "ok",
+                            "Saved"
+                        );
+                    } catch (err) {
+                        const silent = err && (err.name === "AbortError" || err.name === "NotAllowedError");
+                        const wrapped = new Error(silent ? "" : (err && err.message) || "Could not share the card");
+                        wrapped.silent = silent;
+                        throw wrapped;
+                    }
+                    return;
+                }
+                await window.gkpInviteCard.download(opts);
                 toast(
                     card.organizer
                         ? "Organizer card downloaded. It reopens the event on this tab."
@@ -1092,6 +1140,33 @@ function openCardCoverModal(card) {
                 );
             },
         });
+
+        if (shareCapable) {
+            const filesBtn = $('#modal-root [data-act="download-files"]');
+            if (filesBtn) {
+                filesBtn.addEventListener("click", async () => {
+                    filesBtn.disabled = true;
+                    try {
+                        await window.gkpInviteCard.download({
+                            ...card,
+                            cover,
+                            coverImage: cover.image || null,
+                        });
+                        toast(
+                            card.organizer
+                                ? "Organizer card downloaded. It reopens the event on this tab."
+                                : "Invite card downloaded. The key is hidden in its pixels.",
+                            "ok",
+                            "Card ready"
+                        );
+                    } catch (err) {
+                        toast(err.message, "error", "Could not download");
+                    } finally {
+                        filesBtn.disabled = false;
+                    }
+                });
+            }
+        }
 
         const backdrop = $("#modal-root .modal-backdrop");
         const preview = $("#card-preview");
