@@ -182,7 +182,9 @@ function openModal({ title, body = "", confirmText = "Confirm", cancelText = "Ca
         `<div class="modal-body">${body}</div>` +
         `<div class="modal-actions">` +
         `<button class="btn btn-ghost" type="button" data-act="cancel">${esc(cancelText)}</button>` +
-        `<button class="btn ${danger ? "btn-danger" : "btn-primary"}" type="button" data-act="confirm">${esc(confirmText)}</button>` +
+        (confirmText
+            ? `<button class="btn ${danger ? "btn-danger" : "btn-primary"}" type="button" data-act="confirm">${esc(confirmText)}</button>`
+            : "") +
         `</div></div>`;
     $("#modal-root").appendChild(backdrop);
 
@@ -193,25 +195,27 @@ function openModal({ title, body = "", confirmText = "Confirm", cancelText = "Ca
         if (event.target === backdrop) close();
     });
     const confirmBtn = $('[data-act="confirm"]', backdrop);
-    confirmBtn.addEventListener("click", async () => {
-        confirmBtn.disabled = true;
-        confirmBtn.textContent = "Working…";
-        try {
-            await onConfirm();
-            close();
-        } catch (err) {
-            if (err && err.silent) {
-                // A user dismissal (e.g. share-sheet swipe-away): not an error.
-                confirmBtn.disabled = false;
-                confirmBtn.textContent = confirmText;
-            } else {
-                toast(err.message, "error", "Could not complete");
-                confirmBtn.disabled = false;
-                confirmBtn.textContent = confirmText;
+    if (confirmBtn) {
+        confirmBtn.addEventListener("click", async () => {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = "Working…";
+            try {
+                await onConfirm();
+                close();
+            } catch (err) {
+                if (err && err.silent) {
+                    // A user dismissal (e.g. share-sheet swipe-away): not an error.
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = confirmText;
+                } else {
+                    toast(err.message, "error", "Could not complete");
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = confirmText;
+                }
             }
-        }
-    });
-    confirmBtn.focus();
+        });
+        confirmBtn.focus();
+    }
 }
 
 /** Modal that turns a freshly generated key into its one artifact: the invite
@@ -1082,7 +1086,33 @@ function openCardCoverModal(card) {
             navigator.canShare({ files: [new File([probeBlob], "probe.png", { type: "image/png" })] })
         );
         const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
-        const confirmLabel = shareCapable ? (isIOS ? "Save to Photos" : "Share card") : "Download card";
+        const primaryLabel = shareCapable ? (isIOS ? "Save to Photos" : "Share card") : "Download card";
+
+        const cardOpts = () => ({ ...card, cover, coverImage: cover.image || null });
+
+        const doDownload = async () => {
+            await window.gkpInviteCard.download(cardOpts());
+            toast(
+                card.organizer
+                    ? "Organizer card downloaded. It reopens the event on this tab."
+                    : "Invite card downloaded. The key is hidden in its pixels.",
+                "ok",
+                "Card ready"
+            );
+        };
+
+        const doShare = async () => {
+            const file = await window.gkpInviteCard.cardFile(cardOpts());
+            try {
+                await navigator.share({ files: [file], title: card.title || "cellar card" });
+                toast(card.organizer ? "Organizer card saved." : "Invite card saved.", "ok", "Saved");
+            } catch (err) {
+                const silent = err && (err.name === "AbortError" || err.name === "NotAllowedError");
+                const wrapped = new Error(silent ? "" : (err && err.message) || "Could not share the card");
+                wrapped.silent = silent;
+                throw wrapped;
+            }
+        };
 
         const body =
             (card.organizer
@@ -1098,67 +1128,44 @@ function openCardCoverModal(card) {
             `</div>` +
             `</div>` +
             `<div class="card-preview-wrap"><canvas id="card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>` +
+            // Primary action first (Save to Photos above Download to Files);
+            // the bottom confirm row is dropped entirely when share exists.
             (shareCapable
-                ? `<button class="btn btn-ghost btn-block" type="button" data-act="download-files">Download to Files</button>`
+                ? `<button class="btn btn-primary btn-block" type="button" data-act="save-share">${esc(primaryLabel)}</button>` +
+                  `<button class="btn btn-ghost btn-block" type="button" data-act="download-files">Download to Files</button>`
                 : "");
 
         openModal({
             title: card.organizer ? "Make an organizer card" : "Make an invite card",
             body,
-            confirmText: confirmLabel,
+            confirmText: shareCapable ? null : primaryLabel,
             cancelText: "Cancel",
-            onConfirm: async () => {
-                const opts = {
-                    ...card,
-                    cover,
-                    coverImage: cover.image || null,
-                };
-                if (shareCapable) {
-                    const file = await window.gkpInviteCard.cardFile(opts);
-                    try {
-                        await navigator.share({ files: [file], title: card.title || "cellar card" });
-                        toast(
-                            card.organizer ? "Organizer card saved." : "Invite card saved.",
-                            "ok",
-                            "Saved"
-                        );
-                    } catch (err) {
-                        const silent = err && (err.name === "AbortError" || err.name === "NotAllowedError");
-                        const wrapped = new Error(silent ? "" : (err && err.message) || "Could not share the card");
-                        wrapped.silent = silent;
-                        throw wrapped;
-                    }
-                    return;
-                }
-                await window.gkpInviteCard.download(opts);
-                toast(
-                    card.organizer
-                        ? "Organizer card downloaded. It reopens the event on this tab."
-                        : "Invite card downloaded. The key is hidden in its pixels.",
-                    "ok",
-                    "Card ready"
-                );
-            },
+            onConfirm: shareCapable ? undefined : doDownload,
         });
 
         if (shareCapable) {
+            const shareBtn = $('#modal-root [data-act="save-share"]');
+            if (shareBtn) {
+                shareBtn.addEventListener("click", async () => {
+                    shareBtn.disabled = true;
+                    shareBtn.textContent = "Working…";
+                    try {
+                        await doShare();
+                        closeModal();
+                    } catch (err) {
+                        if (!err.silent) toast(err.message, "error", "Could not complete");
+                    } finally {
+                        shareBtn.disabled = false;
+                        shareBtn.textContent = primaryLabel;
+                    }
+                });
+            }
             const filesBtn = $('#modal-root [data-act="download-files"]');
             if (filesBtn) {
                 filesBtn.addEventListener("click", async () => {
                     filesBtn.disabled = true;
                     try {
-                        await window.gkpInviteCard.download({
-                            ...card,
-                            cover,
-                            coverImage: cover.image || null,
-                        });
-                        toast(
-                            card.organizer
-                                ? "Organizer card downloaded. It reopens the event on this tab."
-                                : "Invite card downloaded. The key is hidden in its pixels.",
-                            "ok",
-                            "Card ready"
-                        );
+                        await doDownload();
                     } catch (err) {
                         toast(err.message, "error", "Could not download");
                     } finally {

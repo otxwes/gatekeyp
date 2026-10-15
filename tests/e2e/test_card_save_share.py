@@ -37,10 +37,18 @@ def test_rsvp_card_share_primary_save_to_photos(
     page.add_init_script(SHARE_OK)
     attendee = AttendeePage(page, server.base_url)
     attendee.rsvp(funnel, name="Photo Pal")
-    confirm = page.locator('#modal-root [data-act="confirm"]')
-    expect(confirm).to_have_text("Save to Photos")
+    # Primary action first: Save to Photos sits above Download to Files in
+    # the modal body, and the bottom confirm row is gone entirely.
+    save_btn = page.locator('#modal-root [data-act="save-share"]')
+    expect(save_btn).to_have_text("Save to Photos")
     expect(page.locator('#modal-root [data-act="download-files"]')).to_be_visible()
-    confirm.click()
+    order = page.evaluate(
+        """[...document.querySelectorAll('#modal-root .modal-body [data-act]')]
+           .map((b) => b.dataset.act)"""
+    )
+    assert order == ["save-share", "download-files"], f"unexpected action order: {order}"
+    expect(page.locator('#modal-root [data-act="confirm"]')).to_have_count(0)
+    save_btn.click()
     # The confirm path renders the card and embeds the payload asynchronously;
     # the "saved" toast is the app's completion signal for the share call.
     expect(page.locator(".toast", has_text="Invite card saved.")).to_be_visible(timeout=15_000)
@@ -59,12 +67,12 @@ def test_card_modal_share_abort_keeps_modal(organizer_context, attendee_context,
     page.add_init_script(SHARE_ABORT)
     attendee = AttendeePage(page, server.base_url)
     attendee.rsvp(funnel, name="Swipe Away")
-    confirm = page.locator('#modal-root [data-act="confirm"]')
-    expect(confirm).to_have_text("Share card")  # desktop UA label
-    confirm.click()
+    save_btn = page.locator('#modal-root [data-act="save-share"]')
+    expect(save_btn).to_have_text("Share card")  # desktop UA label
+    save_btn.click()
     # Sheet dismissed (AbortError): modal stays, button re-enables, no error toast.
-    expect(confirm).to_be_visible()
-    expect(confirm).to_have_text("Share card")
+    expect(save_btn).to_be_visible()
+    expect(save_btn).to_have_text("Share card")
     expect(page.locator(".toast", has_text="Could not complete")).to_have_count(0)
 
 
