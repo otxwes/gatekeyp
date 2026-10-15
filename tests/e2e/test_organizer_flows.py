@@ -169,3 +169,18 @@ def test_mint_modal_never_shows_key_text(organizer_context, server):
     org.page.locator('[data-act="cancel"]').click()
     expect(org.page.locator(".ws-banner #ws-copy-key, #ws-copy-key")).to_have_count(0)
     org.watcher.expect_clean()
+
+
+def test_organizer_card_modal_carries_clarifying_note(organizer_context, server):
+    """The organizer card modal explains what the card is, same as the
+    attendee invite card modal does (card-first UX: the card is the only
+    copy of the organizer key)."""
+    organizer = OrganizerPage(organizer_context.new_page(), server.base_url)
+    organizer.create_event("Card Note", "The organizer card says what it is.")
+    organizer.page.locator("#ws-organizer-card").click()
+    modal = organizer.page.locator("#modal-root .modal")
+    expect(modal).to_be_visible()
+    note = modal.locator(".ep-card-note")
+    expect(note).to_be_visible()
+    expect(note).to_contain_text("organizer key")
+    organizer.watcher.expect_clean()

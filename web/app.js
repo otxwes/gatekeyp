@@ -1059,7 +1059,7 @@ function openCardCoverModal(card) {
             : "";
         const body =
             (card.organizer
-                ? ""
+                ? `<p class="field-hint ep-card-note">This card is the only copy of your organizer key — it's how you reopen the event.</p>`
                 : `<p class="field-hint ep-card-note">This card is what identifies you and gets your invite approved — keep it safe.</p>`) +
             `<div class="field"><label>Cover</label>` +
             `<div class="cover-picker">${chips}${flyerChip}` +
@@ -1073,7 +1073,7 @@ function openCardCoverModal(card) {
             `<div class="card-preview-wrap"><canvas id="card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>`;
 
         openModal({
-            title: card.organizer ? "Make a organizer card" : "Make an invite card",
+            title: card.organizer ? "Make an organizer card" : "Make an invite card",
             body,
             confirmText: "Download card",
             cancelText: "Cancel",
