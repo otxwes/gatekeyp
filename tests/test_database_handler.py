@@ -34,6 +34,24 @@ class TestDatabaseHandler(unittest.TestCase):
         self.assertEqual(event["id"], "event_id")
         self.assertEqual(event["title"], "title")
 
+    def test_event_organizer_name_defaults_blank(self):
+        """Events without an organizer name read back as blank, not None."""
+        self.db.add_event("event_ood", "title", "description", "organizer_id")
+        event = self.db.get_event("event_ood")
+        self.assertEqual(event["organizer_name"], "")
+
+    def test_event_organizer_name_stored_and_read(self):
+        """A provided organizer name is persisted and returned verbatim."""
+        self.db.add_event(
+            "event_on",
+            "title",
+            "description",
+            "organizer_id",
+            organizer_name="Cellar Collective",
+        )
+        event = self.db.get_event("event_on")
+        self.assertEqual(event["organizer_name"], "Cellar Collective")
+
     def test_content_payload_encrypted_at_rest(self):
         """Sensitive payloads must be encrypted in the database, not plaintext."""
         self.db.add_content_block("block_enc", "event_1", "key_1", "location", "40.7128,-74.0060")
@@ -149,6 +167,7 @@ class TestSchemaMigration(unittest.TestCase):
                 "rsvp_auto_approve",
                 "flyer_asset_id",
                 "slug",
+                "organizer_name",
                 "location_data",
             ):
                 self.assertIn(col, event_cols)

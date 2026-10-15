@@ -82,6 +82,7 @@ class EventLifecycleManager:
         location_data: str | None = None,
         *,
         organizer_key_days: int = DEFAULT_ORGANIZER_KEY_DAYS,
+        organizer_name: str = "",
     ) -> dict:
         """
         Create a new event with a organizer key.
@@ -122,6 +123,7 @@ class EventLifecycleManager:
             organizer_id=organizer_id,
             location_data=location_data,
             slug=slug,
+            organizer_name=organizer_name,
         )
 
         # Generate a organizer key for this event

@@ -39,6 +39,7 @@ class CreateEventRequest(BaseModel):
     description: str = Field(..., min_length=1, max_length=65536)
     organizer_id: str = Field(..., min_length=1, max_length=256)
     location_data: str | None = Field(default=None, max_length=1024)
+    organizer_name: str = Field(default="", max_length=128)
 
 
 class SetFlyerRequest(BaseModel):
@@ -294,6 +295,7 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
                 description=request.description,
                 organizer_id=request.organizer_id,
                 location_data=request.location_data,
+                organizer_name=request.organizer_name,
             )
         except EventLifecycleError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err

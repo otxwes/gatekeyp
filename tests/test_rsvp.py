@@ -367,8 +367,31 @@ class TestPublicView:
             "id": created["event_id"],
             "title": "Launch",
             "description": "A test event",
+            "organizer_name": "",
         }
         assert view["passphrase_required"] is False
+
+    def test_public_view_includes_organizer_name_when_set(self, rsvp, lifecycle):
+        """A named organizer is exposed to attendees on the public view."""
+        created = lifecycle.create_event(
+            "Launch", "A test event", "org_1", organizer_name="Cellar Collective"
+        )
+        view = rsvp.get_public_view(created["event_id"])
+        assert view["event"]["organizer_name"] == "Cellar Collective"
+
+    def test_public_view_organizer_name_defaults_blank(self, rsvp, lifecycle):
+        """Without an organizer name, the public view reports a blank string."""
+        created = _make_event(lifecycle)
+        view = rsvp.get_public_view(created["event_id"])
+        assert view["event"]["organizer_name"] == ""
+
+    def test_public_view_by_slug_includes_organizer_name(self, rsvp, lifecycle):
+        """The slug-based public view carries the organizer name too."""
+        created = lifecycle.create_event(
+            "Launch", "A test event", "org_1", organizer_name="Fog & Fern"
+        )
+        view = rsvp.get_public_view_by_slug(created["slug"])
+        assert view["event"]["organizer_name"] == "Fog & Fern"
 
     def test_passphrase_required_flag(self, rsvp, lifecycle):
         """Turning the passphrase gate on is visible to attendees."""

@@ -76,6 +76,11 @@ between the fixed steps; everything else picks a step.
   `.opt` tag. The one-shot key warning is the sole exception (functional safety): one line,
   reusing the canonical modal copy. — added 2026-09-08, after the Phase A funnel
   reintroduced caption text; stripped in the same session (see `docs/project_memory.md`).
+- **Scoped §3.4 exception — invite-card clarifying copy.** When a surface asks an *attendee*
+  to download/make their invite card, ONE terse sentence may clarify that the card is what
+  identifies them and gets their request approved (RSVP-result page, attendee card-cover
+  modal). Single short line only — never a paragraph. — added 2026-10-14 (user-approved
+  carve-out so guests understand what the card is for).
 - **No placeholder prose.** Fields stand empty — no invented example copy in `placeholder`
   attributes ("Open Mic Night", "Friday, 9pm"). The label names the field; if a user can't
   tell what goes in it, fix the label. — added 2026-09-08.

@@ -94,6 +94,39 @@ class TestEventApi:
         assert details["event"]["title"] == "Open Mic Night"
         assert details["content_blocks"] == []
 
+    def test_create_event_with_organizer_name(self, client):
+        """An optional organizer name is stored and returned via details."""
+        created = client.post(
+            "/api/events",
+            json={
+                "title": "Garden Party",
+                "description": "Afternoon in the yard.",
+                "organizer_id": "@theo:nyc",
+                "organizer_name": "Theo & Co",
+            },
+        ).json()
+        details = client.get(
+            f"/api/events/{created['event_id']}",
+            params={"organizer_key": created["organizer_key"]},
+        ).json()
+        assert details["event"]["organizer_name"] == "Theo & Co"
+
+    def test_create_event_organizer_name_defaults_blank(self, client):
+        """Omitting the organizer name defaults it to a blank string."""
+        created = client.post(
+            "/api/events",
+            json={
+                "title": "Jam Session",
+                "description": "Bring an instrument.",
+                "organizer_id": "@theo:nyc",
+            },
+        ).json()
+        details = client.get(
+            f"/api/events/{created['event_id']}",
+            params={"organizer_key": created["organizer_key"]},
+        ).json()
+        assert details["event"]["organizer_name"] == ""
+
     def test_get_event_details_rejects_bad_key(self, client, created_event):
         """An invalid key is rejected (fail-secure)."""
         response = client.get(

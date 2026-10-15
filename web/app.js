@@ -398,6 +398,7 @@ function bindOrganizeEntry() {
         const title = getField(createForm, "title");
         const description = getField(createForm, "description");
         const location_data = getField(createForm, "location_data") || null;
+        const organizer_name = getField(createForm, "organizer_name") || "";
         if (!title || !description) {
             note(noteEl, "A title and description are required.", "error");
             return;
@@ -406,14 +407,14 @@ function bindOrganizeEntry() {
         try {
             const created = await api("/api/events", {
                 method: "POST",
-                body: { title, description, organizer_id: "organizer", location_data },
+                body: { title, description, organizer_id: "organizer", location_data, organizer_name },
             });
             org = {
                 eventId: created.event_id,
                 organizerKey: created.organizer_key,
                 title: created.title || title,
                 slug: created.slug || "",
-                meta: { description, locationData: location_data, flyerId: null },
+                meta: { description, locationData: location_data, organizerName: organizer_name, flyerId: null },
             };
             // Optional flyer: upload it onto the event, then record it as the
             // event's flyer so card covers can reuse it.
@@ -1057,6 +1058,9 @@ function openCardCoverModal(card) {
               `<span>Flyer</span></button>`
             : "";
         const body =
+            (card.organizer
+                ? ""
+                : `<p class="field-hint ep-card-note">This card is what identifies you and gets your invite approved — keep it safe.</p>`) +
             `<div class="field"><label>Cover</label>` +
             `<div class="cover-picker">${chips}${flyerChip}` +
             `<label class="cover-chip cover-upload" id="cover-upload-chip" for="cover-file" role="button" tabindex="0">` +
@@ -1619,6 +1623,7 @@ async function openOrganizerWorkspace(eventId, organizerKey) {
         meta: {
             description: eventInfo.description || "",
             locationData: eventInfo.location_data || "",
+            organizerName: eventInfo.organizer_name || "",
             createdAt: eventInfo.created_at || "",
             flyerId: eventInfo.flyer_asset_id || null,
         },
@@ -1907,6 +1912,7 @@ async function renderRsvp() {
             `<header class="ep-head">` +
             `<p class="eyebrow ep-eyebrow">RSVP</p>` +
             `<h2 class="ep-title">${esc(event.title || "Untitled event")}</h2>` +
+            (event.organizer_name ? `<p class="ep-organizer">organized by ${esc(event.organizer_name)}</p>` : "") +
             `<p class="ep-lede">${esc(event.description || "")}</p>` +
             `</header>` +
             `<form id="rsvp-form" class="card form-card" autocomplete="off">` +
@@ -2005,8 +2011,8 @@ function showRsvpResult(eventId, event, result) {
         `<p class="eyebrow ep-eyebrow">RSVP received</p>` +
         `<h2 class="ep-title">${esc(result.display_name || "You're on the list")}</h2>` +
         `<p class="ep-lede">${approved
-            ? "You're approved — the card below opens the event right now."
-            : "Your card works the moment the organizer approves your RSVP. Approve or deny is their call."}</p>` +
+            ? "You're approved — the card below opens the event right now. It's how the organizer recognizes you at the door."
+            : "Your card works the moment the organizer approves your RSVP. It's how they identify and approve your request — keep it safe."}</p>` +
         `</header>` +
         (approved
             ? `<button class="btn btn-secondary btn-block" type="button" id="rsvp-unlock">Open the event now</button>`
@@ -2039,6 +2045,7 @@ function renderEventPage() {
         `<header class="ep-head">` +
         `<p class="eyebrow ep-eyebrow">You're invited</p>` +
         `<h2 class="ep-title">${esc(event.title || "Untitled event")}</h2>` +
+        (event.organizer_name ? `<p class="ep-organizer">organized by ${esc(event.organizer_name)}</p>` : "") +
         `<p class="ep-lede">${esc(event.description || "")}</p>` +
         (event.flyer_asset_id
             ? `<img class="event-flyer" src="${esc(mediaUrl(event.flyer_asset_id))}" alt="Event flyer" loading="lazy" referrerpolicy="no-referrer">`

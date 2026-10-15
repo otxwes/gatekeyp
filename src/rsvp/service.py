@@ -427,6 +427,7 @@ class RsvpService:
                 "id": event["id"],
                 "title": event["title"],
                 "description": event["description"],
+                "organizer_name": event.get("organizer_name", ""),
             },
             "passphrase_required": bool(event.get("rsvp_passphrase_hash")),
         }

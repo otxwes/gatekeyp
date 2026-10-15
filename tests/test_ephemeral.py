@@ -310,6 +310,12 @@ class TestEphemeralService:
         assert event["mode"] == "ephemeral"
         assert event["expires_at"] is not None
 
+    def test_create_lite_event_organizer_name_blank(self, ephemeral):
+        """Lite events carry no organizer name (blank, so nothing leaks)."""
+        result = ephemeral.create_lite_event("Rooftop set", when="Friday 9pm", where="The roof")
+        event = ephemeral.db.get_event(result["event_id"])
+        assert event["organizer_name"] == ""
+
     def test_create_lite_event_with_flyer(self, ephemeral):
         """The flyer is uploaded encrypted-at-rest and referenced by asset id."""
         result = ephemeral.create_lite_event(

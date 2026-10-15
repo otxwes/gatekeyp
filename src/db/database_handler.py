@@ -17,6 +17,7 @@ _EVENT_RPH_MIN_COLS = 8  # events.rsvp_passphrase_hash lives at column index 8
 _EVENT_RAA_MIN_COLS = 9  # events.rsvp_auto_approve lives at column index 9
 _EVENT_FLYER_MIN_COLS = 10  # events.flyer_asset_id lives at column index 10
 _EVENT_SLUG_MIN_COLS = 11  # events.slug lives at column index 11
+_EVENT_ORGANIZER_NAME_MIN_COLS = 12  # events.organizer_name lives at column index 12
 _RSVP_MSG_MIN_COLS = 8  # rsvps.message lives at column index 8
 
 
@@ -245,6 +246,10 @@ class DatabaseHandler:
         # Human-readable share slug for the RSVP funnel URL.
         self._ensure_column("events", "slug", "TEXT")
         self.cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_events_slug ON events (slug)")
+
+        # Optional human-readable organizer name shown to guests on the
+        # RSVP funnel and attendee pages. Optional (blank when unset).
+        self._ensure_column("events", "organizer_name", "TEXT")
 
         # Phase B: RSVP requests link back to their pre-minted access keys
         self._ensure_column("keys", "rsvp_id", "TEXT")
@@ -505,6 +510,9 @@ class DatabaseHandler:
                 "rsvp_auto_approve": result[9] if len(result) > _EVENT_RAA_MIN_COLS else None,
                 "flyer_asset_id": result[10] if len(result) > _EVENT_FLYER_MIN_COLS else None,
                 "slug": result[11] if len(result) > _EVENT_SLUG_MIN_COLS else None,
+                "organizer_name": (
+                    result[12] or "" if len(result) > _EVENT_ORGANIZER_NAME_MIN_COLS else ""
+                ),
             }
         return None
 
@@ -532,6 +540,7 @@ class DatabaseHandler:
         organizer_id: str,
         location_data: str | None = None,
         slug: str | None = None,
+        organizer_name: str = "",
     ) -> None:
         """Add an event, encrypting location_data at rest."""
         now = self._now_iso()
@@ -539,10 +548,20 @@ class DatabaseHandler:
         self.cursor.execute(
             """
             INSERT INTO events
-                (event_id, title, description, organizer_id, location_data, created_at, slug)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (event_id, title, description, organizer_id, location_data, created_at,
+                 slug, organizer_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-            (event_id, title, description, organizer_id, encrypted_location, now, slug),
+            (
+                event_id,
+                title,
+                description,
+                organizer_id,
+                encrypted_location,
+                now,
+                slug,
+                organizer_name or "",
+            ),
         )
         self.connection.commit()
 
