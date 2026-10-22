@@ -14,7 +14,10 @@ import time
 import urllib.request
 from collections.abc import Iterator
 from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -44,7 +47,39 @@ def _parse_env_file(path: Path) -> dict[str, str]:
 
 
 @pytest.fixture
-def server() -> Iterator[Artifacts]:
+def mock_nominatim() -> Iterator[str]:
+    """A local Nominatim stand-in; tests never call the real service."""
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            parsed = urlparse(self.path)
+            if parsed.path != "/search":
+                self.send_response(404)
+                self.end_headers()
+                return
+            query = parse_qs(parsed.query).get("q", [""])[0]
+            body = b"[]" if "nowhere" in query.lower() else b'[{"lat":"40.75","lon":"-73.98"}]'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args: object) -> None:
+            """Keep the test output quiet."""
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{httpd.server_port}"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+@pytest.fixture
+def server(mock_nominatim: str) -> Iterator[Artifacts]:
     """One E2E server per test: restarts are cheap and give each scenario a
     pristine DB and pristine rate-limit buckets (the funnel limiter otherwise
     shares `127.0.0.1` across the whole suite and trips after 5 RSVPs)."""
@@ -55,6 +90,7 @@ def server() -> Iterator[Artifacts]:
         **secrets,
         "GATEKEYP_DB_PATH": str(tmp / "keys.db"),
         "GATEKEYP_PORT": str(E2E_PORT),
+        "GATEKEYP_GEOCODER_URL": mock_nominatim,
     }
     proc = subprocess.Popen(
         ["uv", "run", "python", "-m", "src.api.server"],
