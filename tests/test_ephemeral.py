@@ -810,3 +810,18 @@ class TestLiteMapPage:
         assert response.status_code == 201
         assert response.json()["show_map"] is False
         assert map_geocoder.calls == []
+
+    def test_lite_create_form_show_map_true_with_hidden_fallback(
+        self, map_lite_client, map_geocoder
+    ):
+        # The hidden 0 comes first and the checked box last; Starlette reads
+        # the last value, so the visible checkbox wins when it is checked.
+        response = map_lite_client.post(
+            "/api/lite/events",
+            content="title=Mapped+form&where=Main+St&show_map=0&show_map=1",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+        assert response.status_code == 201
+        assert response.json()["show_map"] is True
+        assert map_geocoder.calls == ["Main St"]

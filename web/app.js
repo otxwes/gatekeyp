@@ -441,6 +441,7 @@ function bindOrganizeEntry() {
         const description = getField(createForm, "description");
         const location_data = getField(createForm, "location_data") || null;
         const organizer_name = getField(createForm, "organizer_name") || "";
+        const show_map = Boolean(createForm.elements.show_map?.checked);
         if (!title || !description) {
             note(noteEl, "A title and description are required.", "error");
             return;
@@ -449,14 +450,27 @@ function bindOrganizeEntry() {
         try {
             const created = await api("/api/events", {
                 method: "POST",
-                body: { title, description, organizer_id: "organizer", location_data, organizer_name },
+                body: {
+                    title,
+                    description,
+                    organizer_id: "organizer",
+                    location_data,
+                    organizer_name,
+                    show_map,
+                },
             });
             org = {
                 eventId: created.event_id,
                 organizerKey: created.organizer_key,
                 title: created.title || title,
                 slug: created.slug || "",
-                meta: { description, locationData: location_data, organizerName: organizer_name, flyerId: null },
+                meta: {
+                    description,
+                    locationData: location_data,
+                    organizerName: organizer_name,
+                    flyerId: null,
+                    showMap: created.show_map ?? show_map,
+                },
             };
             // Optional flyer: upload it onto the event, then record it as the
             // event's flyer so card covers can reuse it.
@@ -488,6 +502,9 @@ function bindOrganizeEntry() {
                 fresh: true,
             });
             toast("Event created. Share access keys, never this organizer key.", "ok", "Ready");
+            if (show_map && location_data && created.map_available === false) {
+                toast("Map unavailable. The address could not be geocoded.", "info", "Event created");
+            }
         } catch (err) {
             note(noteEl, err.message, "error");
             btnBusy(btn, false);
@@ -557,6 +574,9 @@ function renderWorkspace() {
         `<h2 class="ws-title">${esc(org.title || "Event workspace")}</h2>` +
         (org.meta && org.meta.description ? `<p class="ws-sub">${esc(org.meta.description)}</p>` : "") +
         (org.meta && org.meta.locationData ? `<p class="ws-loc">${esc(org.meta.locationData)}</p>` : "") +
+        (org.meta && org.meta.locationData
+            ? `<label class="ws-map-toggle"><input type="checkbox" id="ws-map-toggle"${org.meta.showMap === false ? "" : " checked"} disabled> Map</label>`
+            : "") +
         (org.meta && org.meta.flyerId
             ? `<img id="ws-flyer" class="event-flyer" src="${esc(mediaUrl(org.meta.flyerId))}" alt="Event flyer" loading="lazy" referrerpolicy="no-referrer">`
             : "") +
@@ -628,7 +648,44 @@ function renderWorkspace() {
         });
     });
     $("#ws-decommission").addEventListener("click", openDecommissionModal);
+    loadWorkspaceMapState();
     loadWsTab();
+}
+
+async function loadWorkspaceMapState() {
+    const toggle = $("#ws-map-toggle");
+    if (!toggle || !org) return;
+    try {
+        const details = await fetchEventDetails();
+        const event = details.event || {};
+        if (!event.location_data) return;
+        toggle.checked = event.show_map !== false;
+        toggle.disabled = false;
+        org.meta.showMap = event.show_map !== false;
+    } catch {
+        toggle.disabled = true;
+        return;
+    }
+    toggle.addEventListener("change", async () => {
+        if (!org) return;
+        const desired = toggle.checked;
+        toggle.disabled = true;
+        try {
+            const result = await api(`/api/events/${encodeURIComponent(org.eventId)}/map`, {
+                method: "POST",
+                body: { organizer_key: org.organizerKey, show_map: desired },
+            });
+            org.meta.showMap = result.show_map;
+            if (result.show_map && result.map_available === false) {
+                toast("Map unavailable. The address could not be geocoded.", "info", "Map");
+            }
+        } catch (err) {
+            toggle.checked = !desired;
+            toast(err.message, "error", "Could not update the map");
+        } finally {
+            toggle.disabled = false;
+        }
+    });
 }
 
 async function loadWsTab() {
@@ -2161,10 +2218,55 @@ function showRsvpResult(eventId, event, result) {
 /* ------------------------------------------------------------------
  * Attendee event page
  * ------------------------------------------------------------------ */
+/** Terse open-map links for an event location. */
+function mapLinks(event) {
+    if (!event.location_data) return "";
+    const address = event.location_data;
+    if (event.location_lat == null || event.location_lon == null) {
+        const search = `https://www.openstreetmap.org/search?query=${encodeURIComponent(address)}`;
+        return `<p class="event-map-links">` +
+            `<a href="${esc(search)}" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>` +
+            `<button type="button" class="linklike" data-copy-address data-address="${esc(address)}">Copy address</button>` +
+            `</p>`;
+    }
+    const lat = event.location_lat;
+    const lon = event.location_lon;
+    const osm = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`;
+    const organic = `https://omaps.app/map?v=1&ll=${lat},${lon}&n=${encodeURIComponent(event.title || "")}`;
+    const osmand = `https://osmand.net/map/?pin=${lat},${lon}#17/${lat}/${lon}`;
+    return `<p class="event-map-links">` +
+        `<a href="${esc(osm)}" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>` +
+        `<a href="${esc(organic)}" target="_blank" rel="noopener noreferrer">Organic Maps</a>` +
+        `<a href="${esc(osmand)}" target="_blank" rel="noopener noreferrer">OsmAnd</a>` +
+        `<button type="button" class="linklike" data-copy-address data-address="${esc(address)}">Copy address</button>` +
+        `</p>`;
+}
+
+function mapFigure(event) {
+    if (!event.show_map || event.location_lat == null || event.location_lon == null || !event.map_style_url) {
+        return "";
+    }
+    return `<figure class="event-map" data-gatekeyp-map data-lat="${event.location_lat}" data-lon="${event.location_lon}" data-style="${esc(event.map_style_url)}" data-title="${esc(event.title || "")}" data-address="${esc(event.location_data || "")}">` +
+        `<div class="event-map-canvas"></div>` +
+        `<button class="event-map-load" type="button">Show map</button>` +
+        `</figure>`;
+}
+
+function mapAttribution() {
+    return `<p class="map-attribution">` +
+        `<a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a>` +
+        ` · <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener noreferrer">© OpenMapTiles</a>` +
+        ` · Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>` +
+        `</p>`;
+}
+
 function renderEventPage() {
     const root = $("#join-views");
     if (!root || !attendee) return;
     const event = attendee.event || {};
+    const mapHtml = event.location_data
+        ? mapFigure(event) + mapLinks(event) + mapAttribution()
+        : "";
     root.innerHTML =
         `<header class="ep-head">` +
         `<p class="eyebrow ep-eyebrow">You're invited</p>` +
@@ -2177,12 +2279,16 @@ function renderEventPage() {
         (event.location_data
             ? `<p class="ep-meta">${esc(event.location_data)}</p>`
             : "") +
+        mapHtml +
         `<div class="ep-actions"><button class="btn btn-ghost btn-sm" type="button" id="attendee-end">Leave</button></div>` +
         `</header>` +
         `<div class="ep-main">` +
         `<section class="card"><h3 class="card-title">Board</h3>` +
         `<div id="ep-board">Loading…</div></section>` +
         `</div>`;
+
+    const mapEl = root.querySelector("[data-gatekeyp-map]");
+    if (mapEl && window.GatekeypMap) window.GatekeypMap.mount(mapEl);
 
     $("#attendee-end").addEventListener("click", () => {
         attendee = null;
@@ -2311,11 +2417,15 @@ function showFlyerDone(done, body) {
           `Send key over mesh (LXMF)</button>` +
           `<p class="key-hint" id="mesh-deliver-status"></p></div>`
         : "";
+    const mapNote = body.map_unavailable
+        ? `<p class="form-note">Map unavailable.</p>`
+        : "";
     done.innerHTML =
         `<header class="view-head"><h2 class="view-title">Your event is live</h2></header>` +
         `<div class="card form-card">` +
         `<div class="field"><label>Share link</label>` +
         `<div class="item"><code>${esc(publicUrl)}</code></div></div>` +
+        mapNote +
         meshPanel +
         `<div class="item"><a class="btn btn-primary" href="${esc(eventHref)}">` +
         `Open the event page</a></div>` +
@@ -2394,7 +2504,8 @@ async function renderFlyer() {
             fd.set("description", $("#flyer-description").value);
             const whenRaw = $("#flyer-when")?.value;
             if (whenRaw) fd.set("when", new Date(whenRaw).toISOString());
-            fd.set("where", $("#flyer-where").value);
+            const where = $("#flyer-where").value;
+            fd.set("where", where);
             fd.set("ttl_hours", String(Number($("#flyer-ttl")?.value || 48)));
             const file = $("#flyer-file")?.files?.[0];
             if (file && file.size > MAX_FLYER_BYTES) {
@@ -2404,6 +2515,9 @@ async function renderFlyer() {
             const resp = await fetch("/api/lite/events", { method: "POST", body: fd });
             const body = await resp.json().catch(() => ({}));
             if (!resp.ok) throw new Error(body.detail || `HTTP ${resp.status}`);
+            body.map_unavailable = Boolean(
+                where.trim() && body.show_map && body.map_available === false
+            );
             entry.hidden = true;
             showFlyerDone(done, body);
             done.hidden = false;

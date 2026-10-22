@@ -30,6 +30,7 @@
         if (button) {
             button.textContent = "Map unavailable";
             button.disabled = true;
+            button.hidden = false;
         }
         el.dataset.mapFailed = "1";
     }

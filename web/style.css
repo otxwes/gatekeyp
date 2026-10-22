@@ -1593,6 +1593,17 @@ p {
     visibility: hidden;
 }
 
+.field-check label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.field-check input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
 /* ------------------------------------------------------------------
  * Directions map (shared by the SPA event page and the lite page).
  * The placeholder is CSS-only; MapLibre loads only after "Show map".

@@ -145,7 +145,14 @@ class OrganizerPage:
     def go(self, route: str = "#/organize") -> None:
         self.page.goto(f"{self.base}/{route}")
 
-    def create_event(self, title: str, description: str, *, location: str = "") -> "EventHandle":
+    def create_event(
+        self,
+        title: str,
+        description: str,
+        *,
+        location: str = "",
+        show_map: bool = True,
+    ) -> "EventHandle":
         """Drive `#create-event-form`; the org key arrives on the wire, and the
         fresh (locked) organizer card modal is completed via its download."""
         self.go()
@@ -153,6 +160,8 @@ class OrganizerPage:
         self.page.fill("#description", description)
         if location:
             self.page.fill("#location-data", location)
+        if not show_map:
+            self.page.uncheck("#show-map")
         self.page.click("#create-btn")
         self.page.locator("#modal-root .modal").wait_for(timeout=10_000)
         org_key = self.keys.latest(self.page)

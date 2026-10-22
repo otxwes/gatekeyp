@@ -62,6 +62,10 @@
                                     <input type="text" id="location-data" name="location_data" maxlength="1024"
                                            autocomplete="off">
                                 </div>
+                                <div class="field field-check">
+                                    <label for="show-map"><input type="checkbox" id="show-map"
+                                           name="show_map" checked> Map</label>
+                                </div>
                                 <div class="field">
                                     <label for="organizer-name">Organizer <span class="opt">optional</span></label>
                                     <input type="text" id="organizer-name" name="organizer_name" maxlength="128"
@@ -148,6 +152,11 @@
                                 <label for="flyer-where">Location</label>
                                 <input type="text" id="flyer-where" maxlength="256"
                                        autocomplete="off">
+                            </div>
+                            <div class="field field-check">
+                                <input type="hidden" name="show_map" value="0">
+                                <label for="flyer-show-map"><input type="checkbox" id="flyer-show-map"
+                                       name="show_map" value="1" checked> Map</label>
                             </div>
                             <div class="field">
                                 <label for="flyer-file">Flyer image <span class="opt">optional</span></label>
