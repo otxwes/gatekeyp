@@ -75,6 +75,61 @@ class TestDatabaseHandler(unittest.TestCase):
         self.assertNotIn("40.7128", raw)
         self.assertNotIn("-74.0060", raw)
 
+    def test_event_map_defaults_are_empty_and_on(self):
+        """Events without coordinates read back with no map, switch on."""
+        self.db.add_event("event_map", "title", "description", "organizer_id")
+        event = self.db.get_event("event_map")
+        self.assertIsNone(event["location_lat"])
+        self.assertIsNone(event["location_lon"])
+        self.assertTrue(event["show_map"])
+
+    def test_event_location_geo_is_encrypted_and_round_trips(self):
+        """Coordinates are encrypted at rest and decrypted for the event view."""
+        self.db.add_event(
+            "event_geo",
+            "title",
+            "description",
+            "organizer_id",
+            location_geo='{"lat": 40.75, "lon": -73.98}',
+        )
+        self.db.cursor.execute("SELECT location_geo FROM events WHERE event_id = ?", ("event_geo",))
+        raw = self.db.cursor.fetchone()[0]
+        self.assertNotIn("40.75", raw)
+        self.assertNotIn("-73.98", raw)
+        event = self.db.get_event("event_geo")
+        self.assertEqual(event["location_lat"], 40.75)
+        self.assertEqual(event["location_lon"], -73.98)
+
+    def test_set_event_location_geo_and_show_map(self):
+        """The map setters update coordinates and the per-event switch."""
+        self.db.add_event("event_set", "title", "description", "organizer_id")
+        self.db.set_event_location_geo("event_set", '{"lat": 1.5, "lon": 2.5}')
+        self.db.set_event_show_map("event_set", show_map=False)
+        event = self.db.get_event("event_set")
+        self.assertEqual(event["location_lat"], 1.5)
+        self.assertEqual(event["location_lon"], 2.5)
+        self.assertFalse(event["show_map"])
+
+    def test_malformed_location_geo_returns_no_coordinates(self):
+        """A corrupt geo payload must not break the event page."""
+        self.db.add_event("event_bad_geo", "title", "description", "organizer_id")
+        self.db.cursor.execute(
+            "UPDATE events SET location_geo = ? WHERE event_id = ?",
+            (self.db._encrypt("{not json"), "event_bad_geo"),
+        )
+        self.db.connection.commit()
+        with self.assertLogs("src.db.database_handler", level="WARNING"):
+            event = self.db.get_event("event_bad_geo")
+        self.assertIsNone(event["location_lat"])
+        self.assertIsNone(event["location_lon"])
+
+    def test_fresh_schema_map_column_order(self):
+        """New columns live at the indices the positional guards expect."""
+        columns = [row[1] for row in self.db.cursor.execute("PRAGMA table_info(events)")]
+        self.assertEqual(columns[12], "organizer_name")
+        self.assertEqual(columns[13], "location_geo")
+        self.assertEqual(columns[14], "show_map")
+
     def test_revoke_key(self):
         """Revoking a key marks it as revoked."""
         self.db.add_key("hash_1", "access")
@@ -181,6 +236,50 @@ class TestSchemaMigration(unittest.TestCase):
             # The pre-existing row survives the migration intact.
             row = db.cursor.execute("SELECT title FROM events WHERE event_id='e1'").fetchone()
             self.assertEqual(row[0], "Legacy")
+        finally:
+            if db is not None:
+                db.close()
+            Path(path).unlink(missing_ok=True)
+
+    def test_migrate_old_schema_adds_map_columns(self):
+        """A pre-map database gains the geo column and the switch."""
+        import sqlite3
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as handle:
+            path = handle.name
+        db = None
+        try:
+            conn = sqlite3.connect(path)
+            conn.execute(
+                "CREATE TABLE events (event_id TEXT PRIMARY KEY, title TEXT, "
+                "description TEXT, organizer_id TEXT, location_data TEXT, "
+                "created_at TEXT, mode TEXT, expires_at TEXT, "
+                "rsvp_passphrase_hash TEXT, rsvp_auto_approve INTEGER, "
+                "flyer_asset_id TEXT, slug TEXT, organizer_name TEXT)"
+            )
+            conn.execute(
+                "CREATE TABLE keys (hash_key TEXT PRIMARY KEY, type TEXT, expires_at TEXT)"
+            )
+            conn.commit()
+            conn.close()
+
+            db = DatabaseHandler(path, organizer_key=TEST_ORGANIZER_KEY)
+            event_cols = [r[1] for r in db.cursor.execute("PRAGMA table_info(events)")]
+            self.assertIn("location_geo", event_cols)
+            self.assertIn("show_map", event_cols)
+            db.add_event(
+                "e_map",
+                "Legacy",
+                "d",
+                "o1",
+                location_geo='{"lat": 3.25, "lon": -4.5}',
+            )
+            event = db.get_event("e_map")
+            self.assertEqual(event["location_lat"], 3.25)
+            self.assertEqual(event["location_lon"], -4.5)
+            self.assertTrue(event["show_map"])
         finally:
             if db is not None:
                 db.close()

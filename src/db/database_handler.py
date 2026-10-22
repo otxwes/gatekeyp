@@ -1,6 +1,8 @@
 # Copyright (c) 2026 gatekeyp contributors
 
 import inspect
+import json
+import logging
 import os
 import sqlite3
 import threading
@@ -10,6 +12,8 @@ from functools import wraps
 
 from cryptography.fernet import Fernet
 
+logger = logging.getLogger(__name__)
+
 # Legacy-schema guards: a row exposes a Phase B RSVP field only when its
 # column count is strictly greater than that field's index.
 _KEY_RSVP_MIN_COLS = 7  # keys.rsvp_id lives at column index 7
@@ -18,6 +22,8 @@ _EVENT_RAA_MIN_COLS = 9  # events.rsvp_auto_approve lives at column index 9
 _EVENT_FLYER_MIN_COLS = 10  # events.flyer_asset_id lives at column index 10
 _EVENT_SLUG_MIN_COLS = 11  # events.slug lives at column index 11
 _EVENT_ORGANIZER_NAME_MIN_COLS = 12  # events.organizer_name lives at column index 12
+_EVENT_LOCATION_GEO_MIN_COLS = 13  # events.location_geo lives at column index 13
+_EVENT_SHOW_MAP_MIN_COLS = 14  # events.show_map lives at column index 14
 _RSVP_MSG_MIN_COLS = 8  # rsvps.message lives at column index 8
 
 
@@ -142,7 +148,10 @@ class DatabaseHandler:
                 rsvp_passphrase_hash TEXT,
                 rsvp_auto_approve INTEGER,
                 flyer_asset_id TEXT,
-                slug TEXT
+                slug TEXT,
+                organizer_name TEXT,
+                location_geo TEXT,
+                show_map INTEGER NOT NULL DEFAULT 1
             )
         """)
         self.cursor.execute("""
@@ -250,6 +259,10 @@ class DatabaseHandler:
         # Optional human-readable organizer name shown to guests on the
         # RSVP funnel and attendee pages. Optional (blank when unset).
         self._ensure_column("events", "organizer_name", "TEXT")
+
+        # Directions map: encrypted geocoded coordinates + per-event switch.
+        self._ensure_column("events", "location_geo", "TEXT")
+        self._ensure_column("events", "show_map", "INTEGER NOT NULL DEFAULT 1")
 
         # Phase B: RSVP requests link back to their pre-minted access keys
         self._ensure_column("keys", "rsvp_id", "TEXT")
@@ -497,6 +510,23 @@ class DatabaseHandler:
                 except (ValueError, TypeError) as err:
                     message = f"Failed to decrypt location_data for event {event_id}"
                     raise DecryptionError(message) from err
+
+            location_geo = result[13] if len(result) > _EVENT_LOCATION_GEO_MIN_COLS else None
+            location_lat = None
+            location_lon = None
+            if location_geo:
+                try:
+                    location_geo = self._decrypt(location_geo)
+                except (ValueError, TypeError) as err:
+                    message = f"Failed to decrypt location_geo for event {event_id}"
+                    raise DecryptionError(message) from err
+                try:
+                    point = json.loads(location_geo)
+                    location_lat = float(point["lat"])
+                    location_lon = float(point["lon"])
+                except (ValueError, TypeError, KeyError):
+                    logger.warning("Malformed location_geo for event %s", event_id)
+
             return {
                 "id": result[0],
                 "title": result[1],
@@ -513,6 +543,9 @@ class DatabaseHandler:
                 "organizer_name": (
                     result[12] or "" if len(result) > _EVENT_ORGANIZER_NAME_MIN_COLS else ""
                 ),
+                "location_lat": location_lat,
+                "location_lon": location_lon,
+                "show_map": (bool(result[14]) if len(result) > _EVENT_SHOW_MAP_MIN_COLS else True),
             }
         return None
 
@@ -541,16 +574,20 @@ class DatabaseHandler:
         location_data: str | None = None,
         slug: str | None = None,
         organizer_name: str = "",
+        *,
+        location_geo: str | None = None,
+        show_map: bool = True,
     ) -> None:
-        """Add an event, encrypting location_data at rest."""
+        """Add an event, encrypting location and coordinates at rest."""
         now = self._now_iso()
         encrypted_location = self._encrypt(location_data) if location_data else None
+        encrypted_geo = self._encrypt(location_geo) if location_geo else None
         self.cursor.execute(
             """
             INSERT INTO events
                 (event_id, title, description, organizer_id, location_data, created_at,
-                 slug, organizer_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 slug, organizer_name, location_geo, show_map)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 event_id,
@@ -561,7 +598,26 @@ class DatabaseHandler:
                 now,
                 slug,
                 organizer_name or "",
+                encrypted_geo,
+                1 if show_map else 0,
             ),
+        )
+        self.connection.commit()
+
+    def set_event_location_geo(self, event_id: str, location_geo: str | None) -> None:
+        """Set or clear the encrypted geocoded coordinates for an event."""
+        encrypted_geo = self._encrypt(location_geo) if location_geo else None
+        self.cursor.execute(
+            "UPDATE events SET location_geo = ? WHERE event_id = ?",
+            (encrypted_geo, event_id),
+        )
+        self.connection.commit()
+
+    def set_event_show_map(self, event_id: str, *, show_map: bool) -> None:
+        """Set the per-event directions-map switch."""
+        self.cursor.execute(
+            "UPDATE events SET show_map = ? WHERE event_id = ?",
+            (1 if show_map else 0, event_id),
         )
         self.connection.commit()
 

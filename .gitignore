@@ -29,6 +29,7 @@ ENV/
 # MCP / agent config (local overrides only)
 .mcp.local.json
 .agents/local/
+.superpowers/
 
 # Databases
 *.db
