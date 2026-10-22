@@ -1,10 +1,12 @@
 # Copyright (c) 2026 gatekeyp contributors
 
+import json
 import re
 import secrets
 from datetime import UTC, datetime, timedelta
 
 from src.core.content_manager import ContentManager
+from src.core.geocoding import Geocoder
 from src.core.key_manager import KeyManager
 from src.db.database_handler import DatabaseHandler
 
@@ -40,6 +42,9 @@ class EventLifecycleManager:
         db: DatabaseHandler,
         key_manager: KeyManager,
         content_manager: ContentManager,
+        *,
+        geocoder: Geocoder | None = None,
+        map_style_url: str | None = None,
     ) -> None:
         """
         Initialize the EventLifecycleManager.
@@ -48,10 +53,14 @@ class EventLifecycleManager:
             db: Shared DatabaseHandler instance.
             key_manager: Shared KeyManager instance.
             content_manager: Shared ContentManager instance.
+            geocoder: Optional forward geocoder for the directions map.
+            map_style_url: Optional MapLibre style URL; None disables maps.
         """
         self.db = db
         self.key_manager = key_manager
         self.content_manager = content_manager
+        self.geocoder = geocoder
+        self.map_style_url = map_style_url
 
     # ------------------------------------------------------------------
     # ID Generation
@@ -83,6 +92,7 @@ class EventLifecycleManager:
         *,
         organizer_key_days: int = DEFAULT_ORGANIZER_KEY_DAYS,
         organizer_name: str = "",
+        show_map: bool = True,
     ) -> dict:
         """
         Create a new event with a organizer key.
@@ -96,6 +106,7 @@ class EventLifecycleManager:
             organizer_id: Identifier of the organizer (e.g., @user:instance).
             location_data: Optional location data (e.g., coordinates).
             organizer_key_days: Lifetime of the organizer key in days.
+            show_map: Whether the directions map is enabled for this event.
 
         Returns:
             Event metadata including the organizer key (shown once).
@@ -115,6 +126,14 @@ class EventLifecycleManager:
         event_id = self._generate_id("event")
         slug = self._make_slug(title)
 
+        # Geocode once, only when the map is enabled. A failure leaves the
+        # event usable with links instead of a map.
+        location_geo = None
+        if show_map and self.geocoder and location_data and location_data.strip():
+            point = self.geocoder.geocode(location_data)
+            if point is not None:
+                location_geo = json.dumps({"lat": point.lat, "lon": point.lon})
+
         # Create the event record
         self.db.add_event(
             event_id=event_id,
@@ -124,6 +143,8 @@ class EventLifecycleManager:
             location_data=location_data,
             slug=slug,
             organizer_name=organizer_name,
+            location_geo=location_geo,
+            show_map=show_map,
         )
 
         # Generate a organizer key for this event
@@ -150,6 +171,8 @@ class EventLifecycleManager:
             "organizer_key_hash": organizer_hash,
             "slug": slug,
             "expires_at": expires_at,
+            "show_map": show_map,
+            "map_available": bool(location_geo) and bool(self.map_style_url),
         }
 
     # ------------------------------------------------------------------
@@ -204,18 +227,8 @@ class EventLifecycleManager:
             "content_type": content_type,
         }
 
-    def get_event_details(self, organizer_key: str, event_id: str) -> dict:
-        """
-        Retrieve full event details including all content blocks.
-
-        Args:
-            organizer_key: The event's organizer key.
-            event_id: The event ID.
-
-        Returns:
-            Event details with all content blocks.
-        """
-        # Verify the organizer key grants access to the event
+    def _verify_event_organizer(self, organizer_key: str, event_id: str) -> dict:
+        """Verify an organizer key and return the event plus its grants."""
         validation = self.key_manager.validate_key(organizer_key)
         if validation["status"] != "valid":
             message = validation.get("message", "Invalid organizer key")
@@ -230,6 +243,22 @@ class EventLifecycleManager:
         if event is None:
             message = "Event not found"
             raise EventLifecycleError(message)
+        return {"event": event, "key_hash": key_hash, "content_ids": content_ids}
+
+    def get_event_details(self, organizer_key: str, event_id: str) -> dict:
+        """
+        Retrieve full event details including all content blocks.
+
+        Args:
+            organizer_key: The event's organizer key.
+            event_id: The event ID.
+
+        Returns:
+            Event details with all content blocks.
+        """
+        verified = self._verify_event_organizer(organizer_key, event_id)
+        event = verified["event"]
+        content_ids = verified["content_ids"]
 
         # Get all content blocks for this event
         blocks = []
@@ -243,6 +272,35 @@ class EventLifecycleManager:
             "event": event,
             "content_blocks": blocks,
         }
+
+    def set_event_map(self, organizer_key: str, event_id: str, *, show_map: bool) -> dict:
+        """Enable or disable the directions map for an event."""
+        verified = self._verify_event_organizer(organizer_key, event_id)
+        key_info = self.db.get_key(verified["key_hash"])
+        if key_info is None or key_info.get("type") != "organizer":
+            raise EventLifecycleError(_ACCESS_DENIED_MSG)
+        event = verified["event"]
+
+        if show_map:
+            location_data = event.get("location_data")
+            if not location_data or not location_data.strip():
+                message = "Event has no location to map"
+                raise EventLifecycleError(message)
+            if event.get("location_lat") is None and self.geocoder:
+                point = self.geocoder.geocode(location_data)
+                if point is not None:
+                    location_geo = json.dumps({"lat": point.lat, "lon": point.lon})
+                    self.db.set_event_location_geo(event_id, location_geo)
+
+        self.db.set_event_show_map(event_id, show_map=show_map)
+        updated = self.db.get_event(event_id)
+        map_available = bool(
+            show_map
+            and updated is not None
+            and updated.get("location_lat") is not None
+            and self.map_style_url
+        )
+        return {"show_map": show_map, "map_available": map_available}
 
     def set_flyer(
         self,

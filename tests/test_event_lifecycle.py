@@ -12,6 +12,7 @@ from cryptography.fernet import Fernet
 
 from src.core.content_manager import ContentManager
 from src.core.event_lifecycle import EventLifecycleError, EventLifecycleManager
+from src.core.geocoding import GeoPoint
 from src.core.key_manager import KeyManager
 from src.db.database_handler import DatabaseHandler
 
@@ -447,3 +448,194 @@ class TestDecommission:
                 organizer_key=created_event["organizer_key"],
                 event_id=other_event["event_id"],
             )
+
+
+# ------------------------------------------------------------------
+# Directions map
+# ------------------------------------------------------------------
+
+
+class FakeGeocoder:
+    """Records calls and returns a configurable point."""
+
+    def __init__(self, point: GeoPoint | None = None) -> None:
+        self.point = point
+        self.calls: list[str] = []
+
+    def geocode(self, address: str) -> GeoPoint | None:
+        self.calls.append(address)
+        return self.point
+
+
+@pytest.fixture
+def map_geocoder():
+    return FakeGeocoder(GeoPoint(40.75, -73.98))
+
+
+@pytest.fixture
+def map_lifecycle(db, key_manager, content_manager, map_geocoder):
+    return EventLifecycleManager(
+        db=db,
+        key_manager=key_manager,
+        content_manager=content_manager,
+        geocoder=map_geocoder,
+        map_style_url="https://example.test/style.json",
+    )
+
+
+class TestEventMap:
+    def test_create_event_geocodes_when_map_on(self, map_lifecycle, map_geocoder, db):
+        result = map_lifecycle.create_event(
+            title="Mapped Event",
+            description="Has a map",
+            organizer_id="@organizer:test",
+            location_data="Main St",
+        )
+
+        assert result["show_map"] is True
+        assert result["map_available"] is True
+        assert map_geocoder.calls == ["Main St"]
+        event = db.get_event(result["event_id"])
+        assert event["location_lat"] == 40.75
+        assert event["location_lon"] == -73.98
+
+    def test_create_event_skips_geocode_when_map_off(self, map_lifecycle, map_geocoder, db):
+        result = map_lifecycle.create_event(
+            title="No Map Event",
+            description="Map off",
+            organizer_id="@organizer:test",
+            location_data="Main St",
+            show_map=False,
+        )
+
+        assert result["show_map"] is False
+        assert result["map_available"] is False
+        assert map_geocoder.calls == []
+        event = db.get_event(result["event_id"])
+        assert event["location_lat"] is None
+        assert event["location_lon"] is None
+
+    def test_create_event_survives_geocode_failure(self, db, key_manager, content_manager):
+        geocoder = FakeGeocoder()
+        lifecycle = EventLifecycleManager(
+            db=db,
+            key_manager=key_manager,
+            content_manager=content_manager,
+            geocoder=geocoder,
+            map_style_url="https://example.test/style.json",
+        )
+
+        result = lifecycle.create_event(
+            title="Failed Geocode",
+            description="Still created",
+            organizer_id="@organizer:test",
+            location_data="Nowhere",
+        )
+
+        assert result["map_available"] is False
+        event = db.get_event(result["event_id"])
+        assert event["location_lat"] is None
+        assert event["location_lon"] is None
+
+    def test_create_event_without_geocoder_has_no_map(self, lifecycle, db):
+        result = lifecycle.create_event(
+            title="No Geocoder",
+            description="No map",
+            organizer_id="@organizer:test",
+            location_data="Main St",
+        )
+
+        assert result["map_available"] is False
+        event = db.get_event(result["event_id"])
+        assert event["location_lat"] is None
+        assert event["location_lon"] is None
+
+    def test_set_event_map_rejects_non_organizer_key(self, map_lifecycle):
+        created = map_lifecycle.create_event(
+            title="Guarded Event",
+            description="Only the organizer may toggle",
+            organizer_id="@organizer:test",
+            location_data="Main St",
+        )
+        access = map_lifecycle.generate_access_key(created["organizer_key"], created["event_id"])
+
+        with pytest.raises(EventLifecycleError, match="does not grant"):
+            map_lifecycle.set_event_map(access["access_key"], created["event_id"], show_map=False)
+
+    def test_set_event_map_off_keeps_coordinates(self, map_lifecycle, db):
+        created = map_lifecycle.create_event(
+            title="Toggle Off",
+            description="Keep coordinates",
+            organizer_id="@organizer:test",
+            location_data="Main St",
+        )
+
+        result = map_lifecycle.set_event_map(
+            created["organizer_key"], created["event_id"], show_map=False
+        )
+
+        assert result == {"show_map": False, "map_available": False}
+        event = db.get_event(created["event_id"])
+        assert event["location_lat"] == 40.75
+        assert event["location_lon"] == -73.98
+        assert event["show_map"] is False
+
+    def test_set_event_map_on_geocodes_missing_coordinates(self, map_lifecycle, map_geocoder, db):
+        created = map_lifecycle.create_event(
+            title="Toggle On",
+            description="Geocode later",
+            organizer_id="@organizer:test",
+            location_data="Main St",
+            show_map=False,
+        )
+        assert map_geocoder.calls == []
+
+        result = map_lifecycle.set_event_map(
+            created["organizer_key"], created["event_id"], show_map=True
+        )
+
+        assert result == {"show_map": True, "map_available": True}
+        assert map_geocoder.calls == ["Main St"]
+        event = db.get_event(created["event_id"])
+        assert event["location_lat"] == 40.75
+        assert event["location_lon"] == -73.98
+
+    def test_set_event_map_on_without_location_raises(self, map_lifecycle):
+        created = map_lifecycle.create_event(
+            title="No Location",
+            description="Cannot map",
+            organizer_id="@organizer:test",
+        )
+
+        with pytest.raises(EventLifecycleError, match="no location"):
+            map_lifecycle.set_event_map(
+                created["organizer_key"], created["event_id"], show_map=True
+            )
+
+    def test_set_event_map_on_geocode_failure_returns_unavailable(
+        self, db, key_manager, content_manager
+    ):
+        geocoder = FakeGeocoder()
+        lifecycle = EventLifecycleManager(
+            db=db,
+            key_manager=key_manager,
+            content_manager=content_manager,
+            geocoder=geocoder,
+            map_style_url="https://example.test/style.json",
+        )
+        created = lifecycle.create_event(
+            title="Failed Toggle",
+            description="No coordinates",
+            organizer_id="@organizer:test",
+            location_data="Nowhere",
+            show_map=False,
+        )
+
+        result = lifecycle.set_event_map(
+            created["organizer_key"], created["event_id"], show_map=True
+        )
+
+        assert result == {"show_map": True, "map_available": False}
+        event = db.get_event(created["event_id"])
+        assert event["location_lat"] is None
+        assert event["location_lon"] is None
