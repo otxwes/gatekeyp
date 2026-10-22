@@ -36,6 +36,17 @@ _PAGE_STYLE = (
     "background:#0b0b0b;color:#f5f5f5}"
     "h1{font-size:1.4rem}img{max-width:100%;height:auto;border-radius:8px}"
     ".notice{color:#9a9a9a;font-size:.9rem}"
+    ".event-map{position:relative;height:200px;margin:1rem 0;border-radius:8px;"
+    "overflow:hidden;background:#141414;"
+    "background-image:radial-gradient(#2a2a2a 1px,transparent 1px);background-size:14px 14px}"
+    ".event-map-canvas{position:absolute;inset:0}"
+    ".event-map-load{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);"
+    "padding:.5rem .9rem;border:1px solid #555;border-radius:999px;background:#1c1c1c;"
+    "color:#f5f5f5;font:inherit;cursor:pointer}"
+    ".event-map-links{display:flex;flex-wrap:wrap;gap:.75rem;font-size:.9rem}"
+    ".map-attribution{color:#9a9a9a;font-size:.75rem}"
+    ".linklike{background:none;border:0;color:inherit;text-decoration:underline;"
+    "cursor:pointer;padding:0;font:inherit}"
 )
 
 _RETRY_AFTER_SECONDS = "600"
@@ -47,6 +58,7 @@ def _render_page(title: str, head_html: str, body_html: str) -> str:
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         '<meta name="color-scheme" content="dark">'
+        '<meta name="referrer" content="no-referrer">'
         f"<title>{html.escape(title)}</title>{head_html}"
         f"<style>{_PAGE_STYLE}</style></head><body>{body_html}</body></html>"
     )
@@ -88,6 +100,39 @@ def _fmt_when(when: str) -> str:
     return dt.astimezone(UTC).strftime("%b %d, %Y %H:%M UTC")
 
 
+def _map_links(
+    lat: float | None,
+    lon: float | None,
+    title: str,
+    address: str | None,
+) -> str:
+    """Terse open-map links for a location, or "" when there is no address."""
+    if not address:
+        return ""
+    escaped_address = html.escape(address)
+    if lat is None or lon is None:
+        search_url = f"https://www.openstreetmap.org/search?query={quote(address)}"
+        return (
+            '<p class="event-map-links">'
+            f'<a href="{search_url}" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>'
+            '<button type="button" class="linklike" data-copy-address '
+            f'data-address="{escaped_address}">Copy address</button>'
+            "</p>"
+        )
+    osm = f"https://www.openstreetmap.org/?mlat={lat}&amp;mlon={lon}#map=17/{lat}/{lon}"
+    organic = f"https://omaps.app/map?v=1&amp;ll={lat},{lon}&amp;n={quote(title)}"
+    osmand = f"https://osmand.net/map/?pin={lat},{lon}#17/{lat}/{lon}"
+    return (
+        '<p class="event-map-links">'
+        f'<a href="{osm}" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>'
+        f'<a href="{organic}" target="_blank" rel="noopener noreferrer">Organic Maps</a>'
+        f'<a href="{osmand}" target="_blank" rel="noopener noreferrer">OsmAnd</a>'
+        '<button type="button" class="linklike" data-copy-address '
+        f'data-address="{escaped_address}">Copy address</button>'
+        "</p>"
+    )
+
+
 def _render_live_page(
     event_id: str,
     title: str,
@@ -96,6 +141,11 @@ def _render_live_page(
     where: str | None,
     flyer_asset_id: str | None,
     base_url: str,
+    *,
+    location_lat: float | None,
+    location_lon: float | None,
+    show_map: bool,
+    map_style_url: str | None,
 ) -> str:
     """HTML plus Open Graph tags for a live ephemeral event."""
     og_image = ""
@@ -107,12 +157,39 @@ def _render_live_page(
     # The organizer-facing description defaults to the title when omitted
     # (lifecycle requires non-empty); never render that default twice.
     body_description = "" if description == title else f"<p>{html.escape(description)}</p>"
+    map_card = ""
+    map_links = ""
+    if where:
+        if show_map and location_lat is not None and location_lon is not None and map_style_url:
+            map_card = (
+                f'<figure class="event-map" data-gatekeyp-map data-lat="{location_lat}" '
+                f'data-lon="{location_lon}" data-style="{html.escape(map_style_url)}" '
+                f'data-title="{html.escape(title)}" data-address="{html.escape(where)}">'
+                '<div class="event-map-canvas"></div>'
+                '<button class="event-map-load" type="button">Show map</button>'
+                "</figure>"
+            )
+        map_links = _map_links(location_lat, location_lon, title, where)
+        if map_links:
+            map_links += (
+                '<p class="map-attribution">'
+                '<a href="https://openfreemap.org" target="_blank" '
+                'rel="noopener noreferrer">OpenFreeMap</a>'
+                ' · <a href="https://www.openmaptiles.org/" target="_blank" '
+                'rel="noopener noreferrer">© OpenMapTiles</a>'
+                ' · Data from <a href="https://www.openstreetmap.org/copyright" '
+                'target="_blank" rel="noopener noreferrer">OpenStreetMap</a>'
+                "</p>"
+            )
     body = (
         f"<h1>{html.escape(title)}</h1>"
         f"{flyer_tag}"
         f"{body_description}"
         + (f"<p><strong>When:</strong> {html.escape(_fmt_when(when))}</p>" if when else "")
         + (f"<p><strong>Location:</strong> {html.escape(where)}</p>" if where else "")
+        + map_card
+        + map_links
+        + ('<script src="/map_widget.js" defer></script>' if where else "")
     )
     head = (
         '<meta property="og:type" content="website">'
@@ -149,6 +226,7 @@ def build_ephemeral_router(  # noqa: C901, PLR0915 - many routes
         description: Annotated[str, Form()] = "",
         when: Annotated[str, Form()] = "",
         where: Annotated[str, Form()] = "",
+        show_map: Annotated[str, Form()] = "1",
         ttl_hours: Annotated[int, Form()] = 48,
         flyer: Annotated[UploadFile | None, File()] = None,
     ) -> dict:
@@ -180,6 +258,7 @@ def build_ephemeral_router(  # noqa: C901, PLR0915 - many routes
                 where=where or None,
                 flyer=flyer_payload,
                 ttl_hours=ttl_hours,
+                show_map=show_map != "0",
             )
         except LiteValidationError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err
@@ -310,6 +389,10 @@ def build_ephemeral_router(  # noqa: C901, PLR0915 - many routes
             where=view.get("where"),
             flyer_asset_id=view.get("flyer_asset_id"),
             base_url=str(request.base_url).rstrip("/"),
+            location_lat=event.get("location_lat"),
+            location_lon=event.get("location_lon"),
+            show_map=event.get("show_map", True),
+            map_style_url=event.get("map_style_url"),
         )
         return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 

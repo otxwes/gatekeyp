@@ -13,3 +13,5 @@ TEST_HMAC_SECRET = "test-hmac-secret-for-unit-tests-only-1234567890"
 # Set required environment variables for tests
 os.environ.setdefault("GATEKEYP_ORGANIZER_KEY", TEST_ORGANIZER_KEY)
 os.environ.setdefault("GATEKEYP_HMAC_SECRET", TEST_HMAC_SECRET)
+# Never let unit tests reach the real Nominatim; map tests inject a fake.
+os.environ.setdefault("GATEKEYP_GEOCODER_URL", "")

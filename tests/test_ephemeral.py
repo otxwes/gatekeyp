@@ -141,6 +141,21 @@ def map_ephemeral(db, lifecycle, content_manager, clock, map_geocoder):
     )
 
 
+@pytest.fixture
+def map_lite_client(db, key_manager, content_manager, map_ephemeral):
+    """Lite-profile TestClient using the map-enabled ephemeral service."""
+    app = create_app(
+        db=db,
+        key_manager=key_manager,
+        content_manager=content_manager,
+        lifecycle=map_ephemeral.lifecycle,
+        ephemeral=map_ephemeral,
+        profile="lite",
+    )
+    with TestClient(app) as test_client:
+        yield test_client
+
+
 def _build_app(db, key_manager, content_manager, lifecycle, profile):
     """Build an app for the requested profile with shared services."""
     return create_app(
@@ -730,3 +745,68 @@ class TestLiteMap:
 
         for field in ("location_lat", "location_lon", "show_map", "map_style_url"):
             assert field in event
+
+
+class TestLiteMapPage:
+    """The public lite page renders the map card and directions links."""
+
+    def test_live_page_renders_map_placeholder_and_links(self, map_lite_client, map_ephemeral):
+        created = map_ephemeral.create_lite_event(title="Mapped", where="Main St")
+
+        response = map_lite_client.get(f"/i/{created['event_id']}")
+
+        assert response.status_code == 200
+        page = response.text
+        assert "data-gatekeyp-map" in page
+        assert 'data-lat="40.75"' in page
+        assert 'data-lon="-73.98"' in page
+        assert 'data-style="https://example.test/style.json"' in page
+        assert "Show map" in page
+        assert "openstreetmap.org" in page
+        assert "omaps.app" in page
+        assert "osmand.net" in page
+        assert "OpenMapTiles" in page
+        assert "OpenStreetMap" in page
+        assert "/map_widget.js" in page
+
+    def test_live_page_omits_map_when_show_map_false(self, map_lite_client, map_ephemeral):
+        created = map_ephemeral.create_lite_event(title="No map", where="Main St", show_map=False)
+
+        response = map_lite_client.get(f"/i/{created['event_id']}")
+
+        assert response.status_code == 200
+        page = response.text
+        assert "data-gatekeyp-map" not in page
+        assert "openstreetmap.org/search?query=" in page
+        assert "data-copy-address" in page
+
+    def test_live_page_omits_map_without_coordinates_but_shows_osm_search(
+        self, map_lite_client, map_ephemeral, map_geocoder
+    ):
+        map_geocoder.point = None
+        created = map_ephemeral.create_lite_event(title="Nowhere", where="Nowhere")
+
+        response = map_lite_client.get(f"/i/{created['event_id']}")
+
+        assert response.status_code == 200
+        page = response.text
+        assert "data-gatekeyp-map" not in page
+        assert "openstreetmap.org/search?query=" in page
+        assert "data-copy-address" in page
+
+    def test_live_page_has_no_referrer_meta(self, map_lite_client, map_ephemeral):
+        created = map_ephemeral.create_lite_event(title="Meta", where="Main St")
+
+        response = map_lite_client.get(f"/i/{created['event_id']}")
+
+        assert '<meta name="referrer" content="no-referrer">' in response.text
+
+    def test_lite_create_form_show_map_false(self, map_lite_client, map_geocoder):
+        response = map_lite_client.post(
+            "/api/lite/events",
+            data={"title": "No map form", "where": "Main St", "show_map": "0"},
+        )
+
+        assert response.status_code == 201
+        assert response.json()["show_map"] is False
+        assert map_geocoder.calls == []
