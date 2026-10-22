@@ -122,6 +122,26 @@ export GATEKEYP_HMAC_SECRET="your-hmac-secret-here"
 
 See [.env.example](.env.example) for a template.
 
+### Optional Map Configuration
+
+The directions map is on by default. It uses OpenFreeMap vector tiles and
+Nominatim forward geocoding:
+
+- `GATEKEYP_MAP_STYLE_URL` — MapLibre style URL; default
+  `https://tiles.openfreemap.org/styles/dark`. Set to an empty string to
+  disable maps and geocoding entirely (event pages still show the address and
+  open-map links).
+- `GATEKEYP_GEOCODER_URL` — Nominatim base URL; default
+  `https://nominatim.openstreetmap.org`. Set to an empty string to disable
+  **new** geocoding; events that already have coordinates still render their
+  map when the style URL is set.
+- `GATEKEYP_GEOCODER_USER_AGENT` — User-Agent sent to Nominatim; default
+  `gatekeyp/0.1 (+https://cellar.otxwes.nohost.me)`. Set a contact URL for
+  your instance.
+
+The map is tap-to-load; no tile or style request happens until the attendee
+opens it. The organizer can also turn it off per event in the workspace.
+
 ### Running Tests
 
 ```bash

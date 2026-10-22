@@ -38,6 +38,7 @@ This document identifies the primary adversaries, trust boundaries, and data flo
 | Event titles/descriptions | **Low-Medium** | Plaintext or encrypted; public/limited |
 | Key hashes | **Medium** | Keyed hash (HMAC) or Argon2id; never plaintext |
 | IP addresses / access logs | **Medium** | Minimize retention; no PII; aggregate only |
+| Map tile requests (when opened) | **Medium** | Tap-to-load; venue area + IP reach OpenFreeMap/Cloudflare; no API key/cookies; per-event/global disable |
 | Organizer identity (DID) | **Medium** | Public by design (federation); no real-world linkage |
 
 ## 5. Key Threats & Mitigations
@@ -65,6 +66,12 @@ This document identifies the primary adversaries, trust boundaries, and data flo
 ### 5.6 Federated validation abuse
 - **Threat:** A malicious peer instance harvests key validity data or content metadata.
 - **Mitigation:** Federated validation is opt-in, authenticated (mutual TLS or signed requests), and returns only minimal data (valid/invalid + content type, not payloads).
+
+### 5.7 Directions map and geocoding
+- **Data flow:** the free-text event address is geocoded once at creation (or when the organizer enables the map) by Nominatim. The resulting coordinates are stored encrypted at rest in `events.location_geo`. Standard events return them only in the key-gated door response; the public lite page already publishes its when/where by design, so its map fields are public.
+- **Threat:** opening the map reveals the attendee IP and the tile coordinates (venue area) to OpenFreeMap and its CDN (Cloudflare). A misconfigured Referer could leak the event URL or a URL-borne key.
+- **Mitigation:** the map is tap-to-load — no MapLibre, style, or tile request happens on page load. Every response carries `Referrer-Policy: no-referrer`, the HTML carries the meta tag, and outbound links use `rel="noreferrer"`. The organizer can turn the map off per event (create-time or workspace), and `GATEKEYP_MAP_STYLE_URL=""` disables maps and geocoding globally. MapLibre is vendored, pinned, and hash-recorded; no CDN. OpenFreeMap's policy says no IP logging by default and no cookies; Cloudflare may process requests. Self-hosting OpenFreeMap is the zero-third-party option.
+- **Residual risk:** when the map is opened, the provider can observe the venue area and the attendee IP. The lite page's location is already public. No geolocation permission is requested.
 
 ## 6. Data Minimization Principles
 
@@ -114,6 +121,16 @@ This document identifies the primary adversaries, trust boundaries, and data flo
 - [x] **Auto-approve surface: explicit organizer opt-in per event, bounded by `MAX_AUTO_APPROVE = 100000`.** Semantics as implemented and now tested: the dial keeps *up to N currently-approved* (denying one frees the slot for the next submission) — not literally "first N ever"; a denied key is revoked, and any re-approval mints a fresh granted key. Dial-on ≈ open-door mode by definition.
 - [x] **Wipe cascade holds.** `wipe_event` deletes RSVP rows **and their pre-minted keys** (captured before rows vanish — pending keys carry no content links) in the same transaction, tombstone intact. Organizer endpoints are organizer-key-gated like the rest of the API; GETs accept `?key=` matching the established API pattern (`list_bulletins`, `get_media`, …).
 - [x] **Funnel flyer is public by design (R2b).** A standard event's flyer referenced on the RSVP funnel is served unauthenticated on `GET /api/events/{event_id}/rsvp/flyer` while the event is live. Exposure is consistent with the funnel already publishing title/description publicly: the flyer is the event poster, not gated content. It is ETagged per asset id and cacheable (`public, max-age=86400`, `nosniff`), carries no key material, and ended (tombstoned) events stop serving it (410).
+- [x] Threat model reviewed and updated each phase
+
+
+### Phase 4 Status (Directions map — 2026-10-22)
+- [x] OpenFreeMap vector tiles + vendored MapLibre; the map loads only after the attendee taps "Show map".
+- [x] Nominatim geocoding once at creation or map-enable time; coordinates encrypted at rest (`events.location_geo`).
+- [x] Per-event workspace switch + global `GATEKEYP_MAP_STYLE_URL` disable; geocoding is skipped when the map is off.
+- [x] `Referrer-Policy: no-referrer` on every response and meta tags on both HTML surfaces; no third-party request before tap.
+- [ ] Routing/geofencing and key-level routes remain future work.
+- [ ] Surveillance recon remains a separate organizer-only project; camera data must never render on the attendee page.
 - [x] Threat model reviewed and updated each phase
 
 

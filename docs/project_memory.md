@@ -1124,3 +1124,47 @@ is singular.
 one blocker (keyboard Tab escaped the locked dialog and could destroy the
 fresh key); fixed via the inert background containment above and re-verified
 with the full suite (assertion added to `test_fresh_card_modal_is_locked`).
+
+### 2026-10-22 — Privacy-preserving directions map
+
+**What was done:** event pages now offer a tap-to-load directions map without
+Apple/Google Maps.
+- `events` gained `location_geo` (encrypted JSON `{lat, lon}`) and
+  `show_map` (default on) via additive `_ensure_column` migration. Column
+  order is `organizer_name` 12, `location_geo` 13, `show_map` 14.
+- `src/core/geocoding.py` adds a cached, rate-limited Nominatim client. The
+  address is geocoded once at event creation (standard and lite) or when the
+  organizer turns the map on; geocoding is skipped when `show_map` is false or
+  the map is disabled globally. Failures still create the event and fall back
+  to links.
+- Standard event pages and the public lite page render a CSS-only dotted
+  placeholder with "Show map"; MapLibre GL JS 6.11.1 is vendored under
+  `web/vendor/maplibre/` (hash-recorded) and loaded only on tap. Tiles come
+  directly from OpenFreeMap; the Pi never proxies them. Links open
+  OpenStreetMap, Organic Maps, and OsmAnd; "Copy address" is included.
+- The standard workspace header has a `Map` checkbox; it calls
+  `POST /api/events/{id}/map` (organizer-key-gated) and keeps coordinates when
+  turning the map off. The attendee page re-fetches the door event on load so
+  the switch is reflected without re-unlocking.
+- `Referrer-Policy: no-referrer` is set on every response, with meta tags in
+  `web/index.html` and the server-rendered lite page; outbound links use
+  `rel="noreferrer"`. No third-party request happens before "Show map".
+- Public RSVP views still exclude coordinates/show_map/map_style_url. The lite
+  page already publishes its when/where by design.
+
+**Why:** attendees currently copy a free-text address into whatever corporate
+map app their phone defaults to. This gives a privacy-respecting locator and
+links, and lays the encrypted-coordinate foundation for the later
+organizer-only surveillance-recon project.
+
+**Deliberately not done:** routing/geofencing, a location picker/pin, a map on
+the RSVP request page or workspace, lite-profile workspace settings, and any
+surveillance-camera data. Existing events are not backfilled; they keep the
+address and links, without a map.
+
+**Verification:** `uv run pytest -q` → 359 passed, 50 deselected; e2e
+`uv run pytest tests/e2e -m e2e -q` → **50 passed**; `ruff check src tests`
+clean; `node --check web/app.js` and `node --check web/map_widget.js` OK.
+`tests/helpers.py` defaults `GATEKEYP_GEOCODER_URL=""` so unit tests never
+reach the real Nominatim; the e2e suite starts a local mock and the browser
+intercepts the OpenFreeMap style.

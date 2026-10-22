@@ -197,6 +197,7 @@ single dark theme. Canonical states:
 | Modals | `.modal-backdrop`, `.modal` | backdrop dim + blur, `shadow-2`, `modal-in` |
 | Empty / loading / error | `.empty`(+`-title/-sub`), error toasts | dashed `--line-strong`, `--hatch-fill` "ticket stub" (§12), `measure-narrow` |
 | Focus / disabled | `:focus-visible` ring, `[disabled]` | consistent; focus never removed |
+| Directions map | `.event-map`, `.event-map-load`, `.event-map-links`, `.map-attribution` | CSS-only dotted placeholder → MapLibre on tap; terse links; visible OpenFreeMap/OpenMapTiles/OSM attribution; no helper prose (§3.4) |
 
 ## 10. Accessibility & responsive baseline
 
