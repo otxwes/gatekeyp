@@ -44,11 +44,6 @@
             fail(el);
             return;
         }
-        if (!maplibregl.supported()) {
-            fail(el);
-            return;
-        }
-
         let loaded = false;
         const map = new maplibregl.Map({
             container: canvas,

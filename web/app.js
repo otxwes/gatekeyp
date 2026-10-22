@@ -2260,13 +2260,16 @@ function mapAttribution() {
         `</p>`;
 }
 
+function locationHtml(event) {
+    if (!event.location_data) return "";
+    return `<p class="ep-meta">${esc(event.location_data)}</p>` +
+        mapFigure(event) + mapLinks(event) + mapAttribution();
+}
+
 function renderEventPage() {
     const root = $("#join-views");
     if (!root || !attendee) return;
     const event = attendee.event || {};
-    const mapHtml = event.location_data
-        ? mapFigure(event) + mapLinks(event) + mapAttribution()
-        : "";
     root.innerHTML =
         `<header class="ep-head">` +
         `<p class="eyebrow ep-eyebrow">You're invited</p>` +
@@ -2276,10 +2279,7 @@ function renderEventPage() {
         (event.flyer_asset_id
             ? `<img class="event-flyer" src="${esc(mediaUrl(event.flyer_asset_id))}" alt="Event flyer" loading="lazy" referrerpolicy="no-referrer">`
             : "") +
-        (event.location_data
-            ? `<p class="ep-meta">${esc(event.location_data)}</p>`
-            : "") +
-        mapHtml +
+        `<div id="ep-location">${locationHtml(event)}</div>` +
         `<div class="ep-actions"><button class="btn btn-ghost btn-sm" type="button" id="attendee-end">Leave</button></div>` +
         `</header>` +
         `<div class="ep-main">` +
@@ -2305,16 +2305,26 @@ async function loadAttendeeBoard() {
     const box = $("#ep-board");
     if (!box) return;
     try {
-        // Fetch content blocks (may already be in attendee.event from door unlock)
-        let blocks = attendee.event.content_blocks;
-        if (blocks === undefined) {
-            const result = await api("/api/access", {
-                method: "POST",
-                body: { key: attendee.accessKey, content_id: attendee.eventId },
-            });
-            blocks = (result && result.data && result.data.content_blocks) || [];
-            attendee.event = { ...attendee.event, content_blocks: blocks };
-            saveSession();
+        // Refresh the event on every load so organizer changes (the map
+        // switch) reach an attendee who reloads without re-unlocking.
+        const result = await api("/api/access", {
+            method: "POST",
+            body: { key: attendee.accessKey, content_id: attendee.eventId },
+        });
+        const fresh = (result && result.data) || {};
+        const blocks = fresh.content_blocks || [];
+        const mapChanged = ["show_map", "location_lat", "location_lon", "map_style_url"].some(
+            (field) => fresh[field] !== attendee.event[field]
+        );
+        attendee.event = { ...attendee.event, ...fresh, content_blocks: blocks };
+        saveSession();
+        if (mapChanged) {
+            const location = $("#ep-location");
+            if (location) {
+                location.innerHTML = locationHtml(attendee.event);
+                const mapEl = location.querySelector("[data-gatekeyp-map]");
+                if (mapEl && window.GatekeypMap) window.GatekeypMap.mount(mapEl);
+            }
         }
         const [bulletins, assets] = await Promise.all([
             api(`/api/events/${encodeURIComponent(attendee.eventId)}/bulletins${qs({ key: attendee.accessKey })}`).catch(() => []),
@@ -2507,6 +2517,7 @@ async function renderFlyer() {
             const where = $("#flyer-where").value;
             fd.set("where", where);
             fd.set("ttl_hours", String(Number($("#flyer-ttl")?.value || 48)));
+            fd.set("show_map", $("#flyer-show-map")?.checked ? "1" : "0");
             const file = $("#flyer-file")?.files?.[0];
             if (file && file.size > MAX_FLYER_BYTES) {
                 throw new Error(`Flyer is too large (${fmtBytes(file.size)}). Pick a file under 25 MB (every invitee downloads it).`);
