@@ -243,3 +243,526 @@ node --check web/app.js
   "re-open backdrop still closes" are not asserted directly (the share close
   is transitively proven: the toast is emitted inside `doShare`, `closeModal()`
   is the unconditional next statement).
+
+---
+
+# Privacy-Preserving Directions Map Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add a tap-to-load MapLibre map and open-source directions links to standard and lite event pages, with encrypted geocoded coordinates and a per-event map switch.
+
+**Architecture:** Geocode once at creation (or when the map is enabled) via Nominatim and store the result encrypted in `events.location_geo`. Serve a vendored MapLibre build from `web/vendor/`; lazy-load it only when the attendee taps "Show map"; fetch OpenFreeMap vector tiles directly from the browser. A shared `web/map_widget.js` mounts the widget on the SPA and the server-rendered lite page. The Pi never proxies tiles.
+
+**Tech Stack:** Python 3.11, FastAPI, SQLite + Fernet, vanilla JS, MapLibre GL JS 6.11.1 (vendored ESM), OpenFreeMap vector tiles, Nominatim, pytest, Playwright.
+
+**Spec:** `docs/superpowers/specs/2026-10-19-privacy-preserving-directions-map-design.md`
+
+## Global Constraints
+
+- No CDN; vendor a pinned MapLibre build with its license and SHA-256.
+- No server-side tile proxy, static image rendering, or per-view geocoding.
+- `Referrer-Policy: no-referrer` on every response, plus meta tags in `web/index.html` and `_render_page`.
+- Coordinates encrypted at rest; the public RSVP view never exposes them.
+- Dark-only UI; terse copy; no helper paragraphs (design-system §3.4).
+- Geocode only when a map style is configured, a geocoder is configured, `show_map` is true, and the address is non-empty.
+- `map_available` is true only when coordinates are stored, `show_map` is true, and a map style is configured.
+- Schema column order: `organizer_name` index 12, `location_geo` 13, `show_map` 14.
+- Existing additive migration pattern via `_ensure_column`.
+
+## Review Focus
+
+- Map-off creation must not send the address to Nominatim; toggling on later must geocode once and show "Map unavailable" on failure.
+- The lite page is public; the map must not add a new location leak, and no third-party request happens before tap.
+- Malformed or missing `location_geo` must not break the event page or leak plaintext.
+- No key or event URL may leak through Referer to OpenFreeMap or outbound links.
+- Only the organizer key can toggle `show_map`; a non-organizer key gets 400 and the value is unchanged.
+
+## File Structure
+
+- Create `src/core/geocoding.py` — `GeoPoint`, `Geocoder` protocol, `NominatimGeocoder`, env builder.
+- Modify `src/db/database_handler.py` — schema, add/get, setters.
+- Modify `src/core/event_lifecycle.py` — create-time geocoding, `set_event_map`.
+- Modify `src/ephemeral/service.py` — lite geocoding and public-view fields.
+- Modify `src/ephemeral/routes.py` — lite form switch, map markup, no-referrer meta.
+- Modify `src/api/server.py` — request models, toggle route, config wiring, referrer middleware.
+- Modify `src/api/gateway.py` — `map_style_url` inside the event response.
+- Create `web/map_widget.js` — shared lazy map widget.
+- Create `web/vendor/maplibre/` — pinned MapLibre build, license, README with hashes.
+- Modify `web/index.html` — no-referrer meta, widget script, Map checkboxes.
+- Modify `web/app.js` — create/lite forms, event page rendering, workspace toggle.
+- Modify `web/style.css` — map widget and toggle styles.
+- Modify `tests/test_database_handler.py`, `tests/test_event_lifecycle.py`, `tests/test_api_server.py`, `tests/test_ephemeral.py`, `tests/e2e/pages.py`, `tests/e2e/conftest.py`.
+- Create `tests/test_geocoding.py`, `tests/test_map_api.py`, `tests/e2e/test_map_widget.py`.
+- Modify `docs/threat_model.md`, `docs/design_system.md`, `docs/project_memory.md`, `roadmap.md`, `README.md`.
+
+---
+
+### Task 1: Encrypted coordinates and map switch in the DB
+
+**Files:**
+- Modify: `src/db/database_handler.py`
+- Test: `tests/test_database_handler.py`
+
+**Interfaces:**
+- `DatabaseHandler.add_event(..., location_geo: str | None = None, show_map: bool = True) -> None`
+- `DatabaseHandler.get_event(event_id: str) -> dict | None` adds `location_lat: float | None`, `location_lon: float | None`, `show_map: bool`
+- `DatabaseHandler.set_event_location_geo(event_id: str, location_geo: str | None) -> None`
+- `DatabaseHandler.set_event_show_map(event_id: str, show_map: bool) -> None`
+
+- [ ] **Step 1: Write the failing tests** in `tests/test_database_handler.py` (unittest style):
+  - `test_event_map_defaults_are_empty_and_on`: `add_event("event_map", "title", "description", "organizer_id")`; `get_event` returns `location_lat is None`, `location_lon is None`, `show_map is True`.
+  - `test_event_location_geo_is_encrypted_and_round_trips`: `add_event(..., location_geo='{"lat": 40.75, "lon": -73.98}')`; raw `SELECT location_geo FROM events` does not contain `"40.75"` or `"-73.98"`; `get_event` returns `40.75` / `-73.98`.
+  - `test_set_event_location_geo_and_show_map`: `set_event_location_geo("event_map", '{"lat": 1.5, "lon": 2.5}')`; `set_event_show_map("event_map", False)`; `get_event` returns the coordinates and `show_map is False`.
+  - `test_malformed_location_geo_returns_no_coordinates`: store `db._encrypt("{not json")` in `location_geo`, commit; `get_event` returns `None` for both coordinates and does not raise.
+  - `test_fresh_schema_map_column_order`: `PRAGMA table_info(events)`; assert column names at indices 12/13/14 are `organizer_name`, `location_geo`, `show_map`.
+  - `test_legacy_db_migrates_map_columns`: create a temp sqlite file with the pre-map `events` table (columns through `organizer_name`), open `DatabaseHandler(path, organizer_key=TEST_ORGANIZER_KEY)`, assert the new columns exist and `add_event`/`get_event` round-trips. Follow the legacy-DB setup in `tests/test_ephemeral.py::TestSchemaMigration`.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_database_handler.py -q`
+Expected: failures for missing columns/keys.
+
+- [ ] **Step 3: Implement in `src/db/database_handler.py`**
+  - Add `organizer_name TEXT`, `location_geo TEXT`, `show_map INTEGER NOT NULL DEFAULT 1` to `CREATE TABLE events` after `slug` (indices 12/13/14).
+  - Add `_ensure_column("events", "location_geo", "TEXT")` and `_ensure_column("events", "show_map", "INTEGER NOT NULL DEFAULT 1")` to `_migrate_schema`; keep the existing `organizer_name` call before them.
+  - Add `_EVENT_LOCATION_GEO_MIN_COLS = 13`, `_EVENT_SHOW_MAP_MIN_COLS = 14`.
+  - `get_event`: decrypt `result[13]` when present, parse JSON, return `location_lat`/`location_lon` (float or None). A `DecryptionError` propagates like `location_data`; malformed JSON logs `logger.warning("Malformed location_geo for event %s", event_id)` and returns None for both. `show_map` is `bool(result[14])` when present, else `True`.
+  - `add_event`: add the two parameters, encrypt `location_geo` with `_encrypt` when non-empty, insert `location_geo` and `show_map` (`1`/`0`).
+  - Add `set_event_location_geo` (encrypt/update/commit) and `set_event_show_map` (update/commit).
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_database_handler.py -q`
+Expected: pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/db/database_handler.py tests/test_database_handler.py
+git commit -m "feat(db): store encrypted event coordinates and map switch"
+```
+
+---
+
+### Task 2: Cached Nominatim geocoder
+
+**Files:**
+- Create: `src/core/geocoding.py`
+- Test: `tests/test_geocoding.py`
+
+**Interfaces:**
+- `@dataclass(frozen=True) class GeoPoint: lat: float; lon: float`
+- `class Geocoder(Protocol): def geocode(self, address: str) -> GeoPoint | None: ...`
+- `NominatimGeocoder(base_url: str, user_agent: str, timeout: float = 3.0, cache_ttl: float = 86400.0, max_cache: int = 256, clock: Callable[[], float] | None = None, sleep: Callable[[float], None] | None = None, fetch: Callable[[urllib.request.Request, float], bytes] | None = None)`
+- `NominatimGeocoder.geocode(address: str) -> GeoPoint | None`
+- `build_geocoder_from_env() -> NominatimGeocoder | None`
+- Constants: `DEFAULT_MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/dark"`, `DEFAULT_GEOCODER_URL = "https://nominatim.openstreetmap.org"`, `DEFAULT_GEOCODER_USER_AGENT = "gatekeyp/0.1 (+https://cellar.otxwes.nohost.me)"`
+
+- [ ] **Step 1: Write the failing tests** in `tests/test_geocoding.py` with pytest and a fake `fetch`:
+  - `test_geocode_returns_first_result`: fake returns `b'[{"lat":"40.75","lon":"-73.98"}]'`; assert `GeoPoint(40.75, -73.98)` and the request URL contains `format=jsonv2`, `limit=1`, and the encoded address.
+  - `test_geocode_returns_none_on_empty_results`: fake returns `b"[]"`.
+  - `test_geocode_returns_none_on_fetch_error`: fake raises `urllib.error.URLError("down")`; assert None and `caplog` contains no address.
+  - `test_geocode_caches_positive_results`: fake counts calls; two identical geocodes call it once.
+  - `test_geocode_normalizes_cache_key`: `"  Main St  "` and `"main st"` share one fetch.
+  - `test_geocode_rate_limits_requests`: inject a fake clock and `sleep`; two different addresses; assert `sleep` was called with a positive value and the second request waits ~1s.
+  - `test_build_geocoder_from_env_disabled`: monkeypatch `GATEKEYP_MAP_STYLE_URL=""` or `GATEKEYP_GEOCODER_URL=""`; assert None.
+  - `test_build_geocoder_from_env_enabled`: set both; assert a `NominatimGeocoder` with the configured base URL and user agent.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_geocoding.py -q`
+Expected: `ImportError` / missing module.
+
+- [ ] **Step 3: Implement `src/core/geocoding.py`**
+  - Normalize the cache key with `" ".join(address.split()).strip().lower()`.
+  - Cache positive `GeoPoint`s with `time.monotonic()`; purge expired entries; cap at `max_cache`.
+  - Serialize requests with a `threading.Lock` and enforce at least 1 second between requests using the injectable clock/sleep.
+  - Build `base_url.rstrip("/") + "/search?" + urlencode({"q": address, "format": "jsonv2", "limit": 1})`.
+  - Send `User-Agent` and `Accept: application/json`; default fetch uses `urllib.request.urlopen(request, timeout=timeout).read()`.
+  - Parse the first result's `lat`/`lon` as floats. Catch `urllib.error.URLError`, `TimeoutError`, `OSError`, `ValueError`, `KeyError`, `TypeError`, `IndexError`; log `"Geocoding request failed"` without the address; return None.
+  - `build_geocoder_from_env` reads the three env vars, returns None if the map style URL or geocoder URL is empty.
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_geocoding.py -q`
+Expected: pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/geocoding.py tests/test_geocoding.py
+git commit -m "feat(geo): add cached Nominatim geocoder"
+```
+
+---
+
+### Task 3: Lifecycle geocoding and organizer toggle
+
+**Files:**
+- Modify: `src/core/event_lifecycle.py`
+- Test: `tests/test_event_lifecycle.py`
+
+**Interfaces:**
+- `EventLifecycleManager(..., geocoder: Geocoder | None = None, map_style_url: str | None = None)`
+- `create_event(..., show_map: bool = True) -> dict` adds `show_map: bool` and `map_available: bool`
+- `set_event_map(organizer_key: str, event_id: str, show_map: bool) -> dict` returns `{"show_map": bool, "map_available": bool}`
+
+- [ ] **Step 1: Write the failing tests** in `tests/test_event_lifecycle.py` with a local `FakeGeocoder` (records calls, returns a configurable `GeoPoint | None`):
+  - `test_create_event_geocodes_when_map_on`: lifecycle with fake + `map_style_url="https://example.test/style.json"`; create with `location_data="Main St"`; response `map_available is True`; `db.get_event` has the coordinates.
+  - `test_create_event_skips_geocode_when_map_off`: `show_map=False`; fake not called; coords None; `map_available is False`.
+  - `test_create_event_survives_geocode_failure`: fake returns None; event created; coords None; `map_available is False`.
+  - `test_create_event_without_geocoder_has_no_map`: no geocoder; coords None.
+  - `test_set_event_map_rejects_non_organizer_key`: create an access key; `set_event_map(access_key, ...)` raises `EventLifecycleError`.
+  - `test_set_event_map_off_keeps_coordinates`: create with map on; toggle off; coords unchanged; `show_map` false; `map_available` false.
+  - `test_set_event_map_on_geocodes_missing_coordinates`: create with map off (no coords); toggle on; fake called once; coords stored; `map_available` true.
+  - `test_set_event_map_on_without_location_raises`: create without `location_data`; toggle on raises `EventLifecycleError`.
+  - `test_set_event_map_on_geocode_failure_returns_unavailable`: create with map off; fake returns None; toggle on; `show_map` true, `map_available` false.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_event_lifecycle.py -q`
+Expected: failures for missing parameters/fields.
+
+- [ ] **Step 3: Implement in `src/core/event_lifecycle.py`**
+  - Store `geocoder` and `map_style_url`.
+  - In `create_event`, after validation and before `add_event`: if `show_map` and `self.geocoder` and `location_data.strip()`, geocode; on success set `location_geo = json.dumps({"lat": point.lat, "lon": point.lon})`. Pass `location_geo` and `show_map` to `add_event`. Add `"show_map": show_map` and `"map_available": bool(location_geo) and bool(self.map_style_url)` to the return dict.
+  - Add `_verify_event_organizer(organizer_key, event_id) -> dict` using the same key validation/content-link checks as `get_event_details`; refactor `get_event_details` to use it.
+  - `set_event_map`: verify; if enabling, require `location_data`; if enabling and `location_lat is None` and a geocoder exists, geocode and `set_event_location_geo`; call `set_event_show_map`; re-read the event; return `{"show_map": show_map, "map_available": bool(show_map and event.get("location_lat") is not None and self.map_style_url)}`.
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_event_lifecycle.py -q`
+Expected: pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/event_lifecycle.py tests/test_event_lifecycle.py
+git commit -m "feat(events): geocode map locations and toggle the map"
+```
+
+---
+
+### Task 4: API config, toggle route, and event response
+
+**Files:**
+- Modify: `src/api/server.py`
+- Modify: `src/api/gateway.py`
+- Create: `tests/test_map_api.py`
+
+**Interfaces:**
+- `CreateEventRequest.show_map: bool = True`
+- `SetEventMapRequest(organizer_key: str, show_map: bool)`
+- `POST /api/events/{event_id}/map` → `{"show_map": bool, "map_available": bool}`
+- `Gateway(..., map_style_url: str | None = None)`
+- `create_app(..., ephemeral: EphemeralService | None = None)` for test injection
+- `_new_app` adds `Referrer-Policy: no-referrer`
+
+- [ ] **Step 1: Write the failing tests** in `tests/test_map_api.py` with a `map_client` fixture that injects a `FakeGeocoder`, `EventLifecycleManager(..., geocoder=fake, map_style_url="https://example.test/style.json")`, `Gateway(..., map_style_url="https://example.test/style.json")`, and `create_app(..., lifecycle=..., gateway=...)`:
+  - `test_create_event_defaults_show_map_true`: POST `/api/events` with a location; response `show_map is True`, `map_available is True`.
+  - `test_create_event_show_map_false_skips_geocode`: fake call count 0; response `show_map is False`, `map_available is False`.
+  - `test_door_response_includes_map_style_url_inside_event`: POST `/api/access` with the organizer key and event id; `data["map_style_url"] == "https://example.test/style.json"`, `data["location_lat"] == 40.75`, `data["show_map"] is True`.
+  - `test_door_response_omits_map_style_url_when_disabled`: a client whose gateway has `map_style_url=None`; assert the key is absent.
+  - `test_toggle_route_rejects_non_organizer_key`: generate an access key; POST `/api/events/{id}/map` with it → 400; DB `show_map` unchanged.
+  - `test_toggle_route_off_then_on`: toggle off → `show_map False`; toggle on → `show_map True`; fake geocoder not called on the second call (coordinates already stored).
+  - `test_toggle_route_on_geocodes_missing_coordinates`: create with `show_map=False`; toggle on → fake called once; response `map_available True`.
+  - `test_toggle_route_on_without_location_returns_400`.
+  - `test_referrer_policy_header`: GET `/health`; `response.headers["referrer-policy"] == "no-referrer"`.
+  - `test_rsvp_public_view_excludes_map_fields`: create with a location; GET `/api/events/{id}/rsvp/view`; assert `location_lat`, `location_lon`, `show_map`, and `map_style_url` are absent from `event`.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_map_api.py -q`
+Expected: failures for missing model fields/route.
+
+- [ ] **Step 3: Implement**
+  - `src/api/server.py`: add `show_map` to `CreateEventRequest`; add `SetEventMapRequest`; pass `show_map` in the create route; add the `POST /api/events/{event_id}/map` route with the existing `EventLifecycleError` → 400 pattern; add the `ephemeral` injection parameter.
+  - `src/api/server.py`: in `create_app`, read `GATEKEYP_MAP_STYLE_URL` (default `DEFAULT_MAP_STYLE_URL`, empty → None), build the geocoder with `build_geocoder_from_env()`, and pass `geocoder`/`map_style_url` to the constructed lifecycle and ephemeral service, and `map_style_url` to the gateway. If a service is injected, leave it as provided.
+  - `src/api/server.py`: add the `Referrer-Policy` middleware to `_new_app`.
+  - `src/api/gateway.py`: add the optional `map_style_url`; in `process_request`, when the content is an event and the style URL is set, add `content["map_style_url"] = self.map_style_url` inside the event dict.
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_map_api.py tests/test_api_server.py -q`
+Expected: pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/api/server.py src/api/gateway.py tests/test_map_api.py
+git commit -m "feat(api): expose map config and toggle route"
+```
+
+---
+
+### Task 5: Lite service geocoding and public-view fields
+
+**Files:**
+- Modify: `src/ephemeral/service.py`
+- Test: `tests/test_ephemeral.py`
+
+**Interfaces:**
+- `EphemeralService(..., geocoder: Geocoder | None = None, map_style_url: str | None = None)`
+- `create_lite_event(..., show_map: bool = True) -> dict` adds `show_map: bool`, `map_available: bool`
+- `get_public_view` event adds `location_lat`, `location_lon`, `show_map`, `map_style_url`
+
+- [ ] **Step 1: Write the failing tests** in `tests/test_ephemeral.py` using a `map_ephemeral` fixture built with a `FakeGeocoder` and `map_style_url="https://example.test/style.json"`:
+  - `test_lite_create_geocodes_where_when_map_on`: create with `where="Main St"`; response `map_available True`; `get_public_view` event has the coords, `show_map True`, `map_style_url` set.
+  - `test_lite_create_skips_geocode_when_map_off`: fake call count 0; response `map_available False`; public view coords None.
+  - `test_lite_create_survives_geocode_failure`: fake returns None; event created; `map_available False`.
+  - `test_lite_public_view_includes_map_fields`: assert the four fields are inside `view["event"]`.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_ephemeral.py -q`
+Expected: failures for missing parameters/fields.
+
+- [ ] **Step 3: Implement**
+  - Store `geocoder` and `map_style_url` in the constructor.
+  - In `create_lite_event`, after `where` validation, geocode when `show_map`, the geocoder exists, and `where` is non-empty; build the encrypted JSON after `lifecycle.create_event` with `self.db.set_event_location_geo`. Pass `show_map` to `lifecycle.create_event`.
+  - Add `"show_map": show_map` and `"map_available": bool(location_geo) and bool(self.map_style_url)` to the return dict.
+  - In `get_public_view`, add `map_style_url` inside the `event` dict; the coordinates and `show_map` come from `get_event`.
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_ephemeral.py -q`
+Expected: pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ephemeral/service.py tests/test_ephemeral.py
+git commit -m "feat(lite): geocode lite locations for the map"
+```
+
+---
+
+### Task 6: Lite page map markup and no-referrer meta
+
+**Files:**
+- Modify: `src/ephemeral/routes.py`
+- Test: `tests/test_ephemeral.py`
+
+**Interfaces:**
+- `_render_live_page(..., location_lat: float | None, location_lon: float | None, show_map: bool, map_style_url: str | None)`
+- `_map_links(lat: float | None, lon: float | None, title: str, address: str | None) -> str`
+- `_render_page` includes `<meta name="referrer" content="no-referrer">`
+
+- [ ] **Step 1: Write the failing tests** in `tests/test_ephemeral.py`:
+  - Build the map-enabled lite client with `create_app(profile="lite", ephemeral=map_ephemeral)` (the `ephemeral` injection parameter from Task 4).
+  - `test_live_page_renders_map_placeholder_and_links`: GET `/i/{id}` for a geocoded lite event; assert `data-gatekeyp-map`, `data-lat`, `data-lon`, `Show map`, the OSM/Organic Maps/OsmAnd hrefs, the OpenFreeMap/OpenMapTiles/OSM attribution, and `/map_widget.js`.
+  - `test_live_page_omits_map_when_show_map_false`: no `data-gatekeyp-map`; the links still appear.
+  - `test_live_page_omits_map_without_coordinates_but_shows_osm_search`: no map; an `openstreetmap.org/search?query=` link and `data-copy-address`.
+  - `test_live_page_has_no_referrer_meta`: the response body contains `<meta name="referrer" content="no-referrer">`.
+  - `test_lite_create_form_show_map_false`: POST the form with `show_map=0`; the created event's `show_map` is false and the fake geocoder is not called.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_ephemeral.py -q`
+Expected: failures for missing markup/fields.
+
+- [ ] **Step 3: Implement**
+  - Extend `_render_live_page` with the four parameters; render the map figure and link row only when `show_map` and coordinates and `map_style_url` exist; always render the links when `where` exists (OSM search + copy when coordinates are absent).
+  - Add `_map_links` with the exact URLs from the spec; all external links use `target="_blank" rel="noopener noreferrer"`.
+  - Add the attribution line and `<script src="/map_widget.js" defer></script>`.
+  - Add the no-referrer meta to `_render_page`.
+  - Parse the hidden `show_map=0` / checkbox `show_map=1` form field in `create_lite_event` (the checkbox markup is added in Task 8).
+  - Pass the new event fields from `get_public_view` in `lite_og_page`.
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_ephemeral.py -q`
+Expected: pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ephemeral/routes.py tests/test_ephemeral.py
+git commit -m "feat(lite): render the directions map on the share page"
+```
+
+---
+
+### Task 7: Vendored MapLibre and shared map widget
+
+**Files:**
+- Create: `web/map_widget.js`
+- Create: `web/vendor/maplibre/maplibre-gl.mjs`, `maplibre-gl-shared.mjs`, `maplibre-gl-worker.mjs`, `maplibre-gl.css`, `LICENSE.txt`, `README.md`
+- Modify: `web/index.html`
+- Modify: `web/style.css`
+
+**Interfaces:**
+- `window.GatekeypMap = { mount(el: HTMLElement): void, autoMount(): void }`
+- Lazy-loads `/vendor/maplibre/maplibre-gl.mjs`; calls `setWorkerUrl("/vendor/maplibre/maplibre-gl-worker.mjs")`
+- Map options: center `[lon, lat]`, zoom 16, `cooperativeGestures: true`, `dragRotate: false`, `touchPitch: false`, `pitchWithRotate: false`, `attributionControl: false`, one `NavigationControl({ showCompass: false })`
+- On failure: button text "Map unavailable", disabled; links stay
+
+- [ ] **Step 1: Vendor MapLibre**
+  - Download the `maplibre-gl@6.11.1` npm tarball, extract the five dist files plus `LICENSE.txt` into `web/vendor/maplibre/`.
+  - Write `web/vendor/maplibre/README.md` with the version, source URL, and SHA-256 of each file.
+  - Do not load from a CDN.
+
+- [ ] **Step 2: Write `web/map_widget.js`**
+  - IIFE; `loadLib()` caches a promise, appends the CSS `<link>`, dynamically imports the ESM build, and calls `setWorkerUrl`.
+  - `mount(el)` is idempotent; reads `data-lat`, `data-lon`, `data-style`, `data-title`, `data-address`; attaches the "Show map" click; creates the map on the canvas child; adds the marker and zoom control; hides the button.
+  - Listen for the map's `error` event before the first `load`; on a style/source failure, call `fail(el)` (button text "Map unavailable", disabled). Ignore tile errors after the map has loaded.
+  - `autoMount()` mounts every `[data-gatekeyp-map]`; run it on DOMContentLoaded.
+  - Delegate `[data-copy-address]` clicks to copy the address from the nearest `[data-address]` using `navigator.clipboard` with a hidden-textarea fallback.
+  - Never log the address or coordinates; never add query params to the style/tile URL.
+
+- [ ] **Step 3: Wire `web/index.html` and CSS**
+  - Add `<meta name="referrer" content="no-referrer">` to the head.
+  - Add `<script src="map_widget.js"></script>` before `app.js`.
+  - Add `.event-map`, `.event-map-canvas`, `.event-map-load`, `.event-map-links`, `.map-attribution`, and `.ws-map-toggle` styles to `web/style.css`; dark palette, 200px map card, dotted placeholder, terse link row.
+
+- [ ] **Step 4: Verify syntax**
+
+Run: `node --check web/map_widget.js && node --check web/app.js`
+Expected: no output, exit 0.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add web/map_widget.js web/vendor/maplibre web/index.html web/style.css
+git commit -m "feat(web): vendor MapLibre and add the lazy map widget"
+```
+
+---
+
+### Task 8: Standard event page, create form, and workspace toggle
+
+**Files:**
+- Modify: `web/app.js`
+- Modify: `web/index.html`
+- Modify: `tests/e2e/pages.py`
+
+**Interfaces:**
+- `create_event` request body includes `show_map`; `org.meta.showMap` stores the create response value.
+- `renderEventPage` renders the map figure/links and calls `window.GatekeypMap.mount`.
+- Workspace header renders `#ws-map-toggle`; `loadWorkspaceMapState()` reads `fetchEventDetails().event.show_map`; the change handler calls `POST /api/events/{id}/map`.
+- `OrganizerPage.create_event(..., show_map: bool = True)` unchecks `#show-map` when false.
+
+- [ ] **Step 1: Update the create form handler**
+  - Read `show_map` from the checkbox; include it in the `/api/events` body; set `org.meta.showMap = created.show_map ?? show_map`.
+  - If `show_map` and the location is non-empty and `created.map_available === false`, show the existing toast pattern: `toast("Map unavailable. The address could not be geocoded.", "info", "Event created")`.
+  - Add the checkbox to `#create-event-form` (checked by default) and to the lite form (hidden `show_map=0` before the checkbox `show_map=1`, checked).
+
+- [ ] **Step 2: Render the standard event page map**
+  - In `renderEventPage`, after the address line, render the map figure when `event.show_map && event.location_lat != null && event.location_lon != null && event.map_style_url`; render the link row when `event.location_data` (app links with coordinates, OSM search + copy without).
+  - Add a JS `mapLinks(event)` helper using the exact URLs from the spec.
+  - After setting `root.innerHTML`, call `window.GatekeypMap.mount` on the figure.
+  - Add the attribution line.
+
+- [ ] **Step 3: Add the workspace toggle**
+  - In `renderWorkspace`, after the location line, render a `#ws-map-toggle` checkbox only when `org.meta.locationData` exists.
+  - Add `loadWorkspaceMapState()`: fetch event details, set the checkbox from `details.event.show_map`, and enable it. Call it from `renderWorkspace`.
+  - On change: disable the checkbox, POST `/api/events/{eventId}/map` with `{organizer_key, show_map}`, update `org.meta.showMap`, show "Map unavailable." if the toggle is on and `map_available` is false; on error, revert and toast.
+
+- [ ] **Step 4: Update the lite flyer form**
+  - The lite form includes the hidden `show_map=0` + checkbox `show_map=1` (Task 7); its `FormData` carries the value automatically.
+  - After the `/api/lite/events` response, read `show_map` and `map_available`; if `show_map` is true, the Where field is non-empty, and `map_available` is false, append a terse `Map unavailable.` line to the lite result panel.
+
+- [ ] **Step 5: Update the e2e page object**
+  - `OrganizerPage.create_event(..., show_map: bool = True)`; if `show_map` is false, uncheck `#show-map` before clicking create.
+
+- [ ] **Step 6: Verify syntax and commit**
+
+Run: `node --check web/app.js`
+Expected: exit 0.
+
+```bash
+git add web/app.js web/index.html tests/e2e/pages.py
+git commit -m "feat(web): show directions and the map toggle on event pages"
+```
+
+---
+
+### Task 9: E2E coverage with a local Nominatim mock
+
+**Files:**
+- Modify: `tests/e2e/conftest.py`
+- Create: `tests/e2e/test_map_widget.py`
+
+**Interfaces:**
+- `mock_nominatim` fixture: a local `ThreadingHTTPServer` returning `[{"lat":"40.75","lon":"-73.98"}]` for `/search`, and `[]` when the query contains `"nowhere"`.
+- `server` fixture sets `GATEKEYP_GEOCODER_URL` to the mock's URL.
+- Playwright route `https://tiles.openfreemap.org/styles/dark` fulfills a minimal style: `{"version":8,"sources":{},"layers":[{"id":"bg","type":"background","paint":{"background-color":"#111"}}]}`.
+
+- [ ] **Step 1: Write the failing tests** in `tests/e2e/test_map_widget.py`:
+  - `test_standard_event_map_is_tap_to_load`: create an event with a location; unlock the attendee page; assert the address, `[data-gatekeyp-map]`, "Show map", the links, and the attribution. Collect requests to `tiles.openfreemap.org`; assert none before the click. Click "Show map"; intercept the style; assert `.maplibregl-canvas` is visible and the button is gone.
+  - `test_map_links_and_copy_address`: assert the OSM/Organic Maps/OsmAnd hrefs contain the coordinates; click `[data-copy-address]` and read the clipboard.
+  - `test_map_off_hides_card_but_keeps_links`: create with `show_map=False`; assert no map card/button; assert the OSM search link and copy address.
+  - `test_geocode_failure_falls_back_to_osm_search`: create with `location="nowhere"`; assert no map; OSM search link present.
+  - `test_lite_page_renders_map_widget`: create a lite event with `where` and map on; GET `/i/{id}`; assert the placeholder/links and the no-referrer meta; click and assert the canvas with the intercepted style.
+  - `test_lite_map_off_hides_card_but_keeps_links`: create a lite event with the Map checkbox unchecked; assert no map card/button, but the OSM search link and copy address remain.
+  - `test_map_load_failure_shows_unavailable`: abort the style request, click "Show map", and assert the button becomes "Map unavailable" while the links remain.
+  - `test_workspace_toggle_updates_attendee_page`: create with map on; open the workspace; uncheck `#ws-map-toggle`; reload the attendee page and assert no map card but links remain; check it again; reload and assert the placeholder returns.
+  - `test_no_referrer_header`: `page.request.get(f"{base}/health")`; assert `Referrer-Policy: no-referrer`; assert `meta[name="referrer"][content="no-referrer"]` on the standard page.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/e2e/test_map_widget.py -m e2e -q`
+Expected: failures for missing fixtures/selectors.
+
+- [ ] **Step 3: Implement the mock Nominatim and the page helpers**
+  - Add the `mock_nominatim` fixture in `tests/e2e/conftest.py`; make `server` depend on it and set `GATEKEYP_GEOCODER_URL`.
+  - Add the style interception helper in the test module.
+  - Use the existing `OrganizerPage`/attendee helpers to unlock the standard event page.
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/e2e/test_map_widget.py -m e2e -q`
+Expected: pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tests/e2e/conftest.py tests/e2e/test_map_widget.py
+git commit -m "test(e2e): cover the tap-to-load directions map"
+```
+
+---
+
+### Task 10: Documentation and full verification
+
+**Files:**
+- Modify: `docs/threat_model.md`
+- Modify: `docs/design_system.md`
+- Modify: `docs/project_memory.md`
+- Modify: `roadmap.md`
+- Modify: `README.md`
+
+- [ ] **Step 1: Update the docs**
+  - Threat model: add the geocoding and map data flow, the OpenFreeMap/Cloudflare metadata exposure, the tap-to-load/no-referrer mitigations, the per-event/workspace and global off switches, and the self-hosting note.
+  - Design system: one note on the CSS-only placeholder, terse links, visible OpenFreeMap/OpenMapTiles/OSM attribution, and no helper prose.
+  - Project memory: dated entry with what/why/verification.
+  - Roadmap: Phase 4 note; check off "Select open-source map tiles" (MapLibre + OpenFreeMap); leave routing/geofencing and key-level routes unchecked.
+  - README: document `GATEKEYP_MAP_STYLE_URL`, `GATEKEYP_GEOCODER_URL`, `GATEKEYP_GEOCODER_USER_AGENT`, and the empty-string disable behavior.
+
+- [ ] **Step 2: Run the full verification**
+
+```bash
+uv run pytest -q
+uv run pytest tests/e2e -m e2e -q
+uv run ruff check src tests
+node --check web/app.js
+node --check web/map_widget.js
+```
+
+Expected: all green. Capture the real output.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docs/threat_model.md docs/design_system.md docs/project_memory.md roadmap.md README.md docs/superpowers/specs/2026-10-19-privacy-preserving-directions-map-design.md plans/PLAN.md
+git commit -m "docs(map): record the directions map and its privacy boundary"
+```
+
+## Verification
+
+- `uv run pytest -q` — full unit suite passes.
+- `uv run pytest tests/e2e -m e2e -q` — browser suite passes.
+- `uv run ruff check src tests` — clean.
+- `node --check web/app.js` and `node --check web/map_widget.js` — valid.
+- Manual smoke: create a standard event with a location and the map on; the event page shows the placeholder; tapping loads the map; the links open OSM/Organic Maps/OsmAnd; the workspace toggle removes and restores the card; create a lite event and verify the same on `/i/{id}`.
