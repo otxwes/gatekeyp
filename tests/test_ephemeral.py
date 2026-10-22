@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.api.server import create_app
 from src.core.content_manager import ContentManager
 from src.core.event_lifecycle import EventLifecycleManager
+from src.core.geocoding import GeoPoint
 from src.core.key_manager import KeyManager
 from src.db.database_handler import DatabaseHandler
 from src.ephemeral import (
@@ -107,6 +108,36 @@ def ephemeral(db, lifecycle, content_manager, clock):
     """Create an EphemeralService wired to the fake clock."""
     return EphemeralService(
         db=db, lifecycle=lifecycle, content_manager=content_manager, clock=clock
+    )
+
+
+class FakeGeocoder:
+    """Records calls and returns a configurable point."""
+
+    def __init__(self, point: GeoPoint | None = None) -> None:
+        self.point = point
+        self.calls: list[str] = []
+
+    def geocode(self, address: str) -> GeoPoint | None:
+        self.calls.append(address)
+        return self.point
+
+
+@pytest.fixture
+def map_geocoder():
+    return FakeGeocoder(GeoPoint(40.75, -73.98))
+
+
+@pytest.fixture
+def map_ephemeral(db, lifecycle, content_manager, clock, map_geocoder):
+    """An EphemeralService with a geocoder and a map style configured."""
+    return EphemeralService(
+        db=db,
+        lifecycle=lifecycle,
+        content_manager=content_manager,
+        clock=clock,
+        geocoder=map_geocoder,
+        map_style_url="https://example.test/style.json",
     )
 
 
@@ -648,3 +679,54 @@ class TestLiteRoutes:
         assert hidden.status_code in (404, 405)
         assert lite_client.get(f"/api/events/{event_id}", params={"key": "x"}).status_code == 404
         assert lite_client.get("/api/media/whatever", params={"key": "x"}).status_code == 404
+
+
+class TestLiteMap:
+    """The lite service geocodes `where` and exposes the map fields."""
+
+    def test_lite_create_geocodes_where_when_map_on(self, map_ephemeral, map_geocoder):
+        created = map_ephemeral.create_lite_event(title="Mapped", where="Main St")
+
+        assert created["show_map"] is True
+        assert created["map_available"] is True
+        assert map_geocoder.calls == ["Main St"]
+        view = map_ephemeral.get_public_view(created["event_id"])
+        assert view["event"]["location_lat"] == 40.75
+        assert view["event"]["location_lon"] == -73.98
+        assert view["event"]["show_map"] is True
+        assert view["event"]["map_style_url"] == "https://example.test/style.json"
+
+    def test_lite_create_skips_geocode_when_map_off(self, map_ephemeral, map_geocoder):
+        created = map_ephemeral.create_lite_event(title="No map", where="Main St", show_map=False)
+
+        assert created["show_map"] is False
+        assert created["map_available"] is False
+        assert map_geocoder.calls == []
+        view = map_ephemeral.get_public_view(created["event_id"])
+        assert view["event"]["location_lat"] is None
+        assert view["event"]["location_lon"] is None
+
+    def test_lite_create_survives_geocode_failure(self, db, lifecycle, content_manager, clock):
+        service = EphemeralService(
+            db=db,
+            lifecycle=lifecycle,
+            content_manager=content_manager,
+            clock=clock,
+            geocoder=FakeGeocoder(),
+            map_style_url="https://example.test/style.json",
+        )
+
+        created = service.create_lite_event(title="Nowhere", where="Nowhere")
+
+        assert created["map_available"] is False
+        view = service.get_public_view(created["event_id"])
+        assert view["event"]["location_lat"] is None
+        assert view["event"]["location_lon"] is None
+
+    def test_lite_public_view_includes_map_fields(self, map_ephemeral):
+        created = map_ephemeral.create_lite_event(title="Fields", where="Main St")
+
+        event = map_ephemeral.get_public_view(created["event_id"])["event"]
+
+        for field in ("location_lat", "location_lon", "show_map", "map_style_url"):
+            assert field in event

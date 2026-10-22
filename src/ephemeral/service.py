@@ -10,6 +10,7 @@ content, media, bulletins) and leaves only a tombstone.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import sqlite3
@@ -189,6 +190,7 @@ class EphemeralService:
         where: str | None = None,
         flyer: dict[str, Any] | None = None,
         ttl_hours: int = DEFAULT_TTL_HOURS,
+        show_map: bool = True,
     ) -> dict:
         """
         Create an ephemeral event and return its ids and secrets.
@@ -207,6 +209,7 @@ class EphemeralService:
             ttl_hours: Event lifetime in hours — counted from the event time
                 when `when` parses as a timestamp, else from creation; all
                 data is wiped after expiry.
+            show_map: Whether the directions map is enabled for this event.
 
         Returns:
             Payload with event_id, organizer_key (shown once), expiry timestamps
@@ -218,6 +221,12 @@ class EphemeralService:
         self._validate_text(where, "where", MAX_TEXT_LENGTH)
         self._validate_ttl(ttl_hours)
         self._validate_flyer(flyer)
+
+        location_geo = None
+        if show_map and self.geocoder and where and where.strip():
+            point = self.geocoder.geocode(where)
+            if point is not None:
+                location_geo = json.dumps({"lat": point.lat, "lon": point.lon})
 
         now = self._clock()
         event_time = self._parse_event_time(when)
@@ -235,6 +244,7 @@ class EphemeralService:
                 description=description or title,
                 organizer_id="lite:ephemeral",
                 organizer_key_days=organizer_key_days,
+                show_map=show_map,
             )
         except EventLifecycleError as err:
             message = f"Could not create lite event: {err}"
@@ -243,6 +253,8 @@ class EphemeralService:
         event_id = created["event_id"]
         organizer_key = created["organizer_key"]
         self.db.set_event_mode(event_id, "ephemeral", expires_at)
+        if location_geo:
+            self.db.set_event_location_geo(event_id, location_geo)
 
         flyer_asset_id = None
         if flyer is not None:
@@ -288,6 +300,8 @@ class EphemeralService:
             "organizer_key_expires_at": created["expires_at"],
             "event_expires_at": expires_at,
             "flyer_asset_id": flyer_asset_id,
+            "show_map": show_map,
+            "map_available": bool(location_geo) and bool(self.map_style_url),
         }
 
     # -- Reads ---------------------------------------------------------
@@ -321,6 +335,7 @@ class EphemeralService:
             raise LiteNotFoundError(message)
         if self._is_expired(event.get("expires_at")):
             return {"status": "expired"}
+        event["map_style_url"] = self.map_style_url
         media = self.db.list_media_assets(event_id)
         blocks = self.db.list_content_blocks_for_event(event_id)
         when = next((b["payload"] for b in blocks if b["content_type"] == "schedule"), None)
