@@ -721,6 +721,44 @@ class TestLiteMap:
         assert view["event"]["location_lat"] is None
         assert view["event"]["location_lon"] is None
 
+    def test_full_workspace_can_enable_map_on_lite_event(
+        self, db, key_manager, content_manager, clock, map_geocoder
+    ):
+        """Spec §5.5: a full-profile workspace toggles a lite event.
+
+        Lite events keep `where` in a location content block, not in
+        `events.location_data`, so the toggle-on path must resolve the
+        address from that block before geocoding.
+        """
+        map_lifecycle = EventLifecycleManager(
+            db=db,
+            key_manager=key_manager,
+            content_manager=content_manager,
+            geocoder=map_geocoder,
+            map_style_url="https://example.test/style.json",
+        )
+        service = EphemeralService(
+            db=db,
+            lifecycle=map_lifecycle,
+            content_manager=content_manager,
+            clock=clock,
+            geocoder=map_geocoder,
+            map_style_url="https://example.test/style.json",
+        )
+        created = service.create_lite_event(title="No map", where="Main St", show_map=False)
+        assert map_geocoder.calls == []
+
+        result = map_lifecycle.set_event_map(
+            created["organizer_key"], created["event_id"], show_map=True
+        )
+
+        assert result == {"show_map": True, "map_available": True}
+        assert map_geocoder.calls == ["Main St"]
+        view = service.get_public_view(created["event_id"])
+        assert view["event"]["location_lat"] == 40.75
+        assert view["event"]["location_lon"] == -73.98
+        assert view["event"]["show_map"] is True
+
     def test_lite_create_survives_geocode_failure(self, db, lifecycle, content_manager, clock):
         service = EphemeralService(
             db=db,

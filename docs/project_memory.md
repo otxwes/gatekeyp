@@ -1168,3 +1168,12 @@ clean; `node --check web/app.js` and `node --check web/map_widget.js` OK.
 `tests/helpers.py` defaults `GATEKEYP_GEOCODER_URL=""` so unit tests never
 reach the real Nominatim; the e2e suite starts a local mock and the browser
 intercepts the OpenFreeMap style.
+
+**Follow-up (same day):** the workspace toggle also covers lite events
+(spec §5.5). `EventLifecycleManager.set_event_map` now resolves the address
+from the event's `location` content block when `events.location_data` is
+blank — lite events store their `where` in that block, so toggling on
+geocodes and lights up the lite page. Pinned by
+`tests/test_ephemeral.py::TestLiteMap::test_full_workspace_can_enable_map_on_lite_event`.
+Re-verified: `uv run pytest -q` → 360 passed, 50 deselected; e2e → 50
+passed; `ruff check src tests` clean.

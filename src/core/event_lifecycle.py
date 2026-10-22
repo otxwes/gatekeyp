@@ -245,6 +245,23 @@ class EventLifecycleManager:
             raise EventLifecycleError(message)
         return {"event": event, "key_hash": key_hash, "content_ids": content_ids}
 
+    def _event_location_block(self, content_ids: list[dict]) -> str | None:
+        """Return the event's location content-block payload, if any.
+
+        Lite events store their address as a `location` content block
+        instead of `events.location_data`.
+        """
+        for link in content_ids:
+            if link["content_type"] != "block":
+                continue
+            block = self.db.get_content_block(link["content_id"])
+            if block is None or block.get("content_type") != "location":
+                continue
+            payload = block.get("payload")
+            if payload and payload.strip():
+                return payload
+        return None
+
     def get_event_details(self, organizer_key: str, event_id: str) -> dict:
         """
         Retrieve full event details including all content blocks.
@@ -283,6 +300,11 @@ class EventLifecycleManager:
 
         if show_map:
             location_data = event.get("location_data")
+            if not location_data or not location_data.strip():
+                # Lite events keep `where` in a location content block rather
+                # than events.location_data; spec §5.5 lets a full-profile
+                # workspace toggle them.
+                location_data = self._event_location_block(verified["content_ids"])
             if not location_data or not location_data.strip():
                 message = "Event has no location to map"
                 raise EventLifecycleError(message)
