@@ -131,10 +131,12 @@ class Gateway:
         db: DatabaseHandler | None = None,
         key_manager: KeyManager | None = None,
         rate_limiter: RateLimiter | None = None,
+        map_style_url: str | None = None,
     ) -> None:
         self.db = db if db is not None else DatabaseHandler()
         self.key_manager = key_manager if key_manager is not None else KeyManager(db=self.db)
         self.rate_limiter = rate_limiter if rate_limiter is not None else RateLimiter()
+        self.map_style_url = map_style_url
 
     # ------------------------------------------------------------------
     # Audit Logging (no PII)
@@ -325,6 +327,8 @@ class Gateway:
                 **content,
                 "content_blocks": self.db.list_content_blocks_for_event(content["id"]),
             }
+            if self.map_style_url:
+                content["map_style_url"] = self.map_style_url
 
         # Success: reset rate limiting for this client and key
         self.rate_limiter.reset(rate_limit_id)

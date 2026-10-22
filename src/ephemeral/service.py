@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
     from src.core.content_manager import ContentManager
     from src.core.event_lifecycle import EventLifecycleManager
+    from src.core.geocoding import Geocoder
     from src.db.database_handler import DatabaseHandler
 
 logger = logging.getLogger("ephemeral")
@@ -110,6 +111,8 @@ class EphemeralService:
         *,
         rate_limiter: LiteRateLimiter | None = None,
         clock: Callable[[], datetime] | None = None,
+        geocoder: Geocoder | None = None,
+        map_style_url: str | None = None,
     ) -> None:
         """Store shared services; the rate limiter and clock are injectable."""
         self.db = db
@@ -117,6 +120,8 @@ class EphemeralService:
         self.content_manager = content_manager
         self.rate_limiter = rate_limiter or LiteRateLimiter()
         self._clock = clock or (lambda: datetime.now(UTC))
+        self.geocoder = geocoder
+        self.map_style_url = map_style_url
 
     # -- Validation ----------------------------------------------------
 

@@ -1,6 +1,7 @@
 # Copyright (c) 2026 gatekeyp contributors
 
 import os
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from urllib.parse import quote
 
@@ -14,6 +15,7 @@ from pydantic import BaseModel, Field
 from src.api.gateway import Gateway, RateLimiter
 from src.core.content_manager import ContentAccessError, ContentManager, ContentValidationError
 from src.core.event_lifecycle import EventLifecycleError, EventLifecycleManager
+from src.core.geocoding import DEFAULT_MAP_STYLE_URL, build_geocoder_from_env
 from src.core.key_manager import InvalidKeyFormatError, KeyManager
 from src.db.database_handler import DatabaseHandler
 from src.ephemeral import EphemeralService, build_ephemeral_router
@@ -40,6 +42,14 @@ class CreateEventRequest(BaseModel):
     organizer_id: str = Field(..., min_length=1, max_length=256)
     location_data: str | None = Field(default=None, max_length=1024)
     organizer_name: str = Field(default="", max_length=128)
+    show_map: bool = True
+
+
+class SetEventMapRequest(BaseModel):
+    """Request to enable or disable an event's directions map."""
+
+    organizer_key: str = Field(..., min_length=1, max_length=2048)
+    show_map: bool
 
 
 class SetFlyerRequest(BaseModel):
@@ -158,6 +168,16 @@ def _new_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.middleware("http")
+    async def add_referrer_policy(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        """Keep event URLs and URL-borne keys out of third-party Referers."""
+        response = await call_next(request)
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        return response
+
     @app.exception_handler(InvalidKeyFormatError)
     async def invalid_key_handler(_request: Request, exc: InvalidKeyFormatError) -> JSONResponse:
         """Malformed keys are client errors, not server errors."""
@@ -204,6 +224,7 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
     content_manager: ContentManager | None = None,
     lifecycle: EventLifecycleManager | None = None,
     gateway: Gateway | None = None,
+    ephemeral: EphemeralService | None = None,
     lxmf_deliverer: LXMFKeyDeliverer | None = None,
     profile: str | None = None,
 ) -> FastAPI:
@@ -216,6 +237,7 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
         content_manager: Optional shared ContentManager. If None, creates one.
         lifecycle: Optional shared EventLifecycleManager. If None, creates one.
         gateway: Optional shared Gateway. If None, creates one.
+        ephemeral: Optional shared EphemeralService. If None, creates one.
         lxmf_deliverer: Optional injectable mesh (LXMF) key-deliverer
             prototype. If None, the env-configured process-wide one is used.
         profile: "full" (default) mounts every route; "lite" mounts only the
@@ -234,13 +256,24 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
         key_manager = KeyManager(db=db)
     if content_manager is None:
         content_manager = ContentManager(db=db, key_manager=key_manager)
+    map_style_url = os.environ.get("GATEKEYP_MAP_STYLE_URL", DEFAULT_MAP_STYLE_URL).strip() or None
+    geocoder = build_geocoder_from_env() if map_style_url else None
     if lifecycle is None:
         lifecycle = EventLifecycleManager(
-            db=db, key_manager=key_manager, content_manager=content_manager
+            db=db,
+            key_manager=key_manager,
+            content_manager=content_manager,
+            geocoder=geocoder,
+            map_style_url=map_style_url,
         )
     if gateway is None:
         rate_limiter = RateLimiter()
-        gateway = Gateway(db=db, key_manager=key_manager, rate_limiter=rate_limiter)
+        gateway = Gateway(
+            db=db,
+            key_manager=key_manager,
+            rate_limiter=rate_limiter,
+            map_style_url=map_style_url,
+        )
 
     profile = profile or os.environ.get("GATEKEYP_PROFILE", "full")
     if profile not in ("full", "lite"):
@@ -249,7 +282,14 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
 
     # Startup sweep: wipe ephemeral events whose TTL elapsed while the process
     # was down. Cheap (single indexed SELECT) and a no-op when nothing expired.
-    ephemeral = EphemeralService(db=db, lifecycle=lifecycle, content_manager=content_manager)
+    if ephemeral is None:
+        ephemeral = EphemeralService(
+            db=db,
+            lifecycle=lifecycle,
+            content_manager=content_manager,
+            geocoder=geocoder,
+            map_style_url=map_style_url,
+        )
     ephemeral.sweep_expired()
     rsvp = RsvpService(db=db, key_manager=key_manager, lifecycle=lifecycle)
 
@@ -296,6 +336,19 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
                 organizer_id=request.organizer_id,
                 location_data=request.location_data,
                 organizer_name=request.organizer_name,
+                show_map=request.show_map,
+            )
+        except EventLifecycleError as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+
+    @app.post("/api/events/{event_id}/map")
+    def set_event_map(event_id: str, request: SetEventMapRequest) -> dict:
+        """Enable or disable the directions map for an event."""
+        try:
+            return lifecycle.set_event_map(
+                organizer_key=request.organizer_key,
+                event_id=event_id,
+                show_map=request.show_map,
             )
         except EventLifecycleError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err
