@@ -1177,3 +1177,32 @@ geocodes and lights up the lite page. Pinned by
 `tests/test_ephemeral.py::TestLiteMap::test_full_workspace_can_enable_map_on_lite_event`.
 Re-verified: `uv run pytest -q` → 360 passed, 50 deselected; e2e → 50
 passed; `ruff check src tests` clean.
+
+### 2026-10-23 — Stale-cache deploy safety + honest map feedback
+
+**What happened:** after the 08b0286 deploy the owner tapped "Show map" on
+the live site and nothing happened. Systematic repro showed the map works
+end-to-end on live with fresh assets (style/tiles all 200, canvas mounts);
+the exact symptom only reproduced when `map_widget.js` never arrives — i.e.
+a browser holding a pre-deploy cached `index.html` (no widget script tag)
+alongside the new `app.js`, whose mount guard silently skipped.
+
+**Fixes (both test-first, RED verified before implementation):**
+- `src/api/server.py` `_new_app` gains `add_static_cache_policy`: static and
+  server-rendered responses get `Cache-Control: no-cache` (revalidate via
+  ETag; cheap 304s), so post-deploy mixed-version assets are impossible.
+  `/api/*` and `/health` are skipped; `setdefault` keeps any route's own
+  policy (the RSVP funnel flyer's `max-age=86400`).
+- `web/app.js` gains `mountMap()` (both call sites): when the widget object
+  is absent the button becomes disabled "Map unavailable" instead of an
+  inert no-op. Pinned by
+  `tests/e2e/test_map_widget.py::test_missing_widget_marks_map_unavailable`
+  (blocks `map_widget.js`, asserts the disabled label).
+
+**Also settled:** the standard "New gathering" create form has never had a
+date/time field (repo history checked); only the lite flyer form has a
+When (expiry anchor), untouched by the map work.
+
+**Verification:** `uv run pytest -q` → 363 passed, 51 deselected; e2e →
+**51 passed**; `ruff check src tests` clean; `node --check web/app.js` and
+`web/map_widget.js` OK.

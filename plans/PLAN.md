@@ -766,3 +766,31 @@ git commit -m "docs(map): record the directions map and its privacy boundary"
 - `uv run ruff check src tests` — clean.
 - `node --check web/app.js` and `node --check web/map_widget.js` — valid.
 - Manual smoke: create a standard event with a location and the map on; the event page shows the placeholder; tapping loads the map; the links open OSM/Organic Maps/OsmAnd; the workspace toggle removes and restores the card; create a lite event and verify the same on `/i/{id}`.
+
+---
+
+# Round 4 (2026-10-23) — stale-cache deploy safety + honest map feedback
+
+Field report (2026-10-22, after the `08b0286` deploy): tapping "Show map" on
+the live site did nothing. Root cause established in the main session: no
+cache policy on static assets let a browser hold a pre-deploy cached
+`index.html` (no widget script tag) alongside the new `app.js`, whose mount
+guard silently skipped — inert button. Reproduced exactly by blocking
+`map_widget.js` in a live-browser run; with fresh assets the map works
+end-to-end on live. Side question settled: the standard create form never
+had a date/time field (lite flyer form's When is untouched).
+
+- [x] T1. RED: `TestStaticCachePolicy` in `tests/test_api_server.py` —
+      index + `app.js` must revalidate (`no-cache`); `/health` and `/api/*`
+      untouched (guard test passed pre-implementation by design).
+- [x] T2. GREEN: `_new_app` gains `add_static_cache_policy` middleware —
+      `Cache-Control: no-cache` via `setdefault` on non-`/api`, non-`/health`
+      paths, so routes that set their own policy keep it (RSVP flyer
+      `max-age=86400`).
+- [x] T3. RED→GREEN e2e: `test_missing_widget_marks_map_unavailable`
+      (blocks `map_widget.js`, asserts disabled "Map unavailable" + links
+      row) pins the honest feedback; `web/app.js` gains `mountMap()` used at
+      both mount call sites instead of the silent guard.
+- [x] T4. Full verification (real output): unit 363 passed / 51 deselected;
+      e2e 51 passed; ruff clean; `node --check` app.js + map_widget.js OK.
+      Deploy evidence goes to the audit trail after the redeploy.
