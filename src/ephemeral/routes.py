@@ -45,8 +45,6 @@ _PAGE_STYLE = (
     "color:#f5f5f5;font:inherit;cursor:pointer}"
     ".event-map-links{display:flex;flex-wrap:wrap;gap:.75rem;font-size:.9rem}"
     ".map-attribution{color:#9a9a9a;font-size:.75rem}"
-    ".linklike{background:none;border:0;color:inherit;text-decoration:underline;"
-    "cursor:pointer;padding:0;font:inherit}"
 )
 
 _RETRY_AFTER_SECONDS = "600"
@@ -103,32 +101,22 @@ def _fmt_when(when: str) -> str:
 def _map_links(
     lat: float | None,
     lon: float | None,
-    title: str,
     address: str | None,
 ) -> str:
-    """Terse open-map links for a location, or "" when there is no address."""
+    """One terse OpenStreetMap link for a location, or "" when there is no address."""
     if not address:
         return ""
-    escaped_address = html.escape(address)
     if lat is None or lon is None:
         search_url = f"https://www.openstreetmap.org/search?query={quote(address)}"
         return (
             '<p class="event-map-links">'
             f'<a href="{search_url}" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>'
-            '<button type="button" class="linklike" data-copy-address '
-            f'data-address="{escaped_address}">Copy address</button>'
             "</p>"
         )
     osm = f"https://www.openstreetmap.org/?mlat={lat}&amp;mlon={lon}#map=17/{lat}/{lon}"
-    organic = f"https://omaps.app/map?v=1&amp;ll={lat},{lon}&amp;n={quote(title)}"
-    osmand = f"https://osmand.net/map/?pin={lat},{lon}#17/{lat}/{lon}"
     return (
         '<p class="event-map-links">'
         f'<a href="{osm}" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>'
-        f'<a href="{organic}" target="_blank" rel="noopener noreferrer">Organic Maps</a>'
-        f'<a href="{osmand}" target="_blank" rel="noopener noreferrer">OsmAnd</a>'
-        '<button type="button" class="linklike" data-copy-address '
-        f'data-address="{escaped_address}">Copy address</button>'
         "</p>"
     )
 
@@ -169,7 +157,7 @@ def _render_live_page(
                 '<button class="event-map-load" type="button">Show map</button>'
                 "</figure>"
             )
-        map_links = _map_links(location_lat, location_lon, title, where)
+        map_links = _map_links(location_lat, location_lon, where)
         if map_links:
             map_links += (
                 '<p class="map-attribution">'

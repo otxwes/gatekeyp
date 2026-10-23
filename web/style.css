@@ -1657,18 +1657,9 @@ p {
     font-size: 0.9rem;
 }
 
-.event-map-links a,
-.event-map-links .linklike {
+.event-map-links a {
     color: var(--accent);
     text-decoration: underline;
-}
-
-.event-map-links .linklike {
-    padding: 0;
-    border: 0;
-    background: none;
-    font: inherit;
-    cursor: pointer;
 }
 
 .map-attribution {

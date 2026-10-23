@@ -67,22 +67,18 @@ def test_standard_event_map_is_tap_to_load(organizer_context, attendee_context, 
     att.watcher.expect_clean()
 
 
-def test_map_links_and_copy_address(organizer_context, attendee_context, server):
-    attendee_context.grant_permissions(["clipboard-read", "clipboard-write"])
+def test_map_has_single_osm_link(organizer_context, attendee_context, server):
     org = OrganizerPage(organizer_context.new_page(), server.base_url)
     handle = org.create_event("Mapped Links", "Directions.", location="Main St")
     att = _open_attendee(org, attendee_context, server, handle)
 
     links = att.page.locator(".event-map-links a")
-    expect(links).to_have_count(3)
-    hrefs = [links.nth(i).get_attribute("href") for i in range(3)]
-    assert any("openstreetmap.org" in href and "mlat=40.75" in href for href in hrefs)
-    assert any("omaps.app" in href and "40.75,-73.98" in href for href in hrefs)
-    assert any("osmand.net" in href and "pin=40.75,-73.98" in href for href in hrefs)
-
-    att.page.locator("[data-copy-address]").click()
-    expect(att.page.locator("[data-copy-address]")).to_have_text("Copied")
-    assert att.page.evaluate("navigator.clipboard.readText()") == "Main St"
+    expect(links).to_have_count(1)
+    href = links.first.get_attribute("href")
+    assert "openstreetmap.org" in href and "mlat=40.75" in href and "mlon=-73.98" in href
+    expect(att.page.locator("[data-copy-address]")).to_have_count(0)
+    expect(att.page.locator(".event-map-links", has_text="Organic Maps")).to_have_count(0)
+    expect(att.page.locator(".event-map-links", has_text="OsmAnd")).to_have_count(0)
     att.watcher.expect_clean()
 
 
@@ -98,7 +94,7 @@ def test_map_off_hides_card_but_keeps_links(organizer_context, attendee_context,
     expect(att.page.locator(".event-map-links a", has_text="OpenStreetMap")).to_have_attribute(
         "href", re.compile("openstreetmap.org/search")
     )
-    expect(att.page.locator("[data-copy-address]")).to_be_visible()
+    expect(att.page.locator("[data-copy-address]")).to_have_count(0)
     att.watcher.expect_clean()
 
 
@@ -226,7 +222,7 @@ def test_lite_map_off_hides_card_but_keeps_links(organizer_context, server):
     expect(page.locator(".event-map-links a", has_text="OpenStreetMap")).to_have_attribute(
         "href", re.compile("openstreetmap.org/search")
     )
-    expect(page.locator("[data-copy-address]")).to_be_visible()
+    expect(page.locator("[data-copy-address]")).to_have_count(0)
 
 
 def test_workspace_toggle_updates_attendee_page(organizer_context, attendee_context, server):

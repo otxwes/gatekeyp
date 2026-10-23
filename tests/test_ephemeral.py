@@ -801,8 +801,10 @@ class TestLiteMapPage:
         assert 'data-style="https://example.test/style.json"' in page
         assert "Show map" in page
         assert "openstreetmap.org" in page
-        assert "omaps.app" in page
-        assert "osmand.net" in page
+        assert "omaps.app" not in page
+        assert "osmand.net" not in page
+        assert "data-copy-address" not in page
+        assert 'class="event-map-links"' in page
         assert "OpenMapTiles" in page
         assert "OpenStreetMap" in page
         assert "/map_widget.js" in page
@@ -816,7 +818,7 @@ class TestLiteMapPage:
         page = response.text
         assert "data-gatekeyp-map" not in page
         assert "openstreetmap.org/search?query=" in page
-        assert "data-copy-address" in page
+        assert "data-copy-address" not in page
 
     def test_live_page_omits_map_without_coordinates_but_shows_osm_search(
         self, map_lite_client, map_ephemeral, map_geocoder
@@ -830,7 +832,7 @@ class TestLiteMapPage:
         page = response.text
         assert "data-gatekeyp-map" not in page
         assert "openstreetmap.org/search?query=" in page
-        assert "data-copy-address" in page
+        assert "data-copy-address" not in page
 
     def test_live_page_has_no_referrer_meta(self, map_lite_client, map_ephemeral):
         created = map_ephemeral.create_lite_event(title="Meta", where="Main St")

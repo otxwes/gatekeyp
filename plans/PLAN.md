@@ -794,3 +794,26 @@ had a date/time field (lite flyer form's When is untouched).
 - [x] T4. Full verification (real output): unit 363 passed / 51 deselected;
       e2e 51 passed; ruff clean; `node --check` app.js + map_widget.js OK.
       Deploy evidence goes to the audit trail after the redeploy.
+
+---
+
+# Round 5 (2026-10-23) — card save UX on desktop + one map link
+
+User-approved follow-ups after live testing.
+
+- [x] T1. Card modal: only iOS uses the native share sheet ("Save to Photos");
+      every other platform — including desktop Chrome, whose Web Share API
+      accepts files — gets the plain "Download card" confirm that downloads
+      the PNG directly. RED: new e2e `test_desktop_share_capable_downloads_directly`
+      failed with the share button present; the abort test now runs with an
+      iPhone UA. GREEN: `useShare = shareCapable && isIOS` at every decision
+      point.
+- [x] T2. Map link row reduced to one OpenStreetMap link; "Copy address",
+      Organic Maps, and OsmAnd removed (the address is already shown above
+      the card). Attribution line kept (OSM/OpenMapTiles license). Touched
+      `web/app.js` mapLinks, `src/ephemeral/routes.py` `_map_links` (dropped
+      the unused title param and the `.linklike` CSS), the widget's copy
+      delegation, and `web/style.css`.
+- [x] T3. Tests: map e2e single-link/no-copy assertions, lite unit assertions,
+      card tests updated (desktop download + iOS abort). Full verification:
+      unit 363 passed / 53 deselected; e2e 54 passed; ruff clean; node checks.

@@ -111,44 +111,6 @@
         document.querySelectorAll("[data-gatekeyp-map]").forEach(mount);
     }
 
-    async function copyText(text) {
-        try {
-            await navigator.clipboard.writeText(text);
-            return true;
-        } catch {
-            try {
-                const textarea = document.createElement("textarea");
-                textarea.value = text;
-                textarea.setAttribute("readonly", "");
-                textarea.style.position = "fixed";
-                textarea.style.opacity = "0";
-                document.body.appendChild(textarea);
-                textarea.select();
-                document.execCommand("copy");
-                textarea.remove();
-                return true;
-            } catch {
-                return false;
-            }
-        }
-    }
-
-    document.addEventListener("click", (event) => {
-        const target = event.target.closest("[data-copy-address]");
-        if (!target) return;
-        const address = target.dataset.address || "";
-        if (!address) return;
-        event.preventDefault();
-        copyText(address).then((ok) => {
-            if (!ok) return;
-            const original = target.textContent;
-            target.textContent = "Copied";
-            window.setTimeout(() => {
-                target.textContent = original;
-            }, 1500);
-        });
-    });
-
     window.GatekeypMap = { mount, autoMount };
 
     if (document.readyState === "loading") {

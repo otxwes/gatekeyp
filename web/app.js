@@ -1172,9 +1172,10 @@ function openCardCoverModal(card) {
         // iPhone save-flow: a web page cannot write to the Photos library
         // directly; the sanctioned path is the native share sheet
         // (`navigator.share` with files), whose "Save Image" action lands the
-        // card in the photo library. Share-capable platforms get that as the
-        // dialog's single action — "Save to Photos" on iOS, "Save" elsewhere —
-        // so there is no redundant second local-download path.
+        // card in the photo library. Only iOS gets that single action — every
+        // other platform (including desktop browsers whose Web Share API
+        // accepts files) downloads the PNG directly; the share sheet is the
+        // wrong UX on a desktop.
         const probeBlob = await new Promise((resolve) => {
             const probeCanvas = document.createElement("canvas");
             probeCanvas.width = 1;
@@ -1188,7 +1189,8 @@ function openCardCoverModal(card) {
             navigator.canShare({ files: [new File([probeBlob], "probe.png", { type: "image/png" })] })
         );
         const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
-        const primaryLabel = shareCapable ? (isIOS ? "Save to Photos" : "Save") : "Download card";
+        const useShare = shareCapable && isIOS;
+        const primaryLabel = useShare ? "Save to Photos" : "Download card";
 
         const cardOpts = () => ({ ...card, cover, coverImage: cover.image || null });
 
@@ -1230,22 +1232,22 @@ function openCardCoverModal(card) {
             `</div>` +
             `</div>` +
             `<div class="card-preview-wrap"><canvas id="card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>` +
-            // Share-capable platforms save through the native share sheet as
-            // their one action; the bottom confirm row is dropped entirely.
-            (shareCapable
+            // iOS saves through the native share sheet as its one action; the
+            // bottom confirm row is dropped entirely.
+            (useShare
                 ? `<button class="btn btn-primary btn-block" type="button" data-act="save-share">${esc(primaryLabel)}</button>`
                 : "");
 
         openModal({
             title: card.organizer ? "Make an organizer card" : "Make an invite card",
             body,
-            confirmText: shareCapable ? null : primaryLabel,
+            confirmText: useShare ? null : primaryLabel,
             cancelText: null,
             dismissable: !card.fresh,
-            onConfirm: shareCapable ? undefined : doDownload,
+            onConfirm: useShare ? undefined : doDownload,
         });
 
-        if (shareCapable) {
+        if (useShare) {
             const shareBtn = $('#modal-root [data-act="save-share"]');
             if (shareBtn) {
                 shareBtn.addEventListener("click", async () => {
@@ -2218,7 +2220,7 @@ function showRsvpResult(eventId, event, result) {
 /* ------------------------------------------------------------------
  * Attendee event page
  * ------------------------------------------------------------------ */
-/** Terse open-map links for an event location. */
+/** One terse OpenStreetMap link for an event location. */
 function mapLinks(event) {
     if (!event.location_data) return "";
     const address = event.location_data;
@@ -2226,19 +2228,13 @@ function mapLinks(event) {
         const search = `https://www.openstreetmap.org/search?query=${encodeURIComponent(address)}`;
         return `<p class="event-map-links">` +
             `<a href="${esc(search)}" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>` +
-            `<button type="button" class="linklike" data-copy-address data-address="${esc(address)}">Copy address</button>` +
             `</p>`;
     }
     const lat = event.location_lat;
     const lon = event.location_lon;
     const osm = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`;
-    const organic = `https://omaps.app/map?v=1&ll=${lat},${lon}&n=${encodeURIComponent(event.title || "")}`;
-    const osmand = `https://osmand.net/map/?pin=${lat},${lon}#17/${lat}/${lon}`;
     return `<p class="event-map-links">` +
         `<a href="${esc(osm)}" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>` +
-        `<a href="${esc(organic)}" target="_blank" rel="noopener noreferrer">Organic Maps</a>` +
-        `<a href="${esc(osmand)}" target="_blank" rel="noopener noreferrer">OsmAnd</a>` +
-        `<button type="button" class="linklike" data-copy-address data-address="${esc(address)}">Copy address</button>` +
         `</p>`;
 }
 

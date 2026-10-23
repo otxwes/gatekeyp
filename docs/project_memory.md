@@ -1223,3 +1223,12 @@ allowlisted the headless GPU `ReadPixels` perf note that appears only once
 the map truly renders. Verified by live screenshots in Chromium and
 Firefox: roads, marker and zoom control now paint. Lesson: assert layout
 geometry and inspect pixels for canvas UI, not just DOM presence.
+
+**Same-day UI follow-ups (user-approved):** the card dialog now uses the
+native share sheet only on iOS ("Save to Photos"); every other platform —
+including desktop Chrome, whose Web Share API accepts files — gets the plain
+"Download card" confirm and downloads the PNG directly (the share sheet was
+the wrong UX on desktop). The map link row is reduced to one OpenStreetMap
+link; Organic Maps, OsmAnd, and "Copy address" were removed as redundant
+(the address is already shown above the card). The OpenFreeMap/OpenMapTiles/
+OSM attribution line stays (license requirement).

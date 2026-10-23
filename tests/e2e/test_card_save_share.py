@@ -1,7 +1,8 @@
-"""Save-flow: share-capable platforms get a single save action via the native
-share sheet — 'Save to Photos' on iOS (its 'Save Image' lands the card in the
-photo library), 'Save' elsewhere; other platforms keep the plain 'Download
-card' confirm action."""
+"""Save-flow: iOS gets a single "Save to Photos" action through the native
+share sheet (its "Save Image" lands the card in the photo library). Every
+other platform — including desktop browsers whose Web Share API supports
+files — gets the plain "Download card" confirm, which downloads the PNG
+directly instead of opening the mobile-style share sheet."""
 
 import pytest
 from pages import AttendeePage, OrganizerPage
@@ -59,21 +60,42 @@ def test_rsvp_card_share_primary_save_to_photos(
     assert shared["name"].endswith("invite.png"), f"unexpected share file name: {shared['name']}"
 
 
-def test_card_modal_share_abort_keeps_modal(organizer_context, attendee_context, server):
+def test_desktop_share_capable_downloads_directly(
+    browser, organizer_context, attendee_context, server
+):
+    """Desktop Chrome reports a file-capable Web Share API, but the share
+    sheet is the wrong UX there — the card must download as a plain PNG."""
+    organizer = OrganizerPage(organizer_context.new_page(), server.base_url)
+    organizer.create_event("Desktop Flow", "Direct download on desktop.")
+    funnel = organizer.set_gate_settings()
+    page = browser.new_context().new_page()
+    page.add_init_script(SHARE_OK)  # canShare/share exist, as in desktop Chrome
+    attendee = AttendeePage(page, server.base_url)
+    attendee.rsvp(funnel, name="Desktop Pal")
+
+    expect(page.locator('#modal-root [data-act="save-share"]')).to_have_count(0)
+    confirm = page.locator('#modal-root [data-act="confirm"]')
+    expect(confirm).to_have_text("Download card")
+    with page.expect_download() as dl:
+        confirm.click()
+    assert dl.value.suggested_filename.endswith("invite.png")
+
+
+def test_card_modal_share_abort_keeps_modal(browser, organizer_context, attendee_context, server):
     organizer = OrganizerPage(organizer_context.new_page(), server.base_url)
     organizer.create_event("Abort Flow", "Sheet dismissed is not an error.")
     funnel = organizer.set_gate_settings()
-    page = attendee_context.new_page()
+    page = browser.new_context(user_agent=IPHONE_UA).new_page()
     page.add_init_script(SHARE_ABORT)
     attendee = AttendeePage(page, server.base_url)
     attendee.rsvp(funnel, name="Swipe Away")
     save_btn = page.locator('#modal-root [data-act="save-share"]')
-    expect(save_btn).to_have_text("Save")  # desktop share-capable label
+    expect(save_btn).to_have_text("Save to Photos")  # iOS share label
     save_btn.click()
     # Sheet dismissed (AbortError): the locked modal stays (no cancel or close
     # button to fall back on), the button re-enables, no error toast.
     expect(save_btn).to_be_visible()
-    expect(save_btn).to_have_text("Save")
+    expect(save_btn).to_have_text("Save to Photos")
     expect(page.locator('#modal-root [data-act="cancel"]')).to_have_count(0)
     expect(page.locator("#modal-root .modal-close")).to_have_count(0)
     expect(page.locator(".toast", has_text="Could not complete")).to_have_count(0)
