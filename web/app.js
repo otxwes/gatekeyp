@@ -2220,21 +2220,21 @@ function showRsvpResult(eventId, event, result) {
 /* ------------------------------------------------------------------
  * Attendee event page
  * ------------------------------------------------------------------ */
-/** One terse OpenStreetMap link for an event location. */
+/** One terse Open map button linking to OpenStreetMap for this location. */
 function mapLinks(event) {
     if (!event.location_data) return "";
     const address = event.location_data;
     if (event.location_lat == null || event.location_lon == null) {
         const search = `https://www.openstreetmap.org/search?query=${encodeURIComponent(address)}`;
         return `<p class="event-map-links">` +
-            `<a href="${esc(search)}" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>` +
+            `<a class="btn btn-ghost btn-sm" href="${esc(search)}" target="_blank" rel="noopener noreferrer">Open map</a>` +
             `</p>`;
     }
     const lat = event.location_lat;
     const lon = event.location_lon;
     const osm = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`;
     return `<p class="event-map-links">` +
-        `<a href="${esc(osm)}" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>` +
+        `<a class="btn btn-ghost btn-sm" href="${esc(osm)}" target="_blank" rel="noopener noreferrer">Open map</a>` +
         `</p>`;
 }
 

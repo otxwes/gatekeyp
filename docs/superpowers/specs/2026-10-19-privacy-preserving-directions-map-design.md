@@ -6,10 +6,10 @@ Scope: attendee-facing directions widget on standard and lite event pages.
 Surveillance recon is a separate future project.
 
 > **Amendment (2026-10-23, user-approved):** the link row is now a single
-> OpenStreetMap link; Organic Maps, OsmAnd, and "Copy address" were removed as
-> redundant (the address is already shown above the card). The map card, its
-> attribution line (license requirement), and the OSM-search fallback for
-> un-geocoded addresses are unchanged.
+> "Open map" button linking to OpenStreetMap; Organic Maps, OsmAnd, and
+> "Copy address" were removed as redundant (the address is already shown
+> above the card). The map card, its attribution line (license requirement),
+> and the OSM-search fallback for un-geocoded addresses are unchanged.
 
 ## 1. Intent
 

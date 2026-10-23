@@ -1228,7 +1228,10 @@ geometry and inspect pixels for canvas UI, not just DOM presence.
 native share sheet only on iOS ("Save to Photos"); every other platform —
 including desktop Chrome, whose Web Share API accepts files — gets the plain
 "Download card" confirm and downloads the PNG directly (the share sheet was
-the wrong UX on desktop). The map link row is reduced to one OpenStreetMap
-link; Organic Maps, OsmAnd, and "Copy address" were removed as redundant
-(the address is already shown above the card). The OpenFreeMap/OpenMapTiles/
-OSM attribution line stays (license requirement).
+the wrong UX on desktop). The map link row is reduced to one "Open map"
+button linking to OpenStreetMap; Organic Maps, OsmAnd, and "Copy address"
+were removed as redundant (the address is already shown above the card).
+The OpenFreeMap/OpenMapTiles/OSM attribution line stays (license
+requirement). While doing this, the same container-collapse fix was applied
+to the lite page's inline CSS, and its e2e test now asserts the container
+geometry too.

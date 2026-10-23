@@ -67,14 +67,16 @@ def test_standard_event_map_is_tap_to_load(organizer_context, attendee_context, 
     att.watcher.expect_clean()
 
 
-def test_map_has_single_osm_link(organizer_context, attendee_context, server):
+def test_map_has_single_open_map_button(organizer_context, attendee_context, server):
     org = OrganizerPage(organizer_context.new_page(), server.base_url)
     handle = org.create_event("Mapped Links", "Directions.", location="Main St")
     att = _open_attendee(org, attendee_context, server, handle)
 
-    links = att.page.locator(".event-map-links a")
-    expect(links).to_have_count(1)
-    href = links.first.get_attribute("href")
+    link = att.page.locator(".event-map-links a")
+    expect(link).to_have_count(1)
+    expect(link).to_have_text("Open map")
+    assert "btn" in (link.get_attribute("class") or "")
+    href = link.get_attribute("href")
     assert "openstreetmap.org" in href and "mlat=40.75" in href and "mlon=-73.98" in href
     expect(att.page.locator("[data-copy-address]")).to_have_count(0)
     expect(att.page.locator(".event-map-links", has_text="Organic Maps")).to_have_count(0)
@@ -91,7 +93,7 @@ def test_map_off_hides_card_but_keeps_links(organizer_context, attendee_context,
 
     expect(att.page.locator("[data-gatekeyp-map]")).to_have_count(0)
     expect(att.page.locator(".event-map-load")).to_have_count(0)
-    expect(att.page.locator(".event-map-links a", has_text="OpenStreetMap")).to_have_attribute(
+    expect(att.page.locator(".event-map-links a", has_text="Open map")).to_have_attribute(
         "href", re.compile("openstreetmap.org/search")
     )
     expect(att.page.locator("[data-copy-address]")).to_have_count(0)
@@ -104,7 +106,7 @@ def test_geocode_failure_falls_back_to_osm_search(organizer_context, attendee_co
     att = _open_attendee(org, attendee_context, server, handle)
 
     expect(att.page.locator("[data-gatekeyp-map]")).to_have_count(0)
-    expect(att.page.locator(".event-map-links a", has_text="OpenStreetMap")).to_have_attribute(
+    expect(att.page.locator(".event-map-links a", has_text="Open map")).to_have_attribute(
         "href", re.compile("openstreetmap.org/search")
     )
     att.watcher.expect_clean()
@@ -119,7 +121,7 @@ def test_map_load_failure_shows_unavailable(organizer_context, attendee_context,
     att.page.locator(".event-map-load").click()
     expect(att.page.locator(".event-map-load")).to_have_text("Map unavailable")
     expect(att.page.locator(".event-map-load")).to_be_visible()
-    expect(att.page.locator(".event-map-links a", has_text="OpenStreetMap")).to_be_visible()
+    expect(att.page.locator(".event-map-links a", has_text="Open map")).to_be_visible()
 
 
 def test_map_hang_shows_unavailable_after_watchdog(organizer_context, attendee_context, server):
@@ -135,7 +137,7 @@ def test_map_hang_shows_unavailable_after_watchdog(organizer_context, attendee_c
     expect(att.page.locator(".event-map-load")).to_have_text("Map unavailable", timeout=15_000)
     expect(att.page.locator(".event-map-load")).to_be_visible()
     expect(att.page.locator(".event-map-load")).to_be_disabled()
-    expect(att.page.locator(".event-map-links a", has_text="OpenStreetMap")).to_be_visible()
+    expect(att.page.locator(".event-map-links a", has_text="Open map")).to_be_visible()
 
 
 def test_map_canvas_fills_the_card(organizer_context, attendee_context, server):
@@ -173,7 +175,7 @@ def test_missing_widget_marks_map_unavailable(organizer_context, attendee_contex
 
     expect(att.page.locator(".event-map-load")).to_have_text("Map unavailable")
     expect(att.page.locator(".event-map-load")).to_be_disabled()
-    expect(att.page.locator(".event-map-links a", has_text="OpenStreetMap")).to_be_visible()
+    expect(att.page.locator(".event-map-links a", has_text="Open map")).to_be_visible()
 
 
 def test_lite_page_renders_map_widget(organizer_context, server):
@@ -194,10 +196,18 @@ def test_lite_page_renders_map_widget(organizer_context, server):
     page.goto(public_url)
     expect(page.locator("[data-gatekeyp-map]")).to_be_visible()
     expect(page.locator(".event-map-load")).to_have_text("Show map")
+    expect(page.locator(".event-map-links a")).to_have_text("Open map")
     expect(page.locator('meta[name="referrer"]')).to_have_attribute("content", "no-referrer")
     _intercept_style(page)
     page.locator(".event-map-load").click()
     expect(page.locator(".maplibregl-canvas")).to_be_visible()
+    page.wait_for_timeout(500)
+    # Same container-collapse guard as the SPA page: the lite inline CSS must
+    # keep the card height after maplibre-gl.css sets position: relative.
+    wrapper = page.locator(".event-map-canvas").bounding_box()
+    canvas = page.locator(".maplibregl-canvas").bounding_box()
+    assert wrapper["height"] > 150, f"lite container collapsed: {wrapper}"
+    assert abs(canvas["height"] - wrapper["height"]) < 2, f"canvas {canvas} vs wrapper {wrapper}"
 
 
 def test_lite_map_off_hides_card_but_keeps_links(organizer_context, server):
@@ -219,7 +229,7 @@ def test_lite_map_off_hides_card_but_keeps_links(organizer_context, server):
     page.goto(public_url)
     expect(page.locator("[data-gatekeyp-map]")).to_have_count(0)
     expect(page.locator(".event-map-load")).to_have_count(0)
-    expect(page.locator(".event-map-links a", has_text="OpenStreetMap")).to_have_attribute(
+    expect(page.locator(".event-map-links a", has_text="Open map")).to_have_attribute(
         "href", re.compile("openstreetmap.org/search")
     )
     expect(page.locator("[data-copy-address]")).to_have_count(0)
@@ -242,7 +252,7 @@ def test_workspace_toggle_updates_attendee_page(organizer_context, attendee_cont
     att.page.reload()
     wait_event_page(att.page)
     expect(att.page.locator("[data-gatekeyp-map]")).to_have_count(0)
-    expect(att.page.locator(".event-map-links a", has_text="OpenStreetMap")).to_be_visible()
+    expect(att.page.locator(".event-map-links a", has_text="Open map")).to_be_visible()
 
     with org.page.expect_response(
         lambda response: response.url.endswith("/map") and response.request.method == "POST"

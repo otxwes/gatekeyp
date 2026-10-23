@@ -817,3 +817,19 @@ User-approved follow-ups after live testing.
 - [x] T3. Tests: map e2e single-link/no-copy assertions, lite unit assertions,
       card tests updated (desktop download + iOS abort). Full verification:
       unit 363 passed / 53 deselected; e2e 54 passed; ruff clean; node checks.
+
+---
+
+# Round 6 (2026-10-23) — "Open map" button + lite container guard
+
+- [x] T1. The single map link is now an "Open map" button: SPA uses
+      `btn btn-ghost btn-sm` on the anchor (links that navigate stay
+      anchors); the lite page gets an inline `.event-map-links a`
+      button-style rule. RED: e2e expected "Open map" text/class and the
+      lite unit page expected the new label — both failed first.
+- [x] T2. Found while here: the lite page's inline CSS still had the old
+      `position:absolute;inset:0` container rule — the same collapse bug
+      fixed in style.css for the SPA. Added `width/height:100%` and extended
+      the lite e2e test with the container-geometry assertions.
+- [x] T3. Full verification: unit 363 passed / 54 deselected; e2e 54 passed;
+      ruff clean; node checks OK.

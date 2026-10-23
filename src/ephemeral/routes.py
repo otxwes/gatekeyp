@@ -39,11 +39,13 @@ _PAGE_STYLE = (
     ".event-map{position:relative;height:200px;margin:1rem 0;border-radius:8px;"
     "overflow:hidden;background:#141414;"
     "background-image:radial-gradient(#2a2a2a 1px,transparent 1px);background-size:14px 14px}"
-    ".event-map-canvas{position:absolute;inset:0}"
+    ".event-map-canvas{position:absolute;inset:0;width:100%;height:100%}"
     ".event-map-load{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);"
     "padding:.5rem .9rem;border:1px solid #555;border-radius:999px;background:#1c1c1c;"
     "color:#f5f5f5;font:inherit;cursor:pointer}"
     ".event-map-links{display:flex;flex-wrap:wrap;gap:.75rem;font-size:.9rem}"
+    ".event-map-links a{display:inline-block;padding:.5rem .9rem;border:1px solid #555;"
+    "border-radius:999px;background:#1c1c1c;color:#f5f5f5;text-decoration:none}"
     ".map-attribution{color:#9a9a9a;font-size:.75rem}"
 )
 
@@ -103,20 +105,20 @@ def _map_links(
     lon: float | None,
     address: str | None,
 ) -> str:
-    """One terse OpenStreetMap link for a location, or "" when there is no address."""
+    """One terse Open map button linking to OpenStreetMap, or "" without an address."""
     if not address:
         return ""
     if lat is None or lon is None:
         search_url = f"https://www.openstreetmap.org/search?query={quote(address)}"
         return (
             '<p class="event-map-links">'
-            f'<a href="{search_url}" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>'
+            f'<a href="{search_url}" target="_blank" rel="noopener noreferrer">Open map</a>'
             "</p>"
         )
     osm = f"https://www.openstreetmap.org/?mlat={lat}&amp;mlon={lon}#map=17/{lat}/{lon}"
     return (
         '<p class="event-map-links">'
-        f'<a href="{osm}" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>'
+        f'<a href="{osm}" target="_blank" rel="noopener noreferrer">Open map</a>'
         "</p>"
     )
 

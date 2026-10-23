@@ -801,6 +801,7 @@ class TestLiteMapPage:
         assert 'data-style="https://example.test/style.json"' in page
         assert "Show map" in page
         assert "openstreetmap.org" in page
+        assert ">Open map</a>" in page
         assert "omaps.app" not in page
         assert "osmand.net" not in page
         assert "data-copy-address" not in page
