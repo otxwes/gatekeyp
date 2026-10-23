@@ -412,3 +412,36 @@ class TestMediaApi:
         deleted = client.delete(f"/api/media/{asset_id}", params={"key": organizer_key})
         assert deleted.status_code == 200
         assert deleted.json()["deleted"] is True
+
+
+class TestStaticCachePolicy:
+    """Static assets must revalidate on every navigation (no-cache), so a
+    deploy can never strand a browser on a stale mix of index.html /
+    app.js / map_widget.js — which rendered an inert "Show map" button
+    after the 2026-10-22 deploy for one cached browser session."""
+
+    def test_index_revalidates(self, client):
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-cache"
+
+    def test_app_js_revalidates(self, client):
+        response = client.get("/app.js")
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-cache"
+
+    def test_health_and_api_are_untouched(self, client):
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert "cache-control" not in health.headers
+
+        created = client.post(
+            "/api/events",
+            json={
+                "title": "Cache Probe",
+                "description": "API responses keep their own cache semantics.",
+                "organizer_id": "@theo:nyc",
+            },
+        )
+        assert created.status_code == 200
+        assert "cache-control" not in created.headers

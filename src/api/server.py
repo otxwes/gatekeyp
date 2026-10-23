@@ -178,6 +178,24 @@ def _new_app() -> FastAPI:
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         return response
 
+    @app.middleware("http")
+    async def add_static_cache_policy(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        """Make browsers revalidate static assets on every navigation.
+
+        Without a cache policy, heuristic caching can strand a browser on a
+        stale mix of index.html / app.js / map_widget.js after a deploy (a
+        stale index.html without the widget script tag rendered an inert
+        "Show map" button in the field). API routes and responses that set
+        their own policy keep theirs."""
+        response = await call_next(request)
+        path = request.url.path
+        if not path.startswith("/api") and path != "/health":
+            response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
     @app.exception_handler(InvalidKeyFormatError)
     async def invalid_key_handler(_request: Request, exc: InvalidKeyFormatError) -> JSONResponse:
         """Malformed keys are client errors, not server errors."""
