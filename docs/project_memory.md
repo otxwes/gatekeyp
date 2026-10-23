@@ -1206,3 +1206,20 @@ When (expiry anchor), untouched by the map work.
 **Verification:** `uv run pytest -q` → 363 passed, 51 deselected; e2e →
 **51 passed**; `ruff check src tests` clean; `node --check web/app.js` and
 `web/map_widget.js` OK.
+
+**Follow-up (same day, the real root cause):** the map card rendered empty
+in every browser (owner repro; the earlier "works" checks had only proven
+the canvas element existed and tiles downloaded — never that the container
+had height or that pixels appeared). Cause: `maplibre-gl.css`, loaded
+lazily on tap, adds its own `maplibregl-map` class to the container and
+sets `position: relative` on it — same specificity as our
+`.event-map-canvas { position: absolute; inset: 0 }`, loaded later, so it
+won; `inset: 0` stopped stretching and the container collapsed to 0px.
+MapLibre then initialized against a zero-height box and painted only the
+style background. Fix: explicit `width/height: 100%` on the container
+(style.css), pinned by an e2e geometry test (container > 150px, canvas
+matches container, no overflow) — RED first (`assert 0 > 150`). Also
+allowlisted the headless GPU `ReadPixels` perf note that appears only once
+the map truly renders. Verified by live screenshots in Chromium and
+Firefox: roads, marker and zoom control now paint. Lesson: assert layout
+geometry and inspect pixels for canvas UI, not just DOM presence.
