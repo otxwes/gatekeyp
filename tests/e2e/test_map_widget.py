@@ -126,6 +126,22 @@ def test_map_load_failure_shows_unavailable(organizer_context, attendee_context,
     expect(att.page.locator(".event-map-links a", has_text="OpenStreetMap")).to_be_visible()
 
 
+def test_map_hang_shows_unavailable_after_watchdog(organizer_context, attendee_context, server):
+    """A style request that never answers (VPN/DNS blackhole) must not leave
+    the card silently blank: the button hides while the map initializes, so a
+    watchdog has to flip the card back to a disabled "Map unavailable"."""
+    org = OrganizerPage(organizer_context.new_page(), server.base_url)
+    handle = org.create_event("Hung Map", "Style hangs.", location="Main St")
+    att = _open_attendee(org, attendee_context, server, handle)
+
+    att.page.route(STYLE_URL, lambda *_: None)  # intercepted, never resolved
+    att.page.locator(".event-map-load").click()
+    expect(att.page.locator(".event-map-load")).to_have_text("Map unavailable", timeout=15_000)
+    expect(att.page.locator(".event-map-load")).to_be_visible()
+    expect(att.page.locator(".event-map-load")).to_be_disabled()
+    expect(att.page.locator(".event-map-links a", has_text="OpenStreetMap")).to_be_visible()
+
+
 def test_missing_widget_marks_map_unavailable(organizer_context, attendee_context, server):
     """A stale cached index.html (widget script never arrives) must not leave
     an inert "Show map" button — the app marks the card unavailable instead

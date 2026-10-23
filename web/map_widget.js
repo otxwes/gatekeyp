@@ -45,6 +45,13 @@
             return;
         }
         let loaded = false;
+        let watchdog = null;
+        const settle = () => {
+            if (watchdog) {
+                window.clearTimeout(watchdog);
+                watchdog = null;
+            }
+        };
         const map = new maplibregl.Map({
             container: canvas,
             style,
@@ -58,9 +65,12 @@
         });
 
         map.on("error", () => {
+            settle();
             if (!loaded) fail(el);
         });
         map.on("load", () => {
+            if (el.dataset.mapFailed === "1") return; // watchdog gave up already
+            settle();
             loaded = true;
             new maplibregl.Marker().setLngLat([lon, lat]).addTo(map);
             map.addControl(
@@ -68,6 +78,13 @@
                 "top-right"
             );
         });
+        // The button hides while the map initializes; if the style or tile
+        // host never answers (VPN/DNS blackhole), no error event ever fires
+        // and the card would sit blank — give up visibly instead.
+        watchdog = window.setTimeout(() => {
+            watchdog = null;
+            if (!loaded) fail(el);
+        }, 10_000);
 
         el.classList.add("is-live");
         const button = el.querySelector(".event-map-load");
