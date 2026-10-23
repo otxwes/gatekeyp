@@ -18,6 +18,9 @@ SHOTS = Path("/tmp/gkp-e2e")
 BENIGN_CONSOLE_PATTERNS = [
     re.compile(r"Autofocus processing"),
     re.compile(r"Third-party cookie"),
+    # Headless-Chromium GPU driver perf note, emitted only once the map
+    # actually renders (label collision readbacks) — not an app error.
+    re.compile(r"GL Driver Message.*GPU stall due to ReadPixels"),
 ]
 
 

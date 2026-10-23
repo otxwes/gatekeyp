@@ -1623,6 +1623,11 @@ p {
 .event-map-canvas {
     position: absolute;
     inset: 0;
+    /* maplibre-gl.css (loaded lazily on tap) sets `.maplibregl-map` —
+       the same element — to position: relative, which cancels `inset: 0`.
+       Explicit sizing keeps the container at the card's height either way. */
+    width: 100%;
+    height: 100%;
 }
 
 .event-map-load {

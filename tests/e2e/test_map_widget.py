@@ -142,6 +142,28 @@ def test_map_hang_shows_unavailable_after_watchdog(organizer_context, attendee_c
     expect(att.page.locator(".event-map-links a", has_text="OpenStreetMap")).to_be_visible()
 
 
+def test_map_canvas_fills_the_card(organizer_context, attendee_context, server):
+    """The MapLibre container must keep the card's height after its stylesheet
+    loads: maplibre-gl.css sets `.maplibregl-map { position: relative }` on the
+    same element, which cancels `inset: 0` and collapsed the container to 0px
+    (the map then painted only the style background — an empty dark card)."""
+    org = OrganizerPage(organizer_context.new_page(), server.base_url)
+    handle = org.create_event("Sized Map", "Geometry.", location="Main St")
+    att = _open_attendee(org, attendee_context, server, handle)
+
+    _intercept_style(att.page)
+    att.page.locator(".event-map-load").click()
+    expect(att.page.locator(".maplibregl-canvas")).to_be_visible()
+    att.page.wait_for_timeout(500)
+
+    figure = att.page.locator(".event-map").bounding_box()
+    wrapper = att.page.locator(".event-map-canvas").bounding_box()
+    canvas = att.page.locator(".maplibregl-canvas").bounding_box()
+    assert wrapper["height"] > 150, f"container collapsed: {wrapper}"
+    assert abs(canvas["height"] - wrapper["height"]) < 2, f"canvas {canvas} vs wrapper {wrapper}"
+    assert canvas["height"] <= figure["height"] + 1, f"canvas overflows the card: {canvas}"
+
+
 def test_missing_widget_marks_map_unavailable(organizer_context, attendee_context, server):
     """A stale cached index.html (widget script never arrives) must not leave
     an inert "Show map" button — the app marks the card unavailable instead
