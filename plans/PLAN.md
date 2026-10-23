@@ -833,3 +833,22 @@ User-approved follow-ups after live testing.
       the lite e2e test with the container-geometry assertions.
 - [x] T3. Full verification: unit 363 passed / 54 deselected; e2e 54 passed;
       ruff clean; node checks OK.
+
+---
+
+# Round 7 (2026-10-23) — portrait flyers fill the content column
+
+Owner report: the flyer on the attendee event page looked tiny relative to
+the page. Reproduced live with a real 600x900 PNG: content column 342px,
+flyer rendered 174x260px — the shared `.event-flyer { max-height: 260px }`
+cap squashed portrait art to half the page width. The 1x1 PNG fixture in the
+old tests could never expose this.
+
+- [x] T1. RED: e2e geometry test with a generated 600x900 portrait PNG —
+      asserted the flyer renders at min(column, 420px) with its aspect ratio
+      preserved (failed at 174 vs 420).
+- [x] T2. GREEN: scoped `#join-views .event-flyer, #rsvp-views .event-flyer
+      { width:100%; max-width:420px; max-height:none; height:auto }`; the
+      workspace header keeps the 260px thumbnail cap.
+- [x] T3. Full verification: unit 363 passed / 55 deselected; e2e 55 passed;
+      ruff clean; node checks OK.

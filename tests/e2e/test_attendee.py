@@ -108,3 +108,64 @@ def test_rsvp_card_unlock_after_approval(organizer_context, attendee_context, se
     attendee.unlock_by_stego_png(handle.attendee_card_png(key))
     attendee.expect_event_title("Gallery Sitting")
     attendee.watcher.expect_clean()
+
+
+def _portrait_png(width: int = 600, height: int = 900) -> bytes:
+    """A real portrait PNG — the 1x1 fixture cannot expose sizing bugs."""
+    import struct
+    import zlib
+
+    rows = []
+    for y in range(height):
+        row = bytearray([0])
+        for x in range(width):
+            row += bytes(((x * 255) // width, (y * 255) // height, 160))
+        rows.append(bytes(row))
+    raw = b"".join(rows)
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(data))
+            + tag
+            + data
+            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        )
+
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(raw))
+        + chunk(b"IEND", b"")
+    )
+
+
+def test_event_page_flyer_fills_the_content_column(
+    organizer_context, attendee_context, server, tmp_path
+):
+    """A portrait flyer renders at the content width (capped at 420px), not
+    squashed to a 260px-tall thumbnail — it used to render 174px wide in a
+    342px column."""
+    org = OrganizerPage(organizer_context.new_page(), server.base_url)
+    handle = org.create_event("Flyer Size", "A portrait flyer.")
+    png = tmp_path / "portrait.png"
+    png.write_bytes(_portrait_png())
+    org.upload_flyer(png)
+    key = org.mint_key("Flyer Guest")
+
+    att = AttendeePage(attendee_context.new_page(), server.base_url)
+    att.unlock_by_stego_png(handle.attendee_card_png(key))
+    img = att.page.locator("#join-views img.event-flyer")
+    expect(img).to_be_visible()
+    att.page.wait_for_function(
+        "() => { const i = document.querySelector('#join-views img.event-flyer');"
+        " return i && i.complete && i.naturalWidth > 0; }"
+    )
+
+    box = img.bounding_box()
+    column = att.page.locator(".ep-head").bounding_box()
+    expected = min(column["width"], 420)
+    assert abs(box["width"] - expected) < 2, (
+        f"flyer {box['width']}px wide in a {column['width']}px column"
+    )
+    assert abs(box["width"] / box["height"] - 600 / 900) < 0.02, "aspect ratio distorted"
+    att.watcher.expect_clean()

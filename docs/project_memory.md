@@ -1224,6 +1224,14 @@ the map truly renders. Verified by live screenshots in Chromium and
 Firefox: roads, marker and zoom control now paint. Lesson: assert layout
 geometry and inspect pixels for canvas UI, not just DOM presence.
 
+**Flyer sizing (same day):** portrait flyers on the attendee event page
+rendered 174px wide in a 342px column because the shared `.event-flyer`
+rule capped height at 260px (and the e2e fixture was a 1x1 PNG, which
+cannot expose sizing bugs). The event page and RSVP funnel now render the
+flyer at the content width, capped at 420px, aspect preserved; the
+workspace header keeps the thumbnail cap. Pinned by a generated 600x900
+portrait PNG geometry test (RED at 174 vs 420, then GREEN).
+
 **Same-day UI follow-ups (user-approved):** the card dialog now uses the
 native share sheet only on iOS ("Save to Photos"); every other platform —
 including desktop Chrome, whose Web Share API accepts files — gets the plain

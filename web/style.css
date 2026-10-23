@@ -710,6 +710,17 @@ p {
     object-fit: contain;
 }
 
+/* The flyer is the visual anchor of the attendee event page and the RSVP
+   funnel: fill the content column, capped on wide screens. The workspace
+   header keeps the thumbnail cap above. */
+#join-views .event-flyer,
+#rsvp-views .event-flyer {
+    width: 100%;
+    max-width: 420px;
+    max-height: none;
+    height: auto;
+}
+
 .ws-actions {
     display: flex;
     flex-wrap: wrap;
