@@ -126,6 +126,22 @@ def test_map_load_failure_shows_unavailable(organizer_context, attendee_context,
     expect(att.page.locator(".event-map-links a", has_text="OpenStreetMap")).to_be_visible()
 
 
+def test_missing_widget_marks_map_unavailable(organizer_context, attendee_context, server):
+    """A stale cached index.html (widget script never arrives) must not leave
+    an inert "Show map" button — the app marks the card unavailable instead
+    of silently skipping the mount."""
+    org = OrganizerPage(organizer_context.new_page(), server.base_url)
+    handle = org.create_event("Stale Widget", "Widget missing.", location="Main St")
+    key = org.mint_key("Map Guest")
+    att = AttendeePage(attendee_context.new_page(), server.base_url)
+    att.page.route("**/map_widget.js", lambda route: route.abort())
+    att.unlock_by_stego_png(handle.attendee_card_png(key))
+
+    expect(att.page.locator(".event-map-load")).to_have_text("Map unavailable")
+    expect(att.page.locator(".event-map-load")).to_be_disabled()
+    expect(att.page.locator(".event-map-links a", has_text="OpenStreetMap")).to_be_visible()
+
+
 def test_lite_page_renders_map_widget(organizer_context, server):
     page = organizer_context.new_page()
     page.goto(f"{server.base_url}/#/flyer")

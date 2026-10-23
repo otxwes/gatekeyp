@@ -2260,6 +2260,22 @@ function mapAttribution() {
         `</p>`;
 }
 
+/** Mount the shared map widget; when its script never arrived (a stale
+ * cached page), mark the card unavailable instead of leaving an inert
+ * button that silently does nothing on tap. */
+function mountMap(mapEl) {
+    if (!mapEl) return;
+    if (window.GatekeypMap) {
+        window.GatekeypMap.mount(mapEl);
+        return;
+    }
+    const button = mapEl.querySelector(".event-map-load");
+    if (button) {
+        button.textContent = "Map unavailable";
+        button.disabled = true;
+    }
+}
+
 function locationHtml(event) {
     if (!event.location_data) return "";
     return `<p class="ep-meta">${esc(event.location_data)}</p>` +
@@ -2288,7 +2304,7 @@ function renderEventPage() {
         `</div>`;
 
     const mapEl = root.querySelector("[data-gatekeyp-map]");
-    if (mapEl && window.GatekeypMap) window.GatekeypMap.mount(mapEl);
+    mountMap(mapEl);
 
     $("#attendee-end").addEventListener("click", () => {
         attendee = null;
@@ -2323,7 +2339,7 @@ async function loadAttendeeBoard() {
             if (location) {
                 location.innerHTML = locationHtml(attendee.event);
                 const mapEl = location.querySelector("[data-gatekeyp-map]");
-                if (mapEl && window.GatekeypMap) window.GatekeypMap.mount(mapEl);
+                mountMap(mapEl);
             }
         }
         const [bulletins, assets] = await Promise.all([
