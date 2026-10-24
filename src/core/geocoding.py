@@ -81,9 +81,14 @@ class NominatimGeocoder:
         self._last_request: float | None = None
 
     @staticmethod
-    def _cache_key(address: str) -> str:
+    def _cache_key(address: str, viewbox: tuple[float, float, float, float] | None = None) -> str:
         """Normalize an address so whitespace/case variants share a cache row."""
-        return " ".join(address.split()).strip().lower()
+        key = " ".join(address.split()).strip().lower()
+        if viewbox is not None:
+            # Attach the bias to the key so differently-scoped lookups
+            # for the same address don't share a cache row.
+            key = f"{key}|{'/'.join(f'{value:.6f}' for value in viewbox)}"
+        return key
 
     def _cached(self, key: str) -> GeoPoint | None:
         entry = self._cache.get(key)
@@ -111,19 +116,38 @@ class NominatimGeocoder:
             self._sleep(_MIN_REQUEST_INTERVAL_SECONDS - elapsed)
         self._last_request = self._clock()
 
-    def geocode(self, address: str) -> GeoPoint | None:
-        """Return the first Nominatim result for ``address``, or None."""
-        normalized = self._cache_key(address)
+    def geocode(
+        self,
+        address: str,
+        *,
+        viewbox: tuple[float, float, float, float] | None = None,
+        use_cache: bool = True,
+    ) -> GeoPoint | None:
+        """Return the first Nominatim result for ``address``, or None.
+
+        ``viewbox`` is ``(min_lat, max_lat, min_lon, max_lon)`` applied as a
+        soft Nominatim bias (``bounded=0``). ``use_cache=False`` skips both
+        cache reads and writes, for one-off lookups (e.g. attendee origins)
+        that must never be retained.
+        """
+        normalized = self._cache_key(address, viewbox)
         if not normalized:
             return None
 
+        if use_cache:
+            with self._lock:
+                cached = self._cached(normalized)
+                if cached is not None:
+                    return cached
         with self._lock:
-            cached = self._cached(normalized)
-            if cached is not None:
-                return cached
             self._wait_for_slot()
 
-        query = urllib.parse.urlencode({"q": address.strip(), "format": "jsonv2", "limit": 1})
+        params: dict[str, str | int] = {"q": address.strip(), "format": "jsonv2", "limit": 1}
+        if viewbox is not None:
+            min_lat, max_lat, min_lon, max_lon = viewbox
+            params["viewbox"] = f"{min_lon},{min_lat},{max_lon},{max_lat}"
+            params["bounded"] = 0
+        query = urllib.parse.urlencode(params)
         request = urllib.request.Request(  # noqa: S310
             f"{self.base_url}/search?{query}",
             headers={"User-Agent": self.user_agent, "Accept": "application/json"},
@@ -146,8 +170,9 @@ class NominatimGeocoder:
             logger.warning("Geocoding request failed")
             return None
 
-        with self._lock:
-            self._store(normalized, point)
+        if use_cache:
+            with self._lock:
+                self._store(normalized, point)
         return point
 
 

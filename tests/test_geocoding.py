@@ -1,5 +1,6 @@
 import logging
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import pytest
@@ -103,6 +104,79 @@ def test_geocode_normalizes_cache_key():
     assert geocoder.geocode("  Main St  ") == GeoPoint(40.75, -73.98)
     assert geocoder.geocode("main st") == GeoPoint(40.75, -73.98)
     assert calls == 1
+
+
+def test_geocode_viewbox_bias_adds_params():
+    requests: list[urllib.request.Request] = []
+
+    def fetch(request, _timeout):
+        requests.append(request)
+        return b'[{"lat":"40.75","lon":"-73.98"}]'
+
+    geocoder = NominatimGeocoder(
+        base_url="https://geo.example",
+        user_agent="test-agent",
+        fetch=fetch,
+    )
+
+    viewbox = (40.5, 41.0, -74.3, -73.6)
+    assert geocoder.geocode("Main St", viewbox=viewbox) == GeoPoint(40.75, -73.98)
+
+    url = urllib.parse.unquote(requests[0].full_url)
+    assert "bounded=0" in url
+    # Nominatim ordering: min_lon,min_lat,max_lon,max_lat
+    assert "viewbox=-74.3,40.5,-73.6,41.0" in url
+
+    # Same address without viewbox must not carry the params.
+    requests.clear()
+    assert geocoder.geocode("Other St") == GeoPoint(40.75, -73.98)
+    other_url = urllib.parse.unquote(requests[0].full_url)
+    assert "viewbox=" not in other_url
+    assert "bounded=" not in other_url
+
+
+def test_geocode_viewbox_changes_cache_key():
+    calls: list[urllib.request.Request] = []
+
+    def fetch(request, _timeout):
+        calls.append(request)
+        return b'[{"lat":"40.75","lon":"-73.98"}]'
+
+    geocoder = NominatimGeocoder(
+        base_url="https://geo.example",
+        user_agent="test-agent",
+        fetch=fetch,
+    )
+
+    viewbox = (40.5, 41.0, -74.3, -73.6)
+    assert geocoder.geocode("Main St", viewbox=viewbox) == GeoPoint(40.75, -73.98)
+    assert geocoder.geocode("Main St", viewbox=viewbox) == GeoPoint(40.75, -73.98)
+    assert len(calls) == 1  # cached under the viewbox-scoped key
+
+    assert geocoder.geocode("Main St") == GeoPoint(40.75, -73.98)
+    assert len(calls) == 2  # plain key is a separate cache row
+
+
+def test_geocode_no_cache_skips_cache():
+    calls = 0
+
+    def fetch(_request, _timeout):
+        nonlocal calls
+        calls += 1
+        return b'[{"lat":"40.75","lon":"-73.98"}]'
+
+    geocoder = NominatimGeocoder(
+        base_url="https://geo.example",
+        user_agent="test-agent",
+        fetch=fetch,
+    )
+
+    assert geocoder.geocode("Private Origin", use_cache=False) == GeoPoint(40.75, -73.98)
+    assert geocoder.geocode("Private Origin", use_cache=False) == GeoPoint(40.75, -73.98)
+    assert calls == 2
+    # Nothing was retained, so an ordinary lookup still hits the network.
+    assert geocoder.geocode("Private Origin") == GeoPoint(40.75, -73.98)
+    assert calls == 3
 
 
 def test_geocode_rate_limits_requests():
