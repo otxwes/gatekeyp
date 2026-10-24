@@ -29,6 +29,8 @@ _QUERY = """
     from: $from
     to: $to
     date: $date
+    time: $time
+    arriveBy: $arriveBy
     transportModes: [
       {{mode: WALK}}
       {{mode: TRANSIT}}
@@ -161,10 +163,13 @@ class OtpClient:
     ) -> dict | None:
         """Return the raw ``data.plan`` dict, or None on error/timeout/empty."""
         when = depart_at or datetime.datetime.now(ZoneInfo(region.timezone))
+        region_local = when.astimezone(ZoneInfo(region.timezone))
         variables = {
             "from": {"lat": origin.lat, "lon": origin.lon},
             "to": {"lat": destination.lat, "lon": destination.lon},
-            "date": when.date().isoformat(),
+            "date": region_local.date().isoformat(),
+            "time": region_local.time().isoformat(),
+            "arriveBy": False,
             "transportModes": [{"mode": "WALK"}, {"mode": "TRANSIT"}],
             "numItineraries": 3,
             "routerId": region.router_id,
@@ -209,7 +214,7 @@ def itinerary_from_otp(plan: dict, region: TransitRegion) -> dict | None:
 
     try:
         return _map_itinerary(first, region)
-    except (KeyError, IndexError, TypeError, ValueError):
+    except (KeyError, IndexError, TypeError, ValueError, OSError, OverflowError):
         return None
 
 
@@ -234,7 +239,7 @@ def _map_itinerary(itinerary: dict, region: TransitRegion) -> dict:
 
         from_stop = leg["from"].get("stop", {})
         to_stop = leg["to"].get("stop", {})
-        stops = len(leg.get("intermediateStops", [])) or 1
+        stops = len(leg.get("intermediateStops", []))
         legs.append(
             {
                 "mode": "TRANSIT",

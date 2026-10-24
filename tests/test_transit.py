@@ -81,6 +81,8 @@ def test_otp_plan_posts_graphql_query():
     assert variables["from"] == {"lat": 40.7, "lon": -73.9}
     assert variables["to"] == {"lat": 40.75, "lon": -73.98}
     assert variables["date"] == "2026-10-24"
+    assert variables["time"] == "14:30:00"  # region-local (America/New_York, UTC-4)
+    assert variables["arriveBy"] is False
     assert variables["routerId"] == "nyc"
     assert variables["numItineraries"] == 3
     assert {"mode": "WALK"} in variables["transportModes"]
