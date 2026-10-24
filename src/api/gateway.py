@@ -339,6 +339,7 @@ class Gateway:
                 self.directions_enabled
                 and content.get("show_map")
                 and content.get("location_lat") is not None
+                and content.get("location_lon") is not None
                 and select_region(
                     content["location_lat"],
                     content["location_lon"],

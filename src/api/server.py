@@ -463,6 +463,11 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             if expired:
                 raise HTTPException(status_code=404, detail="Event not found")
 
+        if not event.get("show_map"):
+            # The map toggle is the organizer's location-data opt-out
+            # (design §7.5): no directions even when coordinates persist.
+            raise HTTPException(status_code=422, detail="Directions are off for this event")
+
         venue_lat = event.get("location_lat")
         venue_lon = event.get("location_lon")
         if venue_lat is None or venue_lon is None:

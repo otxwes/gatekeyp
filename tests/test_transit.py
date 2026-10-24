@@ -8,6 +8,7 @@ import urllib.request
 
 from src.core.geocoding import GeoPoint
 from src.core.transit import (
+    _QUERY,
     DEFAULT_REGIONS,
     OtpClient,
     itinerary_from_otp,
@@ -75,7 +76,7 @@ def test_otp_plan_posts_graphql_query():
 
     body = json.loads(request.data)
     assert "plan(" in body["query"]
-    assert body["query"].startswith("{")
+    assert body["query"].startswith("query Plan(")
     assert "numItineraries" in body["query"]
     variables = body["variables"]
     assert variables["from"] == {"lat": 40.7, "lon": -73.9}
@@ -84,9 +85,21 @@ def test_otp_plan_posts_graphql_query():
     assert variables["time"] == "14:30:00"  # region-local (America/New_York, UTC-4)
     assert variables["arriveBy"] is False
     assert variables["routerId"] == "nyc"
-    assert variables["numItineraries"] == 3
-    assert {"mode": "WALK"} in variables["transportModes"]
-    assert {"mode": "TRANSIT"} in variables["transportModes"]
+    assert variables["numItineraries"] == 1
+
+
+def test_wire_query_is_syntactically_sane():
+    """The document sent over the wire is valid-looking GraphQL.
+
+    Full schema validation happens in the Pi rollout smoke test; this pins
+    the structural mistakes that hide behind mocks (doubled braces, missing
+    variable declarations).
+    """
+    assert "{{" not in _QUERY and "}}" not in _QUERY
+    assert _QUERY.startswith("query Plan(")
+    for variable in ("$from", "$to", "$date", "$time", "$arriveBy", "$numItineraries", "$routerId"):
+        assert variable in _QUERY
+    assert _QUERY.count("plan(") == 1
 
 
 def test_otp_plan_returns_none_on_fetch_error(caplog):

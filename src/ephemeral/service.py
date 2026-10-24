@@ -345,6 +345,7 @@ class EphemeralService:
             self.directions_enabled
             and event.get("show_map")
             and event.get("location_lat") is not None
+            and event.get("location_lon") is not None
             and select_region(
                 event["location_lat"], event["location_lon"], self.transit_regions or {}
             )

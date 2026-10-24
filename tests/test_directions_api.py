@@ -239,6 +239,32 @@ def test_directions_rejects_key_that_does_not_grant_event(directions_env):
     assert response.status_code == 403
 
 
+def test_directions_rejects_key_minted_for_other_event(directions_env):
+    """A real key granting a different event does not grant this one."""
+    client = directions_env["client"]
+    first = _create_event(directions_env)
+    other = _create_event(directions_env, title="Other Event")
+    other_key = _access_key(directions_env, other)
+    response = _directions(client, first["event_id"], key=other_key)
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Key does not grant this event"
+
+
+def test_directions_rejected_when_show_map_off(directions_env):
+    """Toggling the map off is the organizer's location opt-out (design §7.5)."""
+    created = _create_event(directions_env)
+    event_id = created["event_id"]
+    key = created["organizer_key"]
+    assert directions_env["db"].get_event(event_id)["location_lat"] is not None
+    directions_env["db"].set_event_show_map(event_id, show_map=False)
+    assert directions_env["db"].get_event(event_id)["location_lat"] is not None
+
+    response = _directions(directions_env["client"], event_id, key=key)
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Directions are off for this event"
+
+
 def test_directions_lite_event_needs_no_key(directions_env):
     created = _create_event(directions_env)
     event_id = created["event_id"]

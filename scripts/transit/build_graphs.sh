@@ -21,7 +21,9 @@
 # with DEFAULT_REGIONS in src/core/transit.py.
 #
 # Usage:
-#   scripts/transit/build_graphs.sh <otp-jar> [region...]
+#   scripts/transit/build_graphs.sh [--refresh] <otp-jar> [region...]
+#   --refresh    re-download GTFS + OSM inputs even when cached
+#                (equivalently: REFRESH=1 in the environment)
 #   <otp-jar>    path to otp-2.x.jar
 #   region...    optional subset of: nyc la mtl (default: all)
 #
@@ -30,6 +32,8 @@
 #                       (default: <repo>/build; graphs land in $BUILD_DIR/graphs)
 #   SKIP_DOWNLOAD=1     omit the curl steps (feeds must already exist in
 #                       $BUILD_DIR/<region>/inputs/ as dummy or real files)
+#   REFRESH=1           force re-download of GTFS (monthly) and OSM
+#                       (quarterly) feeds even when a cached copy exists
 set -euo pipefail
 
 # Region feed lists: GTFS zips (space-separated) + one OSM metro extract (PBF).
@@ -57,8 +61,14 @@ known_region() {
 }
 
 if [ $# -lt 1 ]; then
-  echo "usage: build_graphs.sh <otp-jar> [region...]" >&2
+  echo "usage: build_graphs.sh [--refresh] <otp-jar> [region...]" >&2
   exit 2
+fi
+
+REFRESH="${REFRESH:-0}"
+if [ "$1" = "--refresh" ]; then
+  REFRESH=1
+  shift
 fi
 OTP_JAR="$1"
 shift
@@ -88,15 +98,17 @@ for region in $regions; do
   if [ "${SKIP_DOWNLOAD:-0}" != 1 ]; then
     for url in $(gtfs_urls "$region"); do
       out="$inputs/$(basename "$url")"
-      if [ -s "$out" ]; then
-        echo "cached: $out"
+      if [ -s "$out" ] && [ "$REFRESH" != 1 ]; then
+        echo "cached: $out (REFRESH=1 or --refresh re-downloads)"
       else
         echo "GET $url"
         curl -fSL --retry 3 -o "$out" "$url"
       fi
     done
     osm_out="$inputs/$(basename "$(osm_url "$region")")"
-    if [ ! -s "$osm_out" ]; then
+    if [ -s "$osm_out" ] && [ "$REFRESH" != 1 ]; then
+      echo "cached: $osm_out (REFRESH=1 or --refresh re-downloads)"
+    else
       echo "GET $(osm_url "$region")"
       curl -fSL --retry 3 -o "$osm_out" "$(osm_url "$region")"
     fi

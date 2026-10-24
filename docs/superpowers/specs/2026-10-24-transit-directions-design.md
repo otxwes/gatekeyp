@@ -46,8 +46,8 @@ is informational and becomes the anchor for a later "arrive by" mode.
    the lite page: start address input → static itinerary.
 2. Itinerary shows total time, departure/arrival times, and legs: walk
    (duration/distance) and transit (agency, line, headsign, board/alight
-   stops, stop count, times). At most three alternatives; the first is
-   expanded.
+   stops, stop count, times). One itinerary is returned (alternatives are a
+   future extension).
 3. The itinerary is computed on the Pi and **not persisted or logged**;
    the browser keeps the last result in `localStorage` for reference.
 4. Works for events in NYC, LA, and Montreal; the region is chosen from the
@@ -115,7 +115,7 @@ is informational and becomes the anchor for a later "arrive by" mode.
   simultaneous graphs unsafe, fall back to loading only the regions with
   live events (ops switch, same API).
 - Query: GTFS GraphQL `plan` (OTP 2.x), `modes = WALK,TRANSIT`,
-  `numItineraries = 3`, `dateTime = now`, `arriveBy = false`.
+  `numItineraries = 1`, `dateTime = now`, `arriveBy = false`.
 - Router selection: venue coordinates → configured bbox per region. No
   match → directions unavailable (fallback message + Open map).
 - Region config (env, JSON): id, bbox, GTFS attribution string, OTP router
@@ -194,8 +194,8 @@ unavailable. Error bodies never echo the start address.
   encrypted so turning it back on restores both without re-geocoding. No
   backfill: events created with the map off have no coordinates and never
   show directions.
-- Result: total duration and departure/arrival times; up to three
-  alternatives as expandable rows; legs as a terse list (walk / line +
+- Result: total duration and departure/arrival times; one itinerary
+  (alternatives are a future extension); legs as a terse list (walk / line +
   headsign / board–alight / times). No helper prose (§3.4), no map drawing.
 - Persistence: last successful result + start text in `localStorage` under
   `gatekeyp.directions.<event_id>`; restored on load with a "Clear" action.

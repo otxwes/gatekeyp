@@ -24,41 +24,46 @@ logger = logging.getLogger(__name__)
 _GRAPHQL_ENDPOINT = "/otp/gtfs/v1"
 
 _QUERY = """
-{{
+query Plan(
+  $from: InputCoordinates!,
+  $to: InputCoordinates!,
+  $date: String!,
+  $time: String!,
+  $arriveBy: Boolean!,
+  $numItineraries: Int!,
+  $routerId: String
+) {
   plan(
     from: $from
     to: $to
     date: $date
     time: $time
     arriveBy: $arriveBy
-    transportModes: [
-      {{mode: WALK}}
-      {{mode: TRANSIT}}
-    ]
+    transportModes: [{mode: WALK}, {mode: TRANSIT}]
     numItineraries: $numItineraries
     routerId: $routerId
-  ) {{
-    from {{ name lat lon }}
-    to {{ name lat lon }}
-    itineraries {{
+  ) {
+    from { name lat lon }
+    to { name lat lon }
+    itineraries {
       startTime
       endTime
       duration
-      legs {{
+      legs {
         mode
         duration
         distance
-        from {{ name lat lon stop {{ name }} }}
-        to {{ name lat lon stop {{ name }} }}
-        route {{ shortName longName color agency {{ name }} }}
+        from { name lat lon stop { name } }
+        to { name lat lon stop { name } }
+        route { shortName longName color agency { name } }
         headsign
-        intermediateStops {{ name }}
+        intermediateStops { name }
         startTime
         endTime
-      }}
-    }}
-  }}
-}}
+      }
+    }
+  }
+}
 """.strip()
 
 
@@ -170,8 +175,7 @@ class OtpClient:
             "date": region_local.date().isoformat(),
             "time": region_local.time().isoformat(),
             "arriveBy": False,
-            "transportModes": [{"mode": "WALK"}, {"mode": "TRANSIT"}],
-            "numItineraries": 3,
+            "numItineraries": 1,
             "routerId": region.router_id,
         }
         payload = json.dumps({"query": _QUERY, "variables": variables}).encode()
