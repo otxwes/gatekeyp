@@ -1,5 +1,6 @@
 # Copyright (c) 2026 gatekeyp contributors
 
+import datetime
 import os
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -15,8 +16,15 @@ from pydantic import BaseModel, Field
 from src.api.gateway import Gateway, RateLimiter
 from src.core.content_manager import ContentAccessError, ContentManager, ContentValidationError
 from src.core.event_lifecycle import EventLifecycleError, EventLifecycleManager
-from src.core.geocoding import DEFAULT_MAP_STYLE_URL, build_geocoder_from_env
+from src.core.geocoding import DEFAULT_MAP_STYLE_URL, GeoPoint, build_geocoder_from_env
 from src.core.key_manager import InvalidKeyFormatError, KeyManager
+from src.core.transit import (
+    OtpClient,
+    TransitRegion,
+    itinerary_from_otp,
+    load_regions_from_env,
+    select_region,
+)
 from src.db.database_handler import DatabaseHandler
 from src.ephemeral import EphemeralService, build_ephemeral_router
 from src.ephemeral.lxmf_delivery import LXMFKeyDeliverer, get_deliverer
@@ -44,6 +52,18 @@ class CreateEventRequest(BaseModel):
     organizer_name: str = Field(default="", max_length=128)
     show_map: bool = True
     starts_at: str | None = Field(default=None, max_length=64)
+
+
+class DirectionsRequest(BaseModel):
+    """Request for static transit directions to an event's venue.
+
+    The ``start`` is the attendee's origin address: transient input,
+    never logged, never persisted, never echoed in error bodies.
+    """
+
+    event_id: str = Field(..., min_length=1, max_length=256)
+    start: str = Field(..., min_length=1, max_length=256)
+    key: str | None = Field(default=None, max_length=2048)
 
 
 class SetEventMapRequest(BaseModel):
@@ -246,6 +266,9 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
     ephemeral: EphemeralService | None = None,
     lxmf_deliverer: LXMFKeyDeliverer | None = None,
     profile: str | None = None,
+    otp: OtpClient | None = None,
+    transit_regions: dict[str, TransitRegion] | None = None,
+    geocoder: object | None = None,
 ) -> FastAPI:
     """
     Create the FastAPI application with all routes wired up.
@@ -261,6 +284,13 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             prototype. If None, the env-configured process-wide one is used.
         profile: "full" (default) mounts every route; "lite" mounts only the
             ephemeral funnel routes. Falls back to GATEKEYP_PROFILE env var.
+        otp: Optional OpenTripPlanner client enabling the directions route.
+            If None, built from ``GATEKEYP_OTP_URL`` (unset/empty = disabled).
+        transit_regions: Optional transit region config for directions.
+            If None, loaded from the environment (defaults for NYC/LA/MTL).
+        geocoder: Optional shared forward geocoder (injectable for tests)
+            used for the directions start address. If None, one is built
+            from the environment when maps/geocoding are enabled.
 
     Returns:
         Configured FastAPI application.
@@ -276,7 +306,15 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
     if content_manager is None:
         content_manager = ContentManager(db=db, key_manager=key_manager)
     map_style_url = os.environ.get("GATEKEYP_MAP_STYLE_URL", DEFAULT_MAP_STYLE_URL).strip() or None
-    geocoder = build_geocoder_from_env() if map_style_url else None
+    if geocoder is None:
+        geocoder = build_geocoder_from_env() if map_style_url else None
+    # Directions (OTP routing) are off unless configured or injected.
+    otp_url = os.environ.get("GATEKEYP_OTP_URL", "").strip()
+    if otp is None and otp_url:
+        otp = OtpClient(otp_url)
+    directions_enabled = otp is not None
+    if otp is not None and transit_regions is None:
+        transit_regions = load_regions_from_env()
     if lifecycle is None:
         lifecycle = EventLifecycleManager(
             db=db,
@@ -285,6 +323,8 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             geocoder=geocoder,
             map_style_url=map_style_url,
         )
+    if geocoder is None:
+        geocoder = getattr(lifecycle, "geocoder", None)
     if gateway is None:
         rate_limiter = RateLimiter()
         gateway = Gateway(
@@ -292,6 +332,8 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             key_manager=key_manager,
             rate_limiter=rate_limiter,
             map_style_url=map_style_url,
+            transit_regions=transit_regions,
+            directions_enabled=directions_enabled,
         )
 
     profile = profile or os.environ.get("GATEKEYP_PROFILE", "full")
@@ -308,6 +350,8 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             content_manager=content_manager,
             geocoder=geocoder,
             map_style_url=map_style_url,
+            transit_regions=transit_regions,
+            directions_enabled=directions_enabled,
         )
     ephemeral.sweep_expired()
     rsvp = RsvpService(db=db, key_manager=key_manager, lifecycle=lifecycle)
@@ -372,6 +416,95 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             )
         except EventLifecycleError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err
+
+    # -- Directions (OTP routing) --
+    directions_limiter = RateLimiter(max_attempts=10, window_seconds=60.0)
+
+    @app.post("/api/directions")
+    def directions(request: DirectionsRequest, http_request: Request) -> dict:  # noqa: C901, PLR0912, PLR0915 - validation ladder; see create_app
+        """Compute a static transit itinerary for this session only.
+
+        Privacy boundary (§7.4/§7.6): the start address exists briefly to
+        geocode and plan; it is never logged, persisted, audited, or echoed
+        in an error body. Nothing here writes to the database.
+        """
+        client_ip = http_request.client.host if http_request.client else "unknown"
+        if not directions_limiter.check(client_ip):
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Rate limit exceeded"},
+                headers={"Retry-After": "60"},
+            )
+        directions_limiter.record_attempt(client_ip)
+
+        if otp is None:
+            raise HTTPException(status_code=503, detail="Directions unavailable right now")
+
+        start = request.start.strip()
+        if not start:
+            raise HTTPException(status_code=400, detail="Start address is required")
+
+        tombstone = db.get_tombstone(request.event_id)
+        if tombstone is not None:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        event = db.get_event(request.event_id)
+        if event is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+        if event.get("mode") == "ephemeral":
+            # Expired lite events are gone; fail closed on unparseable stamps.
+            expires_at = event.get("expires_at")
+            try:
+                expired = expires_at is not None and datetime.datetime.fromisoformat(
+                    expires_at
+                ) <= datetime.datetime.now(datetime.UTC)
+            except ValueError:
+                expired = True
+            if expired:
+                raise HTTPException(status_code=404, detail="Event not found")
+
+        venue_lat = event.get("location_lat")
+        venue_lon = event.get("location_lon")
+        if venue_lat is None or venue_lon is None:
+            raise HTTPException(status_code=422, detail="No venue coordinates on this event")
+
+        region = select_region(venue_lat, venue_lon, transit_regions or {})
+        if region is None:
+            raise HTTPException(status_code=422, detail="Directions not configured here")
+
+        if event.get("mode") != "ephemeral":
+            # Standard events: the request must carry a key that grants the event.
+            if not request.key:
+                raise HTTPException(status_code=403, detail="Access key required")
+            try:
+                validation = key_manager.validate_key(request.key)
+            except ValueError as err:
+                raise HTTPException(status_code=403, detail="Invalid key") from err
+            if validation["status"] != "valid":
+                raise HTTPException(status_code=403, detail="Invalid access key")
+            granted_ids = db.get_content_ids_for_key(validation["hash"])
+            if not any(item["content_id"] == request.event_id for item in granted_ids):
+                raise HTTPException(status_code=403, detail="Key does not grant this event")
+
+        if geocoder is None:
+            raise HTTPException(status_code=503, detail="Directions unavailable right now")
+        origin = geocoder.geocode(
+            start,
+            viewbox=(region.min_lat, region.max_lat, region.min_lon, region.max_lon),
+            use_cache=False,
+        )
+        if origin is None:
+            raise HTTPException(status_code=422, detail="Could not find that address")
+
+        plan = otp.plan(region, origin, GeoPoint(lat=venue_lat, lon=venue_lon))
+        if plan is None:
+            raise HTTPException(status_code=503, detail="Directions unavailable right now")
+
+        itinerary = itinerary_from_otp(plan, region)
+        if itinerary is None:
+            raise HTTPException(status_code=422, detail="No transit route found")
+
+        return {"event_id": request.event_id, **itinerary}
 
     @app.post("/api/events/{event_id}/content")
     def add_content(event_id: str, request: AddContentRequest) -> dict:

@@ -26,6 +26,7 @@ from src.core.content_manager import (
     ContentValidationError,
 )
 from src.core.event_lifecycle import EventLifecycleError
+from src.core.transit import select_region
 from src.db.database_handler import DecryptionError
 
 if TYPE_CHECKING:
@@ -114,6 +115,8 @@ class EphemeralService:
         clock: Callable[[], datetime] | None = None,
         geocoder: Geocoder | None = None,
         map_style_url: str | None = None,
+        transit_regions: dict | None = None,
+        directions_enabled: bool = False,
     ) -> None:
         """Store shared services; the rate limiter and clock are injectable."""
         self.db = db
@@ -123,6 +126,8 @@ class EphemeralService:
         self._clock = clock or (lambda: datetime.now(UTC))
         self.geocoder = geocoder
         self.map_style_url = map_style_url
+        self.transit_regions = transit_regions
+        self.directions_enabled = directions_enabled
 
     # -- Validation ----------------------------------------------------
 
@@ -336,6 +341,15 @@ class EphemeralService:
         if self._is_expired(event.get("expires_at")):
             return {"status": "expired"}
         event["map_style_url"] = self.map_style_url
+        event["directions_enabled"] = bool(
+            self.directions_enabled
+            and event.get("show_map")
+            and event.get("location_lat") is not None
+            and select_region(
+                event["location_lat"], event["location_lon"], self.transit_regions or {}
+            )
+            is not None
+        )
         media = self.db.list_media_assets(event_id)
         blocks = self.db.list_content_blocks_for_event(event_id)
         when = next((b["payload"] for b in blocks if b["content_type"] == "schedule"), None)

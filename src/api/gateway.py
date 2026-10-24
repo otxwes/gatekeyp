@@ -7,6 +7,7 @@ from collections import defaultdict, deque
 from typing import Any
 
 from src.core.key_manager import KeyManager
+from src.core.transit import select_region
 from src.db.database_handler import DatabaseHandler
 from src.rsvp.service import RSVP_STATUS_PENDING
 
@@ -132,11 +133,16 @@ class Gateway:
         key_manager: KeyManager | None = None,
         rate_limiter: RateLimiter | None = None,
         map_style_url: str | None = None,
+        transit_regions: dict | None = None,
+        *,
+        directions_enabled: bool = False,
     ) -> None:
         self.db = db if db is not None else DatabaseHandler()
         self.key_manager = key_manager if key_manager is not None else KeyManager(db=self.db)
         self.rate_limiter = rate_limiter if rate_limiter is not None else RateLimiter()
         self.map_style_url = map_style_url
+        self.transit_regions = transit_regions
+        self.directions_enabled = directions_enabled
 
     # ------------------------------------------------------------------
     # Audit Logging (no PII)
@@ -329,6 +335,17 @@ class Gateway:
             }
             if self.map_style_url:
                 content["map_style_url"] = self.map_style_url
+            content["directions_enabled"] = bool(
+                self.directions_enabled
+                and content.get("show_map")
+                and content.get("location_lat") is not None
+                and select_region(
+                    content["location_lat"],
+                    content["location_lon"],
+                    self.transit_regions or {},
+                )
+                is not None
+            )
 
         # Success: reset rate limiting for this client and key
         self.rate_limiter.reset(rate_limit_id)
