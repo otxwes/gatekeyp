@@ -212,3 +212,11 @@ def test_itinerary_from_otp_maps_legs_and_times():
 
 def test_itinerary_from_otp_returns_none_without_itineraries():
     assert itinerary_from_otp({"itineraries": []}, DEFAULT_REGIONS["nyc"]) is None
+
+
+def test_itinerary_from_otp_returns_none_on_malformed_leg():
+    plan = _plan_fixture()
+    del plan["itineraries"][0]["legs"][1]["route"]
+    del plan["itineraries"][0]["legs"][1]["startTime"]
+
+    assert itinerary_from_otp(plan, DEFAULT_REGIONS["nyc"]) is None

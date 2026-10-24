@@ -201,17 +201,24 @@ def _format_time(epoch_ms: int, region: TransitRegion) -> str:
 
 
 def itinerary_from_otp(plan: dict, region: TransitRegion) -> dict | None:
-    """Map an OTP plan to the §7.4 response shape, or None when empty."""
+    """Map an OTP plan to the §7.4 response shape, or None when empty/malformed."""
     try:
         first = plan["itineraries"][0]
     except (KeyError, IndexError, TypeError):
         return None
 
-    origin = first["legs"][0]["from"]
-    destination = first["legs"][-1]["to"]
+    try:
+        return _map_itinerary(first, region)
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+
+
+def _map_itinerary(itinerary: dict, region: TransitRegion) -> dict:
+    origin = itinerary["legs"][0]["from"]
+    destination = itinerary["legs"][-1]["to"]
 
     legs: list[dict] = []
-    for leg in first["legs"]:
+    for leg in itinerary["legs"]:
         mode = leg["mode"]
         if mode == "WALK":
             legs.append(
@@ -250,9 +257,9 @@ def itinerary_from_otp(plan: dict, region: TransitRegion) -> dict | None:
             "lat": destination["lat"],
             "lon": destination["lon"],
         },
-        "depart_at": _format_time(first["startTime"], region),
-        "arrive_at": _format_time(first["endTime"], region),
-        "duration_minutes": round(first["duration"] / 60.0),
+        "depart_at": _format_time(itinerary["startTime"], region),
+        "arrive_at": _format_time(itinerary["endTime"], region),
+        "duration_minutes": round(itinerary["duration"] / 60.0),
         "legs": legs,
         "attribution": region.attribution,
     }
