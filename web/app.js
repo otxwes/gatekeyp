@@ -2298,7 +2298,26 @@ function mountMap(mapEl) {
 function locationHtml(event) {
     if (!event.location_data) return "";
     return `<p class="ep-meta">${esc(event.location_data)}</p>` +
-        mapFigure(event) + mapLinks(event) + mapAttribution();
+        mapFigure(event) + mapLinks(event) + mapAttribution() + directionsHtml();
+}
+
+/** Directions container, rendered only when the event payload allows
+ * routing (§7.5); the shared widget fills it with the From form. */
+function directionsHtml() {
+    if (!attendee || !attendee.eventId || !(attendee.event && attendee.event.directions_enabled)) {
+        return "";
+    }
+    return `<div class="event-directions" data-gatekeyp-directions` +
+        ` data-event-id="${esc(attendee.eventId)}"` +
+        ` data-key="${esc(attendee.accessKey)}"` +
+        ` data-endpoint="/api/directions"></div>`;
+}
+
+/** Mount the shared directions widget if its script arrived; otherwise leave
+ * the container inert (the map card and Open map button keep working). */
+function mountDirections(root) {
+    const el = root.querySelector("[data-gatekeyp-directions]");
+    if (el && window.GatekeypDirections) window.GatekeypDirections.mount(el);
 }
 
 function renderEventPage() {
@@ -2327,6 +2346,7 @@ function renderEventPage() {
 
     const mapEl = root.querySelector("[data-gatekeyp-map]");
     mountMap(mapEl);
+    mountDirections(root);
 
     $("#attendee-end").addEventListener("click", () => {
         attendee = null;
@@ -2362,6 +2382,7 @@ async function loadAttendeeBoard() {
                 location.innerHTML = locationHtml(attendee.event);
                 const mapEl = location.querySelector("[data-gatekeyp-map]");
                 mountMap(mapEl);
+                mountDirections(location);
             }
         }
         const [bulletins, assets] = await Promise.all([

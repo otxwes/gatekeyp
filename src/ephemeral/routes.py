@@ -47,6 +47,20 @@ _PAGE_STYLE = (
     ".event-map-links a{display:inline-block;padding:.5rem .9rem;border:1px solid #555;"
     "border-radius:999px;background:#1c1c1c;color:#f5f5f5;text-decoration:none}"
     ".map-attribution{color:#9a9a9a;font-size:.75rem}"
+    ".event-directions{margin:.75rem 0}"
+    ".dir-form{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}"
+    ".dir-label{font-size:.9rem}"
+    ".dir-input{flex:1;min-width:10rem;max-width:18rem;padding:.45rem .6rem;"
+    "border:1px solid #555;border-radius:6px;background:#141414;color:inherit;font:inherit}"
+    ".dir-submit{padding:.45rem .9rem;border:1px solid #555;border-radius:999px;"
+    "background:#1c1c1c;color:#f5f5f5;font:inherit;cursor:pointer}"
+    ".dir-error{color:#9a9a9a;font-size:.9rem}"
+    ".dir-clear{margin:.5rem .5rem 0 0;padding:.25rem .7rem;border:1px solid #555;"
+    "border-radius:999px;background:transparent;color:inherit;font:inherit;cursor:pointer}"
+    ".dir-result{font-size:.9rem}"
+    ".dir-legs{list-style:none;margin:.4rem 0;padding:0;line-height:1.5}"
+    ".dir-attribution{color:#9a9a9a;font-size:.75rem}"
+    ".dir-alt summary{cursor:pointer}"
 )
 
 _RETRY_AFTER_SECONDS = "600"
@@ -136,6 +150,7 @@ def _render_live_page(
     location_lon: float | None,
     show_map: bool,
     map_style_url: str | None,
+    directions_enabled: bool = False,
 ) -> str:
     """HTML plus Open Graph tags for a live ephemeral event."""
     og_image = ""
@@ -149,6 +164,8 @@ def _render_live_page(
     body_description = "" if description == title else f"<p>{html.escape(description)}</p>"
     map_card = ""
     map_links = ""
+    directions_block = ""
+    directions_script = ""
     if where:
         if show_map and location_lat is not None and location_lon is not None and map_style_url:
             map_card = (
@@ -171,6 +188,14 @@ def _render_live_page(
                 'target="_blank" rel="noopener noreferrer">OpenStreetMap</a>'
                 "</p>"
             )
+        if directions_enabled:
+            # Lite events are public by design: no key attribute on purpose.
+            directions_block = (
+                f'<div data-gatekeyp-directions data-event-id="{html.escape(event_id)}" '
+                'data-key="" data-endpoint="/api/directions" class="event-directions">'
+                "</div>"
+            )
+            directions_script = '<script src="/directions.js" defer></script>'
     body = (
         f"<h1>{html.escape(title)}</h1>"
         f"{flyer_tag}"
@@ -179,7 +204,9 @@ def _render_live_page(
         + (f"<p><strong>Location:</strong> {html.escape(where)}</p>" if where else "")
         + map_card
         + map_links
+        + directions_block
         + ('<script src="/map_widget.js" defer></script>' if where else "")
+        + directions_script
     )
     head = (
         '<meta property="og:type" content="website">'
@@ -383,6 +410,7 @@ def build_ephemeral_router(  # noqa: C901, PLR0915 - many routes
             location_lon=event.get("location_lon"),
             show_map=event.get("show_map", True),
             map_style_url=event.get("map_style_url"),
+            directions_enabled=event.get("directions_enabled", False),
         )
         return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
