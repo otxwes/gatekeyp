@@ -867,3 +867,11 @@ no geolocation, nothing stored or logged server-side; map toggle is the
 location-data opt-out; NYC/LA/Montreal regions). Work happens in the
 `transit-directions` worktree/branch while the card-distortion feature runs
 in the main checkout.
+
+**Status note (2026-10-24):** implemented in this branch — `starts_at`,
+`src/core/transit.py`, the geocoder viewbox bias, `POST /api/directions`,
+`web/directions.js`, plus ops (`scripts/transit/build_graphs.sh`, GTFS
+monthly / OSM quarterly) and docs (threat model §5.8, README env vars,
+roadmap, project memory). Remaining before rollout: build graphs off-box,
+rsync, install the OTP unit (private lichen-site runbook), then set
+`GATEKEYP_OTP_URL` per environment.

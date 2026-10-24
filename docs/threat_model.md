@@ -73,6 +73,12 @@ This document identifies the primary adversaries, trust boundaries, and data flo
 - **Mitigation:** the map is tap-to-load — no MapLibre, style, or tile request happens on page load. Every response carries `Referrer-Policy: no-referrer`, the HTML carries the meta tag, and outbound links use `rel="noreferrer"`. The organizer can turn the map off per event (create-time or workspace), and `GATEKEYP_MAP_STYLE_URL=""` disables maps and geocoding globally. MapLibre is vendored, pinned, and hash-recorded; no CDN. OpenFreeMap's policy says no IP logging by default and no cookies; Cloudflare may process requests. Self-hosting OpenFreeMap is the zero-third-party option.
 - **Residual risk:** when the map is opened, the provider can observe the venue area and the attendee IP. The lite page's location is already public. No geolocation permission is requested.
 
+### 5.8 Transit directions (start-address routing)
+- **Data flow:** the attendee's free-text start address is POSTed to the Pi, geocoded by Nominatim (trusted third party per decision below) and forwarded to the Pi's local OpenTripPlanner (OTP 2) instance on loopback; the itinerary result is returned in the HTTP response and kept only in the attendee's browser `localStorage`. Nothing is written to the database, audit log, or any cache.
+- **Threat:** the host (and, transiently, its HTTP access logs) can observe attendee origins; Nominatim sees geocode queries from the instance's IP.
+- **Mitigation:** origins are never persisted or logged — request bodies are not logged on the directions path, the audit logger does not record the start, and error bodies never echo it; the geocoder runs in no-cache mode so attendee origins bypass the 24 h address-cache. OTP runs loopback-only (127.0.0.1) and is not proxied by nginx. The directions endpoint is rate limited per IP.
+- **Accepted residual (decided with the operator, 2026-10-24):** the host transiently observes attendee origins and discards them; a geocoding hop to Nominatim is accepted. No geolocation permission is requested and nothing tracks the attendee after submit. The organizer's map toggle (`show_map`) is the location-data opt-out: with it off, no geocoding happens and the directions form is hidden.
+
 ## 6. Data Minimization Principles
 
 1. **Collect only what's necessary:** No analytics SDKs, no device fingerprinting, no persistent cross-instance identifiers.
@@ -129,7 +135,8 @@ This document identifies the primary adversaries, trust boundaries, and data flo
 - [x] Nominatim geocoding once at creation or map-enable time; coordinates encrypted at rest (`events.location_geo`).
 - [x] Per-event workspace switch + global `GATEKEYP_MAP_STYLE_URL` disable; geocoding is skipped when the map is off.
 - [x] `Referrer-Policy: no-referrer` on every response and meta tags on both HTML surfaces; no third-party request before tap.
-- [ ] Routing/geofencing and key-level routes remain future work.
+- [x] Transit directions (2026-10-24): attendee start addresses transiently visible to the host only; Nominatim hop accepted; no logging or storage of origins/itineraries; per-IP rate limit; loopback OTP; the map toggle is the location-data opt-out (§5.8).
+- [ ] Key-level routes / geofencing remain future work.
 - [ ] Surveillance recon remains a separate organizer-only project; camera data must never render on the attendee page.
 - [x] Threat model reviewed and updated each phase
 

@@ -1243,3 +1243,39 @@ The OpenFreeMap/OpenMapTiles/OSM attribution line stays (license
 requirement). While doing this, the same container-collapse fix was applied
 to the lite page's inline CSS, and its e2e test now asserts the container
 geometry too.
+
+---
+
+### 2026-10-24 — Round 8: transit directions + event start time (`transit-directions` branch)
+
+**What/why:** attendees fell back to Apple/Google Maps for transit travel.
+Shipped in a worktree (`transit-directions`) while the main checkout runs the
+card-distortion feature: (1) optional `events.starts_at` (additive
+`_ensure_column`, `datetime-local` on the create form, shown on attendee/RSVP/
+workspace surfaces; lite's `when` untouched); (2) Pi-hosted OpenTripPlanner 2
+directions — `src/core/transit.py` (region bboxes NYC/LA/MTL, GTFS-GraphQL
+client), `POST /api/directions` (event live check, no-cache Nominatim geocode
+with a soft viewbox bias to the region, per-IP rate limit, 5 s OTP timeout),
+`web/directions.js` (terse itinerary list, localStorage restore, single-line
+failure copy). Privacy boundary per the approved design: the host sees origins
+transiently and discards them; nothing stored/logged; map toggle is the
+location-data opt-out; errors never echo the start address.
+
+**Ops:** `scripts/transit/build_graphs.sh` (public; GTFS feeds + OSM metro
+extracts per region → `otp --build --save`; GTFS monthly / OSM quarterly,
+documented in the script comments — no credentials). The private-runbook
+material (OTP systemd unit: loopback 8080, `-Xmx3g`; staged graph rsync;
+post-refresh per-region `/otp/gtfs/v1` smoke plan) is drafted at
+`.superpowers/sdd/2026-10-24-transit-directions/runbook-otp-addendum.md` and
+the controller applies it to the lichen-site runbook — server details stay
+out of this repo.
+
+**Verification (feature work, real output):** `uv run pytest -q` (unit),
+`uv run pytest tests/e2e -m e2e -q` (mock-Nominatim + mock-OTP e2e incl.
+started-but-ended events, OTP-down fallback, localStorage restore),
+`uv run ruff check src tests`, `node --check web/app.js web/directions.js
+web/map_widget.js` — all green at commit time.
+
+**Follow-ups:** build graphs on the Mac → rsync → enable `GATEKEYP_OTP_URL`
+per-environment (deployment section of the design doc); "arrive by" mode is
+the planned use for `starts_at`.

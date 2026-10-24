@@ -165,7 +165,7 @@ repaired `web/index.html` and the Phase-3 editorial design in `web/style.css`:
 ## Phase 4: Map & Navigation (Privacy-Preserving)
 *Goal: Integrate open-source maps without third-party tracking.*
 - [x] Select open-source map tiles (e.g., OpenStreetMap, self-hosted). — **Done 2026-10-22:** OpenFreeMap vector tiles + vendored MapLibre GL JS 6.11.1; tap-to-load map on standard and lite event pages; Nominatim geocoding at creation/toggle; coordinates encrypted at rest; per-event workspace switch; global disable via `GATEKEYP_MAP_STYLE_URL=""`.
-- [ ] Implement basic routing/geofencing without third-party tracking. — Directions hand off to a single "Open map" button (OpenStreetMap); no routing or geofencing yet.
+- [ ] Implement basic routing/geofencing without third-party tracking. — **2026-10-24: transit directions shipped** (Pi-hosted OpenTripPlanner, walk+transit itineraries from a typed start address; no geolocation, nothing stored or logged). Key-level geofencing remains future work.
 - [ ] Link specific Keys to geographic coordinates or routes. — Events now carry encrypted coordinates; key-level routes remain future work.
 - [ ] Surveillance recon (organizer-only public-camera datasets) — separate project; camera data must never render on the attendee page.
 

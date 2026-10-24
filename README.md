@@ -142,6 +142,22 @@ Nominatim forward geocoding:
 The map is tap-to-load; no tile or style request happens until the attendee
 opens it. The organizer can also turn it off per event in the workspace.
 
+### Optional Transit Directions Configuration
+
+Pi-hosted OpenTripPlanner routing is disabled unless configured:
+
+- `GATEKEYP_OTP_URL` — OTP 2.x base URL (loopback, e.g.
+  `http://127.0.0.1:8080`). Empty/unset disables directions entirely: no
+  directions form is rendered and the map card + Open map behave as before.
+- `GATEKEYP_TRANSIT_REGIONS` — optional JSON overriding the built-in
+  region list (NYC/LA/Montreal: bbox, router id, timezone, attribution).
+  Unknown regions are ignored; an event outside every bbox has no
+  directions form.
+
+The itinerary is computed on the Pi and never stored or logged; the
+browser keeps the last result in `localStorage`. Graphs are built off-box
+by `scripts/transit/build_graphs.sh` (GTFS monthly, OSM quarterly).
+
 ### Running Tests
 
 ```bash
