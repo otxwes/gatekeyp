@@ -219,3 +219,25 @@
 2. Set `GATEKEYP_OTP_URL=http://127.0.0.1:8080` in `/opt/gatekeyp/.env`; restart the app.
 3. Smoke: one plan per region from the Pi; a real event page in each region; OTP-down fallback.
 4. Append the deploy to `.audit/gatekeyp-deploy.tsv` in the main checkout.
+
+---
+
+## Status (2026-10-24)
+
+Implemented and reviewed on branch `transit-directions` (worktree).
+Task commits: Task 1 `3dd2eb4` · Task 2 `89e0e6c` · Task 3 `1e2e67a` (one
+fix round) · Task 4 `6dff78d` · Task 5 `4f64cfb` · Task 6 `f947fa7` (one
+fix round) · Task 7 `4754f2f` (two fix rounds) · final fix wave `e86d007`.
+
+Final whole-branch review (flash): 2 Critical (invalid OTP GraphQL document;
+`show_map` not enforced by the endpoint) + 4 Important findings — all fixed
+and re-reviewed clean.
+
+Verification at HEAD `e86d007`: `uv run pytest -q` → 406 passed / 62
+deselected; `uv run pytest tests/e2e -m e2e -q` → 62 passed; ruff clean;
+`node --check` on app/directions/map widgets OK; `bash -n
+scripts/transit/build_graphs.sh` OK.
+
+Rollout gates before enabling `GATEKEYP_OTP_URL`: verify the GTFS/OSM feed
+URLs, build graphs against the pinned OTP jar, and smoke one plan per region
+on the Pi (private runbook updated 2026-10-24).
