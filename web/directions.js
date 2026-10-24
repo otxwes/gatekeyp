@@ -7,11 +7,15 @@
     const ENDPOINT = "/api/directions";
     const STORE_PREFIX = "gatekeyp.directions.";
 
+    /* Status-code fallbacks when the server sends an empty `detail`.
+     * 422 is the plan's unprocessable-result status; when it is an address
+     * lookup failure the server's `detail` carries the address-specific
+     * copy, so this fallback covers the "no route" case. */
     const FALLBACK_BY_STATUS = {
-        400: "Could not find that address.",
         403: "This key does not open that event.",
         404: "Event not found.",
-        429: "Directions unavailable right now.",
+        422: "No transit route found.",
+        429: "Too many directions requests — try again shortly.",
         503: "Directions unavailable right now.",
     };
 
