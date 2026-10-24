@@ -852,3 +852,18 @@ old tests could never expose this.
       workspace header keeps the 260px thumbnail cap.
 - [x] T3. Full verification: unit 363 passed / 55 deselected; e2e 55 passed;
       ruff clean; node checks OK.
+
+---
+
+# Round 8 (2026-10-24) — transit directions + event start time
+
+Design approved 2026-10-24. Detailed implementation plan (tasks, interfaces,
+tests): `docs/superpowers/plans/2026-10-24-transit-directions.md`.
+Design: `docs/superpowers/specs/2026-10-24-transit-directions-design.md`.
+
+Scope: optional `events.starts_at` (form + display), and Pi-hosted
+OpenTripPlanner transit directions (typed start address, static itinerary,
+no geolocation, nothing stored or logged server-side; map toggle is the
+location-data opt-out; NYC/LA/Montreal regions). Work happens in the
+`transit-directions` worktree/branch while the card-distortion feature runs
+in the main checkout.
