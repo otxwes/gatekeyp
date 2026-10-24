@@ -392,6 +392,7 @@ class TestPublicView:
             "title": "Launch",
             "description": "A test event",
             "organizer_name": "",
+            "starts_at": None,
             "flyer_asset_id": None,
         }
         assert view["passphrase_required"] is False
@@ -419,6 +420,14 @@ class TestPublicView:
         )
         view = rsvp.get_public_view(created["event_id"])
         assert view["event"]["organizer_name"] == "Cellar Collective"
+
+    def test_public_view_includes_starts_at_when_set(self, rsvp, lifecycle):
+        """A set start time is exposed to attendees on the public view."""
+        created = lifecycle.create_event(
+            "Launch", "A test event", "org_1", starts_at="2030-01-01T19:00"
+        )
+        view = rsvp.get_public_view(created["event_id"])
+        assert view["event"]["starts_at"] == "2030-01-01T19:00"
 
     def test_public_view_organizer_name_defaults_blank(self, rsvp, lifecycle):
         """Without an organizer name, the public view reports a blank string."""

@@ -428,6 +428,8 @@ class RsvpService:
                 "title": event["title"],
                 "description": event["description"],
                 "organizer_name": event.get("organizer_name", ""),
+                # Venue-local datetime-local string, shown verbatim (no keys).
+                "starts_at": event.get("starts_at"),
                 # Asset id only (no URL): the funnel fetches the poster from
                 # the unauthenticated flyer route when it is set.
                 "flyer_asset_id": event.get("flyer_asset_id"),

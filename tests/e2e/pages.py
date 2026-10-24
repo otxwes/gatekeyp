@@ -155,6 +155,7 @@ class OrganizerPage:
         *,
         location: str = "",
         show_map: bool = True,
+        starts_at: str = "2030-01-01T19:00",
     ) -> "EventHandle":
         """Drive `#create-event-form`; the org key arrives on the wire, and the
         fresh (locked) organizer card modal is completed via its download."""
@@ -163,6 +164,8 @@ class OrganizerPage:
         self.page.fill("#description", description)
         if location:
             self.page.fill("#location-data", location)
+        if starts_at:
+            self.page.fill("#event-starts-at", starts_at)
         if not show_map:
             self.page.uncheck("#show-map")
         self.page.click("#create-btn")

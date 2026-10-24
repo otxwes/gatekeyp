@@ -35,6 +35,19 @@ function fmtDate(iso) {
     });
 }
 
+/** Short readable stamp from a `datetime-local` string (weekday + date +
+ * time). The naive wall time is parsed and formatted in the same frame,
+ * so every viewer sees the venue's time — no timezone conversion. */
+function formatStartsAt(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return String(iso);
+    return d.toLocaleString(undefined, {
+        weekday: "short", year: "numeric", month: "short", day: "numeric",
+        hour: "numeric", minute: "2-digit",
+    });
+}
+
 function fmtBytes(n) {
     const v = Number(n || 0);
     if (v < 1024) return `${v} B`;
@@ -440,6 +453,7 @@ function bindOrganizeEntry() {
         const title = getField(createForm, "title");
         const description = getField(createForm, "description");
         const location_data = getField(createForm, "location_data") || null;
+        const starts_at = getField(createForm, "starts_at") || null;
         const organizer_name = getField(createForm, "organizer_name") || "";
         const show_map = Boolean(createForm.elements.show_map?.checked);
         if (!title || !description) {
@@ -455,6 +469,7 @@ function bindOrganizeEntry() {
                     description,
                     organizer_id: "organizer",
                     location_data,
+                    starts_at,
                     organizer_name,
                     show_map,
                 },
@@ -467,6 +482,7 @@ function bindOrganizeEntry() {
                 meta: {
                     description,
                     locationData: location_data,
+                    startsAt: created.starts_at ?? null,
                     organizerName: organizer_name,
                     flyerId: null,
                     showMap: created.show_map ?? show_map,
@@ -573,6 +589,9 @@ function renderWorkspace() {
         `<div class="ws-titles">` +
         `<h2 class="ws-title">${esc(org.title || "Event workspace")}</h2>` +
         (org.meta && org.meta.description ? `<p class="ws-sub">${esc(org.meta.description)}</p>` : "") +
+        (org.meta && org.meta.startsAt
+            ? `<p class="ep-when"><strong>When:</strong> ${esc(formatStartsAt(org.meta.startsAt))}</p>`
+            : "") +
         (org.meta && org.meta.locationData ? `<p class="ws-loc">${esc(org.meta.locationData)}</p>` : "") +
         (org.meta && org.meta.locationData
             ? `<label class="ws-map-toggle"><input type="checkbox" id="ws-map-toggle"${org.meta.showMap === false ? "" : " checked"} disabled> Map</label>`
@@ -1796,6 +1815,7 @@ async function openOrganizerWorkspace(eventId, organizerKey) {
         meta: {
             description: eventInfo.description || "",
             locationData: eventInfo.location_data || "",
+            startsAt: eventInfo.starts_at || null,
             organizerName: eventInfo.organizer_name || "",
             createdAt: eventInfo.created_at || "",
             flyerId: eventInfo.flyer_asset_id || null,
@@ -2087,6 +2107,9 @@ async function renderRsvp() {
             `<h2 class="ep-title">${esc(event.title || "Untitled event")}</h2>` +
             (event.organizer_name ? `<p class="ep-organizer">organized by ${esc(event.organizer_name)}</p>` : "") +
             `<p class="ep-lede">${esc(event.description || "")}</p>` +
+            (event.starts_at
+                ? `<p class="ep-when"><strong>When:</strong> ${esc(formatStartsAt(event.starts_at))}</p>`
+                : "") +
             (event.flyer_asset_id
                 ? `<img class="event-flyer" src="/api/events/${encodeURIComponent(resolvedEventId)}/rsvp/flyer" alt="Event flyer" loading="lazy" referrerpolicy="no-referrer">`
                 : "") +
@@ -2288,6 +2311,9 @@ function renderEventPage() {
         `<h2 class="ep-title">${esc(event.title || "Untitled event")}</h2>` +
         (event.organizer_name ? `<p class="ep-organizer">organized by ${esc(event.organizer_name)}</p>` : "") +
         `<p class="ep-lede">${esc(event.description || "")}</p>` +
+        (event.starts_at
+            ? `<p class="ep-when"><strong>When:</strong> ${esc(formatStartsAt(event.starts_at))}</p>`
+            : "") +
         (event.flyer_asset_id
             ? `<img class="event-flyer" src="${esc(mediaUrl(event.flyer_asset_id))}" alt="Event flyer" loading="lazy" referrerpolicy="no-referrer">`
             : "") +

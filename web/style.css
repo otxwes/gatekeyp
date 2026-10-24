@@ -1209,6 +1209,12 @@ p {
     font-size: var(--text-sm);
 }
 
+.ep-when {
+    margin-top: var(--space-2);
+    color: var(--ink-soft);
+    font-size: var(--text-sm);
+}
+
 .ep-meta {
     margin-top: var(--space-3);
     color: var(--ink-soft);

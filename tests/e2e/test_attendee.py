@@ -44,6 +44,28 @@ def test_created_event_surface(organizer_context, attendee_context, server, tmp_
     att.watcher.expect_clean()
 
 
+def test_event_page_shows_start_time(organizer_context, attendee_context, server):
+    """The create form's When reaches the workspace header and the attendee
+    page as a formatted line (venue-local naive, no timezone shift)."""
+    org = OrganizerPage(organizer_context.new_page(), server.base_url)
+    handle = org.create_event(
+        "Punctual Society", "Doors open exactly on time.", starts_at="2030-01-01T19:00"
+    )
+    when = org.page.locator(".ws-head .ep-when")
+    expect(when).to_contain_text("2030")
+    expect(when).to_contain_text("7:00")
+
+    key = org.mint_key("Clock Watcher")
+    att = AttendeePage(attendee_context.new_page(), server.base_url)
+    att.unlock_by_stego_png(handle.attendee_card_png(key))
+    att.expect_event_title("Punctual Society")
+    when = att.page.locator("#join-views .ep-when")
+    expect(when).to_contain_text("2030")
+    expect(when).to_contain_text("7:00")
+    org.watcher.expect_clean()
+    att.watcher.expect_clean()
+
+
 def test_post_added_later_shows_on_reload(organizer_context, attendee_context, server):
     """A post added after an attendee is already inside appears on a plain
     reload — the board is fetched live (not cached at unlock)."""

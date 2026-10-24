@@ -176,3 +176,18 @@ def test_funnel_url_uses_slug(organizer_context, server):
     hash_part = funnel.split("#")[1]
     assert "event_" not in hash_part, f"share link still uses a raw event id: {funnel}"
     org.watcher.expect_clean()
+
+
+def test_rsvp_page_shows_start_time(organizer_context, attendee_context, server):
+    """The funnel shows the event's When line before any key is requested."""
+    organizer = OrganizerPage(organizer_context.new_page(), server.base_url)
+    organizer.create_event("Solstice Social", "One long evening.", starts_at="2030-01-01T19:00")
+    funnel = organizer.set_gate_settings()
+    attendee = AttendeePage(attendee_context.new_page(), server.base_url)
+    attendee.page.goto(funnel)
+    attendee.page.locator("#rsvp-form").wait_for(state="visible")
+    when = attendee.page.locator("#rsvp-views .ep-when")
+    expect(when).to_contain_text("2030")
+    expect(when).to_contain_text("7:00")
+    organizer.watcher.expect_clean()
+    attendee.watcher.expect_clean()
