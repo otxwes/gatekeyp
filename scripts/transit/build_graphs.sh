@@ -29,7 +29,7 @@
 #   GATEKEYP_BUILD_DIR  override the build/output directory
 #                       (default: <repo>/build; graphs land in $BUILD_DIR/graphs)
 #   SKIP_DOWNLOAD=1     omit the curl steps (feeds must already exist in
-#                       $BUILD_DIR/<region>/ as dummy or real files)
+#                       $BUILD_DIR/<region>/inputs/ as dummy or real files)
 set -euo pipefail
 
 # Region feed lists: GTFS zips (space-separated) + one OSM metro extract (PBF).
@@ -83,10 +83,11 @@ fi
 for region in $regions; do
   echo "== region: $region =="
   dir="$BUILD_DIR/$region"
-  mkdir -p "$dir"
+  inputs="$dir/inputs"
+  mkdir -p "$inputs"
   if [ "${SKIP_DOWNLOAD:-0}" != 1 ]; then
     for url in $(gtfs_urls "$region"); do
-      out="$dir/$(basename "$url")"
+      out="$inputs/$(basename "$url")"
       if [ -s "$out" ]; then
         echo "cached: $out"
       else
@@ -94,25 +95,25 @@ for region in $regions; do
         curl -fSL --retry 3 -o "$out" "$url"
       fi
     done
-    osm_out="$dir/$(basename "$(osm_url "$region")")"
+    osm_out="$inputs/$(basename "$(osm_url "$region")")"
     if [ ! -s "$osm_out" ]; then
       echo "GET $(osm_url "$region")"
       curl -fSL --retry 3 -o "$osm_out" "$(osm_url "$region")"
     fi
   else
-    echo "SKIP_DOWNLOAD=1 — using cached inputs in $dir"
+    echo "SKIP_DOWNLOAD=1 — using cached inputs in $inputs"
   fi
 
   # Build street+transit graph: OSM PBF must be the first base input.
+  # Inputs come from $inputs (same dir the download loop writes to);
   # OTP 2 --save writes graph.obj directly into the directory given,
   # so save straight into the final graphs/<id>/ staging directory.
-  mkdir -p "$dir/inputs"
   java -Xms1G -Xmx3G -jar "$OTP_JAR" \
-    --build "$dir/inputs" --save "$GRAPHS_DIR/$region" \
+    --build "$inputs" --save "$GRAPHS_DIR/$region" \
     --cache "$BUILD_DIR/.cache"
 
   echo "-- $region graph contents --"
-  du -sh "$GRAPHS_DIR/$region"/* 2>/dev/null
+  du -sh "$GRAPHS_DIR/$region"/*
   echo
 done
 
