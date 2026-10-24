@@ -93,6 +93,7 @@ class EventLifecycleManager:
         organizer_key_days: int = DEFAULT_ORGANIZER_KEY_DAYS,
         organizer_name: str = "",
         show_map: bool = True,
+        starts_at: str | None = None,
     ) -> dict:
         """
         Create a new event with a organizer key.
@@ -107,6 +108,8 @@ class EventLifecycleManager:
             location_data: Optional location data (e.g., coordinates).
             organizer_key_days: Lifetime of the organizer key in days.
             show_map: Whether the directions map is enabled for this event.
+            starts_at: Optional start date/time (datetime-local string,
+                stored verbatim with no timezone conversion).
 
         Returns:
             Event metadata including the organizer key (shown once).
@@ -121,6 +124,15 @@ class EventLifecycleManager:
         if not organizer_id or not organizer_id.strip():
             message = "Organizer ID cannot be empty"
             raise EventLifecycleError(message)
+        # A blank start time means "unset" (empty datetime-local input).
+        if starts_at is not None and not starts_at.strip():
+            starts_at = None
+        if starts_at is not None:
+            try:
+                datetime.fromisoformat(starts_at)
+            except (ValueError, TypeError) as err:
+                message = "Invalid event start time"
+                raise EventLifecycleError(message) from err
 
         # Generate event ID
         event_id = self._generate_id("event")
@@ -145,6 +157,7 @@ class EventLifecycleManager:
             organizer_name=organizer_name,
             location_geo=location_geo,
             show_map=show_map,
+            starts_at=starts_at,
         )
 
         # Generate a organizer key for this event
@@ -172,6 +185,7 @@ class EventLifecycleManager:
             "slug": slug,
             "expires_at": expires_at,
             "show_map": show_map,
+            "starts_at": starts_at,
             "map_available": bool(location_geo) and bool(self.map_style_url),
         }
 

@@ -127,6 +127,54 @@ class TestEventApi:
         ).json()
         assert details["event"]["organizer_name"] == ""
 
+    def test_create_event_passes_starts_at(self, client):
+        """An optional start time is accepted and included in the response."""
+        response = client.post(
+            "/api/events",
+            json={
+                "title": "Doors at Nine",
+                "description": "Music starts promptly.",
+                "organizer_id": "@theo:nyc",
+                "starts_at": "2030-01-01T19:00",
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["starts_at"] == "2030-01-01T19:00"
+
+    def test_create_event_invalid_starts_at_returns_400(self, client):
+        """An unparseable start time is rejected with a 400."""
+        response = client.post(
+            "/api/events",
+            json={
+                "title": "Bad Start",
+                "description": "Start time unparseable.",
+                "organizer_id": "@theo:nyc",
+                "starts_at": "not-a-date",
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid event start time"
+
+    def test_create_event_blank_starts_at_defaults_none(self, client):
+        """A blank start time is accepted (200) and stored as unset."""
+        response = client.post(
+            "/api/events",
+            json={
+                "title": "Blank Start",
+                "description": "Blank start means unset.",
+                "organizer_id": "@theo:nyc",
+                "starts_at": "",
+            },
+        )
+        assert response.status_code == 200
+        created = response.json()
+        assert created["starts_at"] is None
+        details = client.get(
+            f"/api/events/{created['event_id']}",
+            params={"organizer_key": created["organizer_key"]},
+        ).json()
+        assert details["event"]["starts_at"] is None
+
     def test_get_event_details_rejects_bad_key(self, client, created_event):
         """An invalid key is rejected (fail-secure)."""
         response = client.get(

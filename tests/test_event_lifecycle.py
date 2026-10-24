@@ -132,6 +132,41 @@ class TestCreateEvent:
                 organizer_id="",
             )
 
+    def test_create_event_stores_starts_at(self, lifecycle, db):
+        """A provided start time is persisted and echoed in the result."""
+        result = lifecycle.create_event(
+            title="Scheduled Event",
+            description="Start time stored",
+            organizer_id="@user:test",
+            starts_at="2030-01-01T19:00",
+        )
+        assert result["starts_at"] == "2030-01-01T19:00"
+        event = db.get_event(result["event_id"])
+        assert event["starts_at"] == "2030-01-01T19:00"
+
+    def test_create_event_rejects_unparseable_starts_at(self, lifecycle):
+        """An unparseable start time raises a lifecycle error."""
+        with pytest.raises(EventLifecycleError, match="Invalid event start time"):
+            lifecycle.create_event(
+                title="Bad Start",
+                description="Start time unparseable",
+                organizer_id="@user:test",
+                starts_at="not-a-date",
+            )
+
+    @pytest.mark.parametrize("blank", ["", "   "])
+    def test_create_event_blank_starts_at_means_unset(self, lifecycle, db, blank):
+        """A blank start time means unset: stored as None, no error."""
+        result = lifecycle.create_event(
+            title="Blank Start",
+            description="Blank start time means unset",
+            organizer_id="@user:test",
+            starts_at=blank,
+        )
+        assert result["starts_at"] is None
+        event = db.get_event(result["event_id"])
+        assert event["starts_at"] is None
+
 
 # ------------------------------------------------------------------
 # Content Upload

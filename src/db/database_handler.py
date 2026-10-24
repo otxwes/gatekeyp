@@ -24,6 +24,7 @@ _EVENT_SLUG_MIN_COLS = 11  # events.slug lives at column index 11
 _EVENT_ORGANIZER_NAME_MIN_COLS = 12  # events.organizer_name lives at column index 12
 _EVENT_LOCATION_GEO_MIN_COLS = 13  # events.location_geo lives at column index 13
 _EVENT_SHOW_MAP_MIN_COLS = 14  # events.show_map lives at column index 14
+_EVENT_STARTS_AT_MIN_COLS = 15  # events.starts_at lives at column index 15
 _RSVP_MSG_MIN_COLS = 8  # rsvps.message lives at column index 8
 
 
@@ -151,7 +152,8 @@ class DatabaseHandler:
                 slug TEXT,
                 organizer_name TEXT,
                 location_geo TEXT,
-                show_map INTEGER NOT NULL DEFAULT 1
+                show_map INTEGER NOT NULL DEFAULT 1,
+                starts_at TEXT
             )
         """)
         self.cursor.execute("""
@@ -263,6 +265,9 @@ class DatabaseHandler:
         # Directions map: encrypted geocoded coordinates + per-event switch.
         self._ensure_column("events", "location_geo", "TEXT")
         self._ensure_column("events", "show_map", "INTEGER NOT NULL DEFAULT 1")
+
+        # Optional event start date/time (datetime-local string, stored verbatim).
+        self._ensure_column("events", "starts_at", "TEXT")
 
         # Phase B: RSVP requests link back to their pre-minted access keys
         self._ensure_column("keys", "rsvp_id", "TEXT")
@@ -546,6 +551,7 @@ class DatabaseHandler:
                 "location_lat": location_lat,
                 "location_lon": location_lon,
                 "show_map": (bool(result[14]) if len(result) > _EVENT_SHOW_MAP_MIN_COLS else True),
+                "starts_at": (result[15] if len(result) > _EVENT_STARTS_AT_MIN_COLS else None),
             }
         return None
 
@@ -577,6 +583,7 @@ class DatabaseHandler:
         *,
         location_geo: str | None = None,
         show_map: bool = True,
+        starts_at: str | None = None,
     ) -> None:
         """Add an event, encrypting location and coordinates at rest."""
         now = self._now_iso()
@@ -586,8 +593,8 @@ class DatabaseHandler:
             """
             INSERT INTO events
                 (event_id, title, description, organizer_id, location_data, created_at,
-                 slug, organizer_name, location_geo, show_map)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 slug, organizer_name, location_geo, show_map, starts_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 event_id,
@@ -600,6 +607,7 @@ class DatabaseHandler:
                 organizer_name or "",
                 encrypted_geo,
                 1 if show_map else 0,
+                starts_at,
             ),
         )
         self.connection.commit()

@@ -130,6 +130,29 @@ class TestDatabaseHandler(unittest.TestCase):
         self.assertEqual(columns[13], "location_geo")
         self.assertEqual(columns[14], "show_map")
 
+    def test_event_starts_at_round_trips(self):
+        """A provided start time is stored verbatim and read back unchanged."""
+        self.db.add_event(
+            "event_starts",
+            "title",
+            "description",
+            "organizer_id",
+            starts_at="2030-01-01T19:00",
+        )
+        event = self.db.get_event("event_starts")
+        self.assertEqual(event["starts_at"], "2030-01-01T19:00")
+
+    def test_event_starts_at_defaults_to_none(self):
+        """Events created without a start time read back as None."""
+        self.db.add_event("event_no_starts", "title", "description", "organizer_id")
+        event = self.db.get_event("event_no_starts")
+        self.assertIsNone(event["starts_at"])
+
+    def test_fresh_schema_starts_at_column(self):
+        """starts_at lives at column index 15, right after show_map."""
+        columns = [row[1] for row in self.db.cursor.execute("PRAGMA table_info(events)")]
+        self.assertEqual(columns[15], "starts_at")
+
     def test_revoke_key(self):
         """Revoking a key marks it as revoked."""
         self.db.add_key("hash_1", "access")
@@ -280,6 +303,48 @@ class TestSchemaMigration(unittest.TestCase):
             self.assertEqual(event["location_lat"], 3.25)
             self.assertEqual(event["location_lon"], -4.5)
             self.assertTrue(event["show_map"])
+        finally:
+            if db is not None:
+                db.close()
+            Path(path).unlink(missing_ok=True)
+
+    def test_legacy_db_migrates_starts_at(self):
+        """A pre-starts_at database gains the column; values round-trip."""
+        import sqlite3
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as handle:
+            path = handle.name
+        db = None
+        try:
+            conn = sqlite3.connect(path)
+            conn.execute(
+                "CREATE TABLE events (event_id TEXT PRIMARY KEY, title TEXT, "
+                "description TEXT, organizer_id TEXT, location_data TEXT, "
+                "created_at TEXT, mode TEXT, expires_at TEXT, "
+                "rsvp_passphrase_hash TEXT, rsvp_auto_approve INTEGER, "
+                "flyer_asset_id TEXT, slug TEXT, organizer_name TEXT, "
+                "location_geo TEXT, show_map INTEGER)"
+            )
+            conn.execute(
+                "CREATE TABLE keys (hash_key TEXT PRIMARY KEY, type TEXT, expires_at TEXT)"
+            )
+            conn.commit()
+            conn.close()
+
+            db = DatabaseHandler(path, organizer_key=TEST_ORGANIZER_KEY)
+            event_cols = [r[1] for r in db.cursor.execute("PRAGMA table_info(events)")]
+            self.assertIn("starts_at", event_cols)
+            db.add_event(
+                "e_starts",
+                "Legacy",
+                "d",
+                "o1",
+                starts_at="2031-06-15T18:30",
+            )
+            event = db.get_event("e_starts")
+            self.assertEqual(event["starts_at"], "2031-06-15T18:30")
         finally:
             if db is not None:
                 db.close()
