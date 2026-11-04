@@ -32,9 +32,8 @@ os.environ.setdefault("GATEKEYP_ORGANIZER_KEY", TEST_ORGANIZER_KEY)
 os.environ.setdefault("GATEKEYP_HMAC_SECRET", TEST_HMAC_SECRET)
 
 
-@pytest.fixture
-def client():
-    """Create a TestClient backed by an in-memory database."""
+def _build_test_client() -> TestClient:
+    """Build a TestClient backed by an in-memory database."""
     db = DatabaseHandler(db_path=":memory:", organizer_key=TEST_ORGANIZER_KEY)
     key_manager = KeyManager(db=db, hmac_secret=TEST_HMAC_SECRET)
     content_manager = ContentManager(db=db, key_manager=key_manager)
@@ -49,9 +48,14 @@ def client():
         lifecycle=lifecycle,
         gateway=gateway,
     )
-    with TestClient(app) as test_client:
+    return TestClient(app)
+
+
+@pytest.fixture
+def client():
+    """Create a TestClient backed by an in-memory database."""
+    with _build_test_client() as test_client:
         yield test_client
-    db.close()
 
 
 @pytest.fixture
@@ -254,6 +258,110 @@ class TestAccessKeyApi:
         assert after.status_code == 400
 
 
+class TestUpdateEventDetails:
+    """POST /api/events/{id}/details — partial organizer edit of event fields."""
+
+    def test_update_all_fields(self, client, created_event):
+        event_id = created_event["event_id"]
+        response = client.post(
+            f"/api/events/{event_id}/details",
+            json={
+                "organizer_key": created_event["organizer_key"],
+                "title": "New Title",
+                "description": "New description",
+                "location_data": "New venue",
+                "event_date": "2026-12-31",
+                "event_time": "19:30",
+                "event_timezone": "EST",
+                "description_visible": False,
+                "location_visible": False,
+                "date_visible": False,
+                "time_visible": False,
+            },
+        )
+
+        assert response.status_code == 200
+        event = response.json()["event"]
+        assert event["title"] == "New Title"
+        assert event["description"] == "New description"
+        assert event["location_data"] == "New venue"
+        assert event["event_date"] == "2026-12-31"
+        assert event["event_time"] == "19:30"
+        assert event["event_timezone"] == "EST"
+        assert event["description_visible"] is False
+        assert event["location_visible"] is False
+        assert event["date_visible"] is False
+        assert event["time_visible"] is False
+
+    def test_partial_update_leaves_other_fields_alone(self, client, created_event):
+        """Omitted keys are untouched; a provided empty string clears."""
+        event_id = created_event["event_id"]
+        client.post(
+            f"/api/events/{event_id}/details",
+            json={
+                "organizer_key": created_event["organizer_key"],
+                "event_date": "2026-12-31",
+                "event_time": "19:30",
+            },
+        )
+
+        response = client.post(
+            f"/api/events/{event_id}/details",
+            json={
+                "organizer_key": created_event["organizer_key"],
+                "event_time": "",
+            },
+        )
+
+        assert response.status_code == 200
+        event = response.json()["event"]
+        assert event["event_time"] is None
+        assert event["event_date"] == "2026-12-31"
+        assert event["title"] == "Open Mic Night"
+
+    def test_access_key_rejected(self, client, created_event):
+        event_id = created_event["event_id"]
+        access_key = client.post(
+            f"/api/events/{event_id}/access-keys",
+            json={
+                "organizer_key": created_event["organizer_key"],
+                "event_id": event_id,
+                "days": 7,
+            },
+        ).json()["access_key"]
+
+        response = client.post(
+            f"/api/events/{event_id}/details",
+            json={"organizer_key": access_key, "title": "Nope"},
+        )
+
+        assert response.status_code == 400
+        unchanged = client.get(
+            f"/api/events/{event_id}",
+            params={"organizer_key": created_event["organizer_key"]},
+        ).json()["event"]
+        assert unchanged["title"] == "Open Mic Night"
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"event_date": "31/12/2026"},
+            {"event_time": "7pm"},
+            {"event_timezone": "GMT+123456789"},
+            {"title": "   "},
+        ],
+    )
+    def test_invalid_values_rejected(self, client, created_event, payload):
+        event_id = created_event["event_id"]
+
+        response = client.post(
+            f"/api/events/{event_id}/details",
+            json={"organizer_key": created_event["organizer_key"], **payload},
+        )
+
+        assert response.status_code == 400
+
+
 # ------------------------------------------------------------------
 # Bulletins & Comments
 # ------------------------------------------------------------------
@@ -445,3 +553,27 @@ class TestStaticCachePolicy:
         )
         assert created.status_code == 200
         assert "cache-control" not in created.headers
+
+
+# ------------------------------------------------------------------
+# Lite funnel withdrawal (Phase B)
+# ------------------------------------------------------------------
+
+
+class TestLiteWithdrawal:
+    def test_lite_routes_absent_in_full_profile(self, client, monkeypatch):
+        """The public (full) server mounts no lite funnel routes."""
+        monkeypatch.delenv("GATEKEYP_LITE_ENABLED", raising=False)
+
+        assert client.get("/api/lite/events").status_code == 404
+        assert client.get("/i/event_abc123").status_code == 404
+
+    def test_lite_routes_mounted_when_flag_on(self, monkeypatch):
+        """Development keeps the funnel behind the explicit flag."""
+        monkeypatch.setenv("GATEKEYP_LITE_ENABLED", "1")
+
+        with _build_test_client() as client:
+            created = client.post("/api/lite/events", data={"title": "Shed Festival"})
+            assert created.status_code == 201
+            event_id = created.json()["event_id"]
+            assert client.get(f"/i/{event_id}").status_code == 200

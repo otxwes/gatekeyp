@@ -20,7 +20,6 @@
             <nav class="topnav" aria-label="Primary">
                 <a class="nav-link" href="#/organize">Organize</a>
                 <a class="nav-link" href="#/join">Join</a>
-                <a class="nav-link" href="#/flyer">Flyer</a>
             </nav>
         </header>
 
@@ -129,50 +128,6 @@
                 <!-- ================= RSVP page (attendee) ================= -->
                 <section id="view-rsvp" class="view" hidden>
                     <div id="rsvp-views"></div>
-                </section>
-
-                <!-- ================= Flyer (lite funnel) ================= -->
-                <section id="view-flyer" class="view" hidden>
-                    <div id="flyer-entry">
-                        <form id="flyer-form" class="card form-card" autocomplete="off">
-                            <div class="field">
-                                <label for="flyer-title">Event title <span class="req">*</span></label>
-                                <input type="text" id="flyer-title" name="title" required maxlength="256"
-                                       autocomplete="off">
-                            </div>
-                            <div class="field">
-                                <label for="flyer-description">Description</label>
-                                <textarea id="flyer-description" rows="3" maxlength="65536"></textarea>
-                            </div>
-                            <div class="field">
-                                <label for="flyer-when">When <span class="req">*</span></label>
-                                <input type="datetime-local" id="flyer-when" required autocomplete="off">
-                            </div>
-                            <div class="field">
-                                <label for="flyer-where">Location</label>
-                                <input type="text" id="flyer-where" maxlength="256"
-                                       autocomplete="off">
-                            </div>
-                            <div class="field field-check">
-                                <input type="hidden" name="show_map" value="0">
-                                <label for="flyer-show-map"><input type="checkbox" id="flyer-show-map"
-                                       name="show_map" value="1" checked> Map</label>
-                            </div>
-                            <div class="field">
-                                <label for="flyer-file">Flyer image <span class="opt">optional</span></label>
-                                <input type="file" id="flyer-file" accept="image/png,image/jpeg,image/webp">
-                            </div>
-                            <div class="field">
-                                <label for="flyer-ttl">Gone after (hours after the event)</label>
-                                <input type="number" id="flyer-ttl" min="1" max="336" value="48">
-                            </div>
-                            <p id="flyer-note" class="form-note" role="status" aria-live="polite"></p>
-                            <button type="submit" class="btn btn-primary btn-block" id="flyer-btn">
-                                Create flyer event
-                            </button>
-                        </form>
-                    </div>
-                    <div id="flyer-done" hidden></div>
                 </section>
 
                 <!-- ================= Lite event page (attendee) ================= -->

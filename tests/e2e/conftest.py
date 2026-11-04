@@ -24,6 +24,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 E2E_PORT = 8777
 BASE_URL = f"http://127.0.0.1:{E2E_PORT}"
+E2E_LITE_PORT = 8778
+LITE_BASE_URL = f"http://127.0.0.1:{E2E_LITE_PORT}"
 
 
 @dataclass(frozen=True)
@@ -78,19 +80,23 @@ def mock_nominatim() -> Iterator[str]:
         httpd.server_close()
 
 
-@pytest.fixture
-def server(mock_nominatim: str) -> Iterator[Artifacts]:
-    """One E2E server per test: restarts are cheap and give each scenario a
-    pristine DB and pristine rate-limit buckets (the funnel limiter otherwise
-    shares `127.0.0.1` across the whole suite and trips after 5 RSVPs)."""
+def _boot_server(
+    mock_nominatim: str,
+    *,
+    port: int,
+    base_url: str,
+    extra_env: dict[str, str] | None = None,
+) -> Iterator[Artifacts]:
+    """Boot one gatekeyp server against a throwaway DB and wait for health."""
     secrets = _parse_env_file(REPO_ROOT / ".env.dev")
     tmp = Path(tempfile.mkdtemp(prefix="gkp-e2e-"))
     env = {
         **os.environ,
         **secrets,
         "GATEKEYP_DB_PATH": str(tmp / "keys.db"),
-        "GATEKEYP_PORT": str(E2E_PORT),
+        "GATEKEYP_PORT": str(port),
         "GATEKEYP_GEOCODER_URL": mock_nominatim,
+        **(extra_env or {}),
     }
     proc = subprocess.Popen(
         ["uv", "run", "python", "-m", "src.api.server"],
@@ -103,7 +109,7 @@ def server(mock_nominatim: str) -> Iterator[Artifacts]:
     last_err = "no response"
     while True:
         try:
-            with urllib.request.urlopen(f"{BASE_URL}/health", timeout=2) as resp:
+            with urllib.request.urlopen(f"{base_url}/health", timeout=2) as resp:
                 if resp.status == 200:
                     break
         except Exception as err:  # noqa: BLE001 - probe loop
@@ -116,7 +122,7 @@ def server(mock_nominatim: str) -> Iterator[Artifacts]:
         time.sleep(0.3)
 
     yield Artifacts(
-        base_url=BASE_URL,
+        base_url=base_url,
         db_path=str(tmp / "keys.db"),
         organizer_key=secrets["GATEKEYP_ORGANIZER_KEY"],
         hmac_secret=secrets["GATEKEYP_HMAC_SECRET"],
@@ -131,7 +137,27 @@ def server(mock_nominatim: str) -> Iterator[Artifacts]:
 
 
 @pytest.fixture
-def organizer_context(server, browser):
+def server(mock_nominatim: str) -> Iterator[Artifacts]:
+    """One E2E server per test: restarts are cheap and give each scenario a
+    pristine DB and pristine rate-limit buckets (the funnel limiter otherwise
+    shares `127.0.0.1` across the whole suite and trips after 5 RSVPs)."""
+    yield from _boot_server(mock_nominatim, port=E2E_PORT, base_url=BASE_URL)
+
+
+@pytest.fixture
+def lite_server(mock_nominatim: str) -> Iterator[Artifacts]:
+    """A dedicated lite-profile server: the full profile no longer mounts the
+    flyer/lite routes, so those scenarios run here."""
+    yield from _boot_server(
+        mock_nominatim,
+        port=E2E_LITE_PORT,
+        base_url=LITE_BASE_URL,
+        extra_env={"GATEKEYP_PROFILE": "lite"},
+    )
+
+
+@pytest.fixture
+def organizer_context(browser):
     """A fresh, isolated browser context acting as the organizer."""
     context = browser.new_context()
     context.grant_permissions(["clipboard-read", "clipboard-write"])
@@ -140,6 +166,6 @@ def organizer_context(server, browser):
 
 
 @pytest.fixture
-def attendee_context(server, browser):
+def attendee_context(browser):
     """A fresh, isolated browser context acting as an attendee."""
     return browser.new_context(viewport={"width": 1280, "height": 800})

@@ -6,6 +6,7 @@ import time
 from collections import defaultdict, deque
 from typing import Any
 
+from src.core.event_lifecycle import redact_event
 from src.core.key_manager import KeyManager
 from src.db.database_handler import DatabaseHandler
 from src.rsvp.service import RSVP_STATUS_PENDING
@@ -323,12 +324,17 @@ class Gateway:
         # content blocks (schedule, location, FAQ, …) so the door response
         # carries the full attendee page, not just the event header.
         if content and "payload" not in content and content.get("id"):
+            key_info = self.db.get_key(validation_result["hash"])
+            is_organizer = bool(key_info and key_info.get("type") == "organizer")
             content = {
                 **content,
                 "content_blocks": self.db.list_content_blocks_for_event(content["id"]),
             }
             if self.map_style_url:
                 content["map_style_url"] = self.map_style_url
+            # Hidden fields must never leave the server: redact before the
+            # payload is serialized, not in the browser.
+            content = redact_event(content, is_organizer=is_organizer)
 
         # Success: reset rate limiting for this client and key
         self.rate_limiter.reset(rate_limit_id)

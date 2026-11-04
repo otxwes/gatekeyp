@@ -24,6 +24,13 @@ _EVENT_SLUG_MIN_COLS = 11  # events.slug lives at column index 11
 _EVENT_ORGANIZER_NAME_MIN_COLS = 12  # events.organizer_name lives at column index 12
 _EVENT_LOCATION_GEO_MIN_COLS = 13  # events.location_geo lives at column index 13
 _EVENT_SHOW_MAP_MIN_COLS = 14  # events.show_map lives at column index 14
+_EVENT_DATE_MIN_COLS = 15  # events.event_date lives at column index 15
+_EVENT_TIME_MIN_COLS = 16  # events.event_time lives at column index 16
+_EVENT_TIMEZONE_MIN_COLS = 17  # events.event_timezone lives at column index 17
+_EVENT_DESC_VIS_MIN_COLS = 18  # events.description_visible lives at column index 18
+_EVENT_LOC_VIS_MIN_COLS = 19  # events.location_visible lives at column index 19
+_EVENT_DATE_VIS_MIN_COLS = 20  # events.date_visible lives at column index 20
+_EVENT_TIME_VIS_MIN_COLS = 21  # events.time_visible lives at column index 21
 _RSVP_MSG_MIN_COLS = 8  # rsvps.message lives at column index 8
 
 
@@ -151,7 +158,14 @@ class DatabaseHandler:
                 slug TEXT,
                 organizer_name TEXT,
                 location_geo TEXT,
-                show_map INTEGER NOT NULL DEFAULT 1
+                show_map INTEGER NOT NULL DEFAULT 1,
+                event_date TEXT,
+                event_time TEXT,
+                event_timezone TEXT,
+                description_visible INTEGER NOT NULL DEFAULT 1,
+                location_visible INTEGER NOT NULL DEFAULT 1,
+                date_visible INTEGER NOT NULL DEFAULT 1,
+                time_visible INTEGER NOT NULL DEFAULT 1
             )
         """)
         self.cursor.execute("""
@@ -263,6 +277,15 @@ class DatabaseHandler:
         # Directions map: encrypted geocoded coordinates + per-event switch.
         self._ensure_column("events", "location_geo", "TEXT")
         self._ensure_column("events", "show_map", "INTEGER NOT NULL DEFAULT 1")
+
+        # Editable schedule fields + per-field visibility switches.
+        self._ensure_column("events", "event_date", "TEXT")
+        self._ensure_column("events", "event_time", "TEXT")
+        self._ensure_column("events", "event_timezone", "TEXT")
+        self._ensure_column("events", "description_visible", "INTEGER NOT NULL DEFAULT 1")
+        self._ensure_column("events", "location_visible", "INTEGER NOT NULL DEFAULT 1")
+        self._ensure_column("events", "date_visible", "INTEGER NOT NULL DEFAULT 1")
+        self._ensure_column("events", "time_visible", "INTEGER NOT NULL DEFAULT 1")
 
         # Phase B: RSVP requests link back to their pre-minted access keys
         self._ensure_column("keys", "rsvp_id", "TEXT")
@@ -546,6 +569,23 @@ class DatabaseHandler:
                 "location_lat": location_lat,
                 "location_lon": location_lon,
                 "show_map": (bool(result[14]) if len(result) > _EVENT_SHOW_MAP_MIN_COLS else True),
+                "event_date": result[15] if len(result) > _EVENT_DATE_MIN_COLS else None,
+                "event_time": result[16] if len(result) > _EVENT_TIME_MIN_COLS else None,
+                "event_timezone": (
+                    result[17] or "" if len(result) > _EVENT_TIMEZONE_MIN_COLS else ""
+                ),
+                "description_visible": (
+                    bool(result[18]) if len(result) > _EVENT_DESC_VIS_MIN_COLS else True
+                ),
+                "location_visible": (
+                    bool(result[19]) if len(result) > _EVENT_LOC_VIS_MIN_COLS else True
+                ),
+                "date_visible": (
+                    bool(result[20]) if len(result) > _EVENT_DATE_VIS_MIN_COLS else True
+                ),
+                "time_visible": (
+                    bool(result[21]) if len(result) > _EVENT_TIME_VIS_MIN_COLS else True
+                ),
             }
         return None
 
@@ -619,6 +659,34 @@ class DatabaseHandler:
             "UPDATE events SET show_map = ? WHERE event_id = ?",
             (1 if show_map else 0, event_id),
         )
+        self.connection.commit()
+
+    def set_event_fields(self, event_id: str, **changes: object) -> None:
+        """Update only the provided event columns (partial update)."""
+        statements = {
+            "title": "UPDATE events SET title = ? WHERE event_id = ?",
+            "description": "UPDATE events SET description = ? WHERE event_id = ?",
+            "event_date": "UPDATE events SET event_date = ? WHERE event_id = ?",
+            "event_time": "UPDATE events SET event_time = ? WHERE event_id = ?",
+            "event_timezone": "UPDATE events SET event_timezone = ? WHERE event_id = ?",
+            "location_data": "UPDATE events SET location_data = ? WHERE event_id = ?",
+            "description_visible": "UPDATE events SET description_visible = ? WHERE event_id = ?",
+            "location_visible": "UPDATE events SET location_visible = ? WHERE event_id = ?",
+            "date_visible": "UPDATE events SET date_visible = ? WHERE event_id = ?",
+            "time_visible": "UPDATE events SET time_visible = ? WHERE event_id = ?",
+        }
+        unknown = set(changes) - set(statements)
+        if unknown:
+            message = f"Unsupported event fields: {sorted(unknown)}"
+            raise ValueError(message)
+        for column, raw_value in changes.items():
+            if column.endswith("_visible"):
+                value: object = 1 if raw_value else 0
+            elif column == "location_data":
+                value = self._encrypt(raw_value) if raw_value else None
+            else:
+                value = raw_value
+            self.cursor.execute(statements[column], (value, event_id))
         self.connection.commit()
 
     # ------------------------------------------------------------------

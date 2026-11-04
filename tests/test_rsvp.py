@@ -434,6 +434,18 @@ class TestPublicView:
         view = rsvp.get_public_view_by_slug(created["slug"])
         assert view["event"]["organizer_name"] == "Fog & Fern"
 
+    def test_public_view_hides_description_when_toggled_off(self, rsvp, lifecycle):
+        """A hidden description is absent from the public view, not blanked."""
+        created = _make_event(lifecycle)
+        lifecycle.update_event_fields(
+            created["organizer_key"], created["event_id"], description_visible=False
+        )
+
+        view = rsvp.get_public_view(created["event_id"])
+
+        assert "description" not in view["event"]
+        assert view["event"]["title"] == "Launch"
+
     def test_passphrase_required_flag(self, rsvp, lifecycle):
         """Turning the passphrase gate on is visible to attendees."""
         created = _make_event(lifecycle)

@@ -3,7 +3,7 @@
 import json
 import re
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from src.core.content_manager import ContentManager
 from src.core.geocoding import Geocoder
@@ -20,12 +20,143 @@ DEFAULT_ORGANIZER_KEY_DAYS = 365
 # Error message for organizer key not granting access to an event
 _ACCESS_DENIED_MSG = "Organizer key does not grant access to this event"
 
+# Longest timezone display label accepted (e.g. "EST", "GMT+2").
+MAX_TIMEZONE_LABEL = 12
+
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_TIME_RE = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
+
 
 class EventLifecycleError(ValueError):
     """Raised when an event lifecycle operation fails."""
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
+
+# Event fields an organizer may edit after creation.
+EDITABLE_EVENT_FIELDS = frozenset(
+    {
+        "title",
+        "description",
+        "location_data",
+        "event_date",
+        "event_time",
+        "event_timezone",
+        "description_visible",
+        "location_visible",
+        "date_visible",
+        "time_visible",
+    }
+)
+
+# Response keys that must vanish with a hidden location, or the address leaks
+# through coordinates or the map.
+_LOCATION_RESPONSE_FIELDS = (
+    "location_data",
+    "location_lat",
+    "location_lon",
+    "show_map",
+    "map_style_url",
+)
+
+
+def redact_event(event: dict, *, is_organizer: bool) -> dict:
+    """Drop fields the organizer hid from a guest-facing event response."""
+    if is_organizer:
+        return dict(event)
+    redacted = dict(event)
+    if not redacted.get("description_visible", True):
+        redacted.pop("description", None)
+    if not redacted.get("location_visible", True):
+        for key in _LOCATION_RESPONSE_FIELDS:
+            redacted.pop(key, None)
+    if not redacted.get("date_visible", True):
+        redacted.pop("event_date", None)
+    if not redacted.get("time_visible", True):
+        redacted.pop("event_time", None)
+        redacted.pop("event_timezone", None)
+    return redacted
+
+
+def _validated_date(value: object) -> str | None:
+    """Return a YYYY-MM-DD string, or None when cleared."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if not _DATE_RE.fullmatch(text):
+        message = "Event date must be YYYY-MM-DD"
+        raise EventLifecycleError(message)
+    try:
+        date.fromisoformat(text)
+    except ValueError as err:
+        message = "Event date must be a real calendar date"
+        raise EventLifecycleError(message) from err
+    return text
+
+
+def _validated_time(value: object) -> str | None:
+    """Return an HH:MM (24-hour) string, or None when cleared."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if not _TIME_RE.fullmatch(text):
+        message = "Event time must be HH:MM (24-hour)"
+        raise EventLifecycleError(message)
+    return text
+
+
+def _text_updates(changes: dict) -> dict[str, object]:
+    """Validate the free-text fields (title, description)."""
+    updates: dict[str, object] = {}
+    if "title" in changes:
+        title = str(changes["title"] or "").strip()
+        if not title:
+            message = "Event title cannot be empty"
+            raise EventLifecycleError(message)
+        updates["title"] = title
+    if "description" in changes:
+        updates["description"] = str(changes["description"] or "")
+    return updates
+
+
+def _schedule_updates(changes: dict) -> dict[str, object]:
+    """Validate date, time, and the timezone label."""
+    updates: dict[str, object] = {}
+    if "event_date" in changes:
+        updates["event_date"] = _validated_date(changes["event_date"])
+    if "event_time" in changes:
+        updates["event_time"] = _validated_time(changes["event_time"])
+    if "event_timezone" in changes:
+        timezone = str(changes["event_timezone"] or "").strip()
+        if len(timezone) > MAX_TIMEZONE_LABEL:
+            message = f"Timezone label must be {MAX_TIMEZONE_LABEL} characters or fewer"
+            raise EventLifecycleError(message)
+        updates["event_timezone"] = timezone
+    return updates
+
+
+def _visibility_updates(changes: dict) -> dict[str, object]:
+    """Collect the per-field visibility switches that were provided."""
+    return {
+        flag: bool(changes[flag])
+        for flag in ("description_visible", "location_visible", "date_visible", "time_visible")
+        if flag in changes
+    }
+
+
+def _validated_event_updates(changes: dict) -> dict[str, object]:
+    """Validate every provided field and return the columns to write."""
+    unknown = set(changes) - EDITABLE_EVENT_FIELDS
+    if unknown:
+        message = f"Unsupported event fields: {sorted(unknown)}"
+        raise EventLifecycleError(message)
+    updates = _text_updates(changes)
+    updates.update(_schedule_updates(changes))
+    updates.update(_visibility_updates(changes))
+    if "location_data" in changes:
+        updates["location_data"] = str(changes["location_data"] or "").strip() or None
+    return updates
 
 
 class EventLifecycleManager:
@@ -323,6 +454,40 @@ class EventLifecycleManager:
             and self.map_style_url
         )
         return {"show_map": show_map, "map_available": map_available}
+
+    def update_event_fields(self, organizer_key: str, event_id: str, **changes: object) -> dict:
+        """Update editable event fields; only the provided fields change."""
+        verified = self._verify_event_organizer(organizer_key, event_id)
+        key_info = self.db.get_key(verified["key_hash"])
+        if key_info is None or key_info.get("type") != "organizer":
+            raise EventLifecycleError(_ACCESS_DENIED_MSG)
+
+        unknown = set(changes) - EDITABLE_EVENT_FIELDS
+        if unknown:
+            message = f"Unsupported event fields: {sorted(unknown)}"
+            raise EventLifecycleError(message)
+
+        updates = _validated_event_updates(changes)
+        location_changed = "location_data" in changes
+        location_value = updates.get("location_data") if location_changed else None
+
+        self.db.set_event_fields(event_id, **updates)
+
+        if location_changed:
+            # The address changed, so old coordinates are stale by definition.
+            self.db.set_event_location_geo(event_id, None)
+            event = verified["event"]
+            if location_value and event.get("show_map") and self.geocoder:
+                point = self.geocoder.geocode(str(location_value))
+                if point is not None:
+                    location_geo = json.dumps({"lat": point.lat, "lon": point.lon})
+                    self.db.set_event_location_geo(event_id, location_geo)
+
+        updated = self.db.get_event(event_id)
+        if updated is None:
+            message = "Event not found"
+            raise EventLifecycleError(message)
+        return updated
 
     def set_flyer(
         self,

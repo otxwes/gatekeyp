@@ -273,5 +273,81 @@ class TestGatewayRateLimiting(unittest.TestCase):
         self.assertEqual(response["message"], "Invalid key")
 
 
+class TestGatewayEventRedaction(unittest.TestCase):
+    """Hidden event fields never leave the gateway for non-organizer keys."""
+
+    HIDDEN = (
+        "description",
+        "location_data",
+        "location_lat",
+        "location_lon",
+        "event_date",
+        "event_time",
+        "event_timezone",
+    )
+
+    def setUp(self):
+        self.db = DatabaseHandler(":memory:", organizer_key=TEST_ORGANIZER_KEY)
+        self.km = KeyManager(db=self.db, hmac_secret=TEST_HMAC_SECRET)
+        self.gateway = Gateway(db=self.db, key_manager=self.km)
+        self.db.add_event(
+            "event_hidden",
+            "Secret Show",
+            "The address is a secret",
+            "org_1",
+            location_data="12 Hidden Way",
+        )
+        self.db.set_event_location_geo("event_hidden", '{"lat": 40.75, "lon": -73.98}')
+        self.db.set_event_fields(
+            "event_hidden",
+            event_date="2026-12-31",
+            event_time="19:30",
+            event_timezone="EST",
+            description_visible=False,
+            location_visible=False,
+            date_visible=False,
+            time_visible=False,
+        )
+
+    def tearDown(self):
+        self.db.close()
+
+    def _key(self, raw_key: str, key_type: str) -> str:
+        self.db.add_key(self.km.hash_key(raw_key), key_type)
+        self.db.add_key_content_link(self.km.hash_key(raw_key), "event_hidden", "event")
+        return f"local:{raw_key}"
+
+    def test_attendee_response_omits_hidden_fields(self):
+        key = self._key("guest_key", "access")
+        response = self.gateway.process_request({"key": key, "content_id": "event_hidden"})
+
+        self.assertEqual(response["status"], "success")
+        data = response["data"]
+        for field in self.HIDDEN:
+            self.assertNotIn(field, data)
+        self.assertEqual(data["title"], "Secret Show")
+
+    def test_organizer_response_contains_hidden_fields(self):
+        key = self._key("owner_key", "organizer")
+        response = self.gateway.process_request({"key": key, "content_id": "event_hidden"})
+
+        self.assertEqual(response["status"], "success")
+        data = response["data"]
+        self.assertEqual(data["description"], "The address is a secret")
+        self.assertEqual(data["location_data"], "12 Hidden Way")
+        self.assertEqual(data["event_date"], "2026-12-31")
+        self.assertEqual(data["event_time"], "19:30")
+        self.assertEqual(data["event_timezone"], "EST")
+
+    def test_hidden_location_drops_map_style_url(self):
+        self.gateway.map_style_url = "https://example.test/style.json"
+        key = self._key("guest_map_key", "access")
+        response = self.gateway.process_request({"key": key, "content_id": "event_hidden"})
+
+        self.assertEqual(response["status"], "success")
+        self.assertNotIn("map_style_url", response["data"])
+        self.assertNotIn("show_map", response["data"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -52,6 +52,26 @@ class SetEventMapRequest(BaseModel):
     show_map: bool
 
 
+class UpdateEventFieldsRequest(BaseModel):
+    """Partial update of an event's editable fields.
+
+    Only keys present in the request body are forwarded, so an omitted field
+    keeps its stored value while a provided empty string clears it.
+    """
+
+    organizer_key: str = Field(..., min_length=1, max_length=2048)
+    title: str | None = None
+    description: str | None = None
+    location_data: str | None = None
+    event_date: str | None = None
+    event_time: str | None = None
+    event_timezone: str | None = None
+    description_visible: bool | None = None
+    location_visible: bool | None = None
+    date_visible: bool | None = None
+    time_visible: bool | None = None
+
+
 class SetFlyerRequest(BaseModel):
     """Request to set an event's flyer media asset (card-cover source)."""
 
@@ -150,6 +170,11 @@ class AddCommentRequest(BaseModel):
 # ------------------------------------------------------------------
 # Application Factory
 # ------------------------------------------------------------------
+
+
+def _env_flag(name: str) -> bool:
+    """Read a boolean environment flag; off unless explicitly truthy."""
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _new_app() -> FastAPI:
@@ -370,6 +395,21 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
             )
         except EventLifecycleError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err
+
+    @app.post("/api/events/{event_id}/details")
+    def update_event_details(event_id: str, request: UpdateEventFieldsRequest) -> dict:
+        """Partially update an event's editable fields (organizer key only)."""
+        changes = request.model_dump(exclude_unset=True)
+        changes.pop("organizer_key", None)
+        try:
+            event = lifecycle.update_event_fields(
+                organizer_key=request.organizer_key,
+                event_id=event_id,
+                **changes,
+            )
+        except EventLifecycleError as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+        return {"event": event}
 
     @app.post("/api/events/{event_id}/content")
     def add_content(event_id: str, request: AddContentRequest) -> dict:
@@ -627,8 +667,10 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
         else:
             return {"deleted": deleted}
 
-    # Ephemeral ("lite") funnel routes — mounted in the full profile too
-    app.include_router(build_ephemeral_router(ephemeral, deliverer=lxmf_deliverer))
+    # Ephemeral ("lite") funnel routes — withdrawn from the public server for
+    # now; the full profile mounts them only behind GATEKEYP_LITE_ENABLED.
+    if _env_flag("GATEKEYP_LITE_ENABLED"):
+        app.include_router(build_ephemeral_router(ephemeral, deliverer=lxmf_deliverer))
 
     # RSVP funnel routes — attendee submissions + organizer gate management
     app.include_router(build_rsvp_router(rsvp))

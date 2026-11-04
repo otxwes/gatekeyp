@@ -339,7 +339,7 @@ function route() {
     if (name === "home") renderHome();
     else if (name === "organize") renderOrganize();
     else if (name === "join") renderJoin();
-    else if (name === "flyer") renderFlyer();
+    else if (name === "flyer") location.hash = "#/";
     else if (name === "e") {
         // Lite events: the share page (/i/{id}) IS the event page — the key
         // no longer gates anything on it, so the hash route just redirects.
@@ -551,12 +551,14 @@ let wsTab = "board";
 
 const WS_TABS = [
     ["board", "Board"],
+    ["details", "Event details"],
     ["keys", "Access keys"],
     ["rsvps", "RSVP funnel"],
 ];
 
 const WS_LOADERS = {
     board: wsBoard,
+    details: wsDetails,
     keys: wsKeys,
     rsvps: wsRsvps,
 };
@@ -743,6 +745,100 @@ function boardPostHTML(post, assetsById) {
         bulletinCardHTML(post, true) +
         bulletinMediaHTML(post, assetsById) +
         `</div>`;
+}
+
+/* ------------------------------------------------------------------
+ * Workspace: Event details tab (editable fields + per-field visibility)
+ * ------------------------------------------------------------------ */
+async function wsDetails(main) {
+    const details = await fetchEventDetails();
+    const event = details.event || {};
+
+    main.innerHTML =
+        `<section class="card">` +
+        `<h3 class="card-title">Event details</h3>` +
+        `<form id="details-form" autocomplete="off">` +
+        `<div class="field"><label for="details-title">Title <span class="req">*</span></label>` +
+        `<input type="text" id="details-title" name="title" maxlength="256" required autocomplete="off"></div>` +
+        `<div class="field"><label for="details-description">Description</label>` +
+        `<textarea id="details-description" name="description" rows="4" maxlength="65536"></textarea></div>` +
+        `<div class="field"><label for="details-location">Location</label>` +
+        `<input type="text" id="details-location" name="location_data" maxlength="1024" autocomplete="off"></div>` +
+        `<div class="field"><label for="details-date">Date</label>` +
+        `<input type="date" id="details-date" name="event_date"></div>` +
+        `<div class="field"><label for="details-time">Time</label>` +
+        `<input type="time" id="details-time" name="event_time"></div>` +
+        `<div class="field"><label for="details-timezone">Timezone label</label>` +
+        `<input type="text" id="details-timezone" name="event_timezone" maxlength="12" autocomplete="off" placeholder="EST"></div>` +
+        `<div class="field field-check"><label for="details-show-description"><input type="checkbox" id="details-show-description" name="description_visible"> Show description</label></div>` +
+        `<div class="field field-check"><label for="details-show-location"><input type="checkbox" id="details-show-location" name="location_visible"> Show location</label></div>` +
+        `<div class="field field-check"><label for="details-show-date"><input type="checkbox" id="details-show-date" name="date_visible"> Show date</label></div>` +
+        `<div class="field field-check"><label for="details-show-time"><input type="checkbox" id="details-show-time" name="time_visible"> Show time</label></div>` +
+        `<p id="details-note" class="form-note" role="status" aria-live="polite"></p>` +
+        `<button type="submit" class="btn btn-primary" id="details-save">Save</button>` +
+        `</form>` +
+        `</section>`;
+
+    const set = (id, value) => {
+        const el = $(id);
+        if (el) el.value = value == null ? "" : value;
+    };
+    const check = (id, value) => {
+        const el = $(id);
+        if (el) el.checked = value !== false;
+    };
+    set("#details-title", event.title);
+    set("#details-description", event.description);
+    set("#details-location", event.location_data);
+    set("#details-date", event.event_date);
+    set("#details-time", event.event_time);
+    set("#details-timezone", event.event_timezone);
+    check("#details-show-description", event.description_visible);
+    check("#details-show-location", event.location_visible);
+    check("#details-show-date", event.date_visible);
+    check("#details-show-time", event.time_visible);
+
+    const form = $("#details-form");
+    if (!form) return;
+    form.addEventListener("submit", async (submitEvent) => {
+        submitEvent.preventDefault();
+        const btn = $("#details-save");
+        const noteEl = $("#details-note");
+        if (noteEl) noteEl.textContent = "";
+        btnBusy(btn, true, "Saving…");
+        try {
+            const result = await api(`/api/events/${encodeURIComponent(org.eventId)}/details`, {
+                method: "POST",
+                body: {
+                    organizer_key: org.organizerKey,
+                    title: $("#details-title").value,
+                    description: $("#details-description").value,
+                    location_data: $("#details-location").value,
+                    event_date: $("#details-date").value,
+                    event_time: $("#details-time").value,
+                    event_timezone: $("#details-timezone").value,
+                    description_visible: $("#details-show-description").checked,
+                    location_visible: $("#details-show-location").checked,
+                    date_visible: $("#details-show-date").checked,
+                    time_visible: $("#details-show-time").checked,
+                },
+            });
+            const updated = result.event || {};
+            org.title = updated.title || org.title;
+            org.meta = {
+                ...(org.meta || {}),
+                description: updated.description || "",
+                locationData: updated.location_data || "",
+                showMap: updated.show_map !== false && Boolean(updated.location_data),
+            };
+            toast("Event details saved.", "ok", "Saved");
+            renderWorkspace();
+        } catch (err) {
+            btnBusy(btn, false);
+            if (noteEl) note(noteEl, err.message, "error");
+            toast(err.message, "error", "Could not save details");
+        }
+    });
 }
 
 async function wsBoard(main) {
@@ -2278,6 +2374,17 @@ function locationHtml(event) {
         mapFigure(event) + mapLinks(event) + mapAttribution();
 }
 
+/** Date, time, and the organizer's timezone label — each rendered only when
+ * present. The label follows the time; a hidden time hides it too. */
+function scheduleHtml(event) {
+    const clock = event.event_time
+        ? `${event.event_time}${event.event_timezone ? ` ${event.event_timezone}` : ""}`
+        : "";
+    const parts = [event.event_date || "", clock].filter(Boolean);
+    if (!parts.length) return "";
+    return `<p class="ep-meta ep-when">${esc(parts.join(" · "))}</p>`;
+}
+
 function renderEventPage() {
     const root = $("#join-views");
     if (!root || !attendee) return;
@@ -2287,7 +2394,8 @@ function renderEventPage() {
         `<p class="eyebrow ep-eyebrow">You're invited</p>` +
         `<h2 class="ep-title">${esc(event.title || "Untitled event")}</h2>` +
         (event.organizer_name ? `<p class="ep-organizer">organized by ${esc(event.organizer_name)}</p>` : "") +
-        `<p class="ep-lede">${esc(event.description || "")}</p>` +
+        scheduleHtml(event) +
+        (event.description ? `<p class="ep-lede">${esc(event.description)}</p>` : "") +
         (event.flyer_asset_id
             ? `<img class="event-flyer" src="${esc(mediaUrl(event.flyer_asset_id))}" alt="Event flyer" loading="lazy" referrerpolicy="no-referrer">`
             : "") +

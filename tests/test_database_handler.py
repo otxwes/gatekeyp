@@ -130,6 +130,69 @@ class TestDatabaseHandler(unittest.TestCase):
         self.assertEqual(columns[13], "location_geo")
         self.assertEqual(columns[14], "show_map")
 
+    def test_event_schedule_fields_default_empty_and_visible(self):
+        """New schedule fields default to empty and visible."""
+        self.db.add_event("event_sched", "title", "description", "organizer_id")
+        event = self.db.get_event("event_sched")
+        self.assertIsNone(event["event_date"])
+        self.assertIsNone(event["event_time"])
+        self.assertEqual(event["event_timezone"], "")
+        self.assertTrue(event["description_visible"])
+        self.assertTrue(event["location_visible"])
+        self.assertTrue(event["date_visible"])
+        self.assertTrue(event["time_visible"])
+
+    def test_set_event_fields_updates_only_provided_columns(self):
+        """Partial updates leave untouched fields alone."""
+        self.db.add_event("event_fields", "title", "description", "organizer_id")
+        self.db.set_event_fields(
+            "event_fields",
+            event_date="2026-12-31",
+            event_time="19:30",
+            event_timezone="EST",
+        )
+        event = self.db.get_event("event_fields")
+        self.assertEqual(event["event_date"], "2026-12-31")
+        self.assertEqual(event["event_time"], "19:30")
+        self.assertEqual(event["event_timezone"], "EST")
+        self.assertEqual(event["title"], "title")
+
+        self.db.set_event_fields("event_fields", description_visible=False)
+        event = self.db.get_event("event_fields")
+        self.assertFalse(event["description_visible"])
+        self.assertEqual(event["event_date"], "2026-12-31")
+
+    def test_set_event_fields_updates_title_and_description(self):
+        """Title and description are editable through the same partial update."""
+        self.db.add_event("event_title", "title", "description", "organizer_id")
+        self.db.set_event_fields("event_title", title="New title", description="New desc")
+        event = self.db.get_event("event_title")
+        self.assertEqual(event["title"], "New title")
+        self.assertEqual(event["description"], "New desc")
+
+    def test_set_event_fields_encrypts_location_data(self):
+        """An edited location is encrypted at rest, exactly like creation."""
+        self.db.add_event("event_loc_edit", "title", "description", "organizer_id")
+        self.db.set_event_fields("event_loc_edit", location_data="Main St 42")
+        self.db.cursor.execute(
+            "SELECT location_data FROM events WHERE event_id = ?", ("event_loc_edit",)
+        )
+        raw = self.db.cursor.fetchone()[0]
+        self.assertNotIn("Main St 42", raw)
+        event = self.db.get_event("event_loc_edit")
+        self.assertEqual(event["location_data"], "Main St 42")
+
+    def test_fresh_schema_schedule_column_order(self):
+        """Schedule and visibility columns follow the map columns."""
+        columns = [row[1] for row in self.db.cursor.execute("PRAGMA table_info(events)")]
+        self.assertEqual(columns[15], "event_date")
+        self.assertEqual(columns[16], "event_time")
+        self.assertEqual(columns[17], "event_timezone")
+        self.assertEqual(columns[18], "description_visible")
+        self.assertEqual(columns[19], "location_visible")
+        self.assertEqual(columns[20], "date_visible")
+        self.assertEqual(columns[21], "time_visible")
+
     def test_revoke_key(self):
         """Revoking a key marks it as revoked."""
         self.db.add_key("hash_1", "access")
@@ -288,3 +351,61 @@ class TestSchemaMigration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestScheduleFieldMigration(unittest.TestCase):
+    """A pre-schedule database gains the new event columns with visible defaults."""
+
+    def test_legacy_event_gains_schedule_columns_and_visible_defaults(self):
+        import sqlite3
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as handle:
+            path = handle.name
+        db = None
+        try:
+            conn = sqlite3.connect(path)
+            conn.execute(
+                "CREATE TABLE events (event_id TEXT PRIMARY KEY, title TEXT, "
+                "description TEXT, organizer_id TEXT, location_data TEXT, "
+                "created_at TEXT, mode TEXT, expires_at TEXT, "
+                "rsvp_passphrase_hash TEXT, rsvp_auto_approve INTEGER, "
+                "flyer_asset_id TEXT, slug TEXT, organizer_name TEXT, "
+                "location_geo TEXT, show_map INTEGER NOT NULL DEFAULT 1)"
+            )
+            conn.execute(
+                "CREATE TABLE keys (hash_key TEXT PRIMARY KEY, type TEXT, expires_at TEXT)"
+            )
+            conn.execute(
+                "INSERT INTO events (event_id, title, description, organizer_id) "
+                "VALUES ('legacy', 'Legacy', 'd', 'o1')"
+            )
+            conn.commit()
+            conn.close()
+
+            db = DatabaseHandler(path, organizer_key=TEST_ORGANIZER_KEY)
+            cols = {r[1] for r in db.cursor.execute("PRAGMA table_info(events)")}
+            for col in (
+                "event_date",
+                "event_time",
+                "event_timezone",
+                "description_visible",
+                "location_visible",
+                "date_visible",
+                "time_visible",
+            ):
+                self.assertIn(col, cols)
+
+            event = db.get_event("legacy")
+            self.assertIsNone(event["event_date"])
+            self.assertIsNone(event["event_time"])
+            self.assertEqual(event["event_timezone"], "")
+            self.assertTrue(event["description_visible"])
+            self.assertTrue(event["location_visible"])
+            self.assertTrue(event["date_visible"])
+            self.assertTrue(event["time_visible"])
+        finally:
+            if db is not None:
+                db.close()
+            Path(path).unlink(missing_ok=True)

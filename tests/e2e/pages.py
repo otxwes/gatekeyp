@@ -130,6 +130,32 @@ class ApiKeyGrabber:
         return self.values[-1]
 
 
+def create_lite_event(
+    page: Page,
+    base_url: str,
+    title: str,
+    *,
+    description: str = "",
+    when: str = "2030-01-01T20:00",
+    where: str = "",
+    show_map: bool = True,
+) -> dict:
+    """Mint a lite event through the API (the flyer form was withdrawn from
+    the public UI). Returns the POST body: event_id, organizer_key, URLs."""
+    response = page.request.post(
+        f"{base_url}/api/lite/events",
+        form={
+            "title": title,
+            "description": description,
+            "when": when,
+            "where": where,
+            "show_map": "1" if show_map else "0",
+        },
+    )
+    assert response.ok, f"lite create failed: {response.status} {response.text()}"
+    return response.json()
+
+
 def wait_event_page(page: Page) -> None:
     """Barrier until the attendee event page rendered its main sections."""
     page.locator("#join-event:not([hidden])").wait_for(timeout=15_000)

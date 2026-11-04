@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from cryptography.fernet import Fernet
 
 from src.core.content_manager import ContentManager
-from src.core.event_lifecycle import EventLifecycleError, EventLifecycleManager
+from src.core.event_lifecycle import EventLifecycleError, EventLifecycleManager, redact_event
 from src.core.geocoding import GeoPoint
 from src.core.key_manager import KeyManager
 from src.db.database_handler import DatabaseHandler
@@ -639,3 +639,214 @@ class TestEventMap:
         event = db.get_event(created["event_id"])
         assert event["location_lat"] is None
         assert event["location_lon"] is None
+
+
+# ------------------------------------------------------------------
+# Editable fields and per-field visibility
+# ------------------------------------------------------------------
+
+
+class TestUpdateEventFields:
+    def test_update_fields_partial(self, lifecycle, db, created_event):
+        """Only the submitted fields change; the rest are untouched."""
+        updated = lifecycle.update_event_fields(
+            created_event["organizer_key"],
+            created_event["event_id"],
+            event_date="2026-12-31",
+            event_time="19:30",
+            event_timezone="EST",
+        )
+
+        assert updated["event_date"] == "2026-12-31"
+        assert updated["event_time"] == "19:30"
+        assert updated["event_timezone"] == "EST"
+        assert updated["title"] == "Test Event"
+        stored = db.get_event(created_event["event_id"])
+        assert stored["description"] == "A test event for lifecycle management"
+
+    def test_update_fields_edits_title_and_description(self, lifecycle, created_event):
+        updated = lifecycle.update_event_fields(
+            created_event["organizer_key"],
+            created_event["event_id"],
+            title="New title",
+            description="New description",
+        )
+
+        assert updated["title"] == "New title"
+        assert updated["description"] == "New description"
+
+    def test_update_fields_clears_values(self, lifecycle, created_event):
+        lifecycle.update_event_fields(
+            created_event["organizer_key"],
+            created_event["event_id"],
+            event_date="2026-12-31",
+            event_time="19:30",
+            event_timezone="EST",
+        )
+        updated = lifecycle.update_event_fields(
+            created_event["organizer_key"],
+            created_event["event_id"],
+            event_date="",
+            event_time="",
+            event_timezone="",
+        )
+
+        assert updated["event_date"] is None
+        assert updated["event_time"] is None
+        assert updated["event_timezone"] == ""
+
+    def test_update_fields_rejects_non_organizer_key(self, lifecycle, created_event):
+        access = lifecycle.generate_access_key(
+            created_event["organizer_key"], created_event["event_id"]
+        )
+
+        with pytest.raises(EventLifecycleError, match="does not grant"):
+            lifecycle.update_event_fields(
+                access["access_key"], created_event["event_id"], title="Nope"
+            )
+
+    def test_update_fields_rejects_bad_date(self, lifecycle, created_event, db):
+        with pytest.raises(EventLifecycleError, match="YYYY-MM-DD"):
+            lifecycle.update_event_fields(
+                created_event["organizer_key"], created_event["event_id"], event_date="31/12/2026"
+            )
+        assert db.get_event(created_event["event_id"])["event_date"] is None
+
+    def test_update_fields_rejects_bad_time(self, lifecycle, created_event):
+        with pytest.raises(EventLifecycleError, match="HH:MM"):
+            lifecycle.update_event_fields(
+                created_event["organizer_key"], created_event["event_id"], event_time="7pm"
+            )
+
+    def test_update_fields_rejects_empty_title(self, lifecycle, created_event, db):
+        with pytest.raises(EventLifecycleError, match="cannot be empty"):
+            lifecycle.update_event_fields(
+                created_event["organizer_key"], created_event["event_id"], title="   "
+            )
+        assert db.get_event(created_event["event_id"])["title"] == "Test Event"
+
+    def test_update_fields_rejects_long_timezone(self, lifecycle, created_event):
+        with pytest.raises(EventLifecycleError, match="12"):
+            lifecycle.update_event_fields(
+                created_event["organizer_key"],
+                created_event["event_id"],
+                event_timezone="GMT+123456789",
+            )
+
+    def test_update_fields_rejects_unknown_field(self, lifecycle, created_event):
+        with pytest.raises(EventLifecycleError, match="Unsupported"):
+            lifecycle.update_event_fields(
+                created_event["organizer_key"], created_event["event_id"], slug="nope"
+            )
+
+    def test_update_visibility_flags(self, lifecycle, created_event):
+        updated = lifecycle.update_event_fields(
+            created_event["organizer_key"],
+            created_event["event_id"],
+            description_visible=False,
+            location_visible=False,
+            date_visible=False,
+            time_visible=False,
+        )
+
+        assert updated["description_visible"] is False
+        assert updated["location_visible"] is False
+        assert updated["date_visible"] is False
+        assert updated["time_visible"] is False
+
+    def test_update_location_regeocodes_when_map_on(self, map_lifecycle, map_geocoder):
+        created = map_lifecycle.create_event(
+            title="Moving Event",
+            description="Changes venue",
+            organizer_id="@organizer:test",
+            location_data="Main St",
+        )
+        assert map_geocoder.calls == ["Main St"]
+
+        updated = map_lifecycle.update_event_fields(
+            created["organizer_key"], created["event_id"], location_data="Other St"
+        )
+
+        assert map_geocoder.calls == ["Main St", "Other St"]
+        assert updated["location_data"] == "Other St"
+        assert updated["location_lat"] == 40.75
+        assert updated["location_lon"] == -73.98
+
+    def test_update_location_clear_drops_coordinates(self, map_lifecycle):
+        created = map_lifecycle.create_event(
+            title="Cleared Event",
+            description="Loses venue",
+            organizer_id="@organizer:test",
+            location_data="Main St",
+        )
+
+        updated = map_lifecycle.update_event_fields(
+            created["organizer_key"], created["event_id"], location_data=""
+        )
+
+        assert updated["location_data"] is None
+        assert updated["location_lat"] is None
+        assert updated["location_lon"] is None
+
+
+class TestRedactEvent:
+    def _event(self, **overrides: object) -> dict:
+        event = {
+            "id": "event_1",
+            "title": "Title",
+            "description": "Description",
+            "location_data": "Main St",
+            "location_lat": 40.75,
+            "location_lon": -73.98,
+            "show_map": True,
+            "map_style_url": "https://example.test/style.json",
+            "event_date": "2026-12-31",
+            "event_time": "19:30",
+            "event_timezone": "EST",
+            "description_visible": True,
+            "location_visible": True,
+            "date_visible": True,
+            "time_visible": True,
+        }
+        event.update(overrides)
+        return event
+
+    def test_redact_hides_fields_for_attendees(self):
+        event = self._event(
+            description_visible=False,
+            location_visible=False,
+            date_visible=False,
+            time_visible=False,
+        )
+
+        redacted = redact_event(event, is_organizer=False)
+
+        for key in (
+            "description",
+            "location_data",
+            "location_lat",
+            "location_lon",
+            "show_map",
+            "map_style_url",
+            "event_date",
+            "event_time",
+            "event_timezone",
+        ):
+            assert key not in redacted
+        assert redacted["title"] == "Title"
+
+    def test_redact_hides_timezone_with_time(self):
+        event = self._event(time_visible=False)
+
+        redacted = redact_event(event, is_organizer=False)
+
+        assert "event_time" not in redacted
+        assert "event_timezone" not in redacted
+        assert redacted["event_date"] == "2026-12-31"
+
+    def test_redact_keeps_everything_for_organizer(self):
+        event = self._event(description_visible=False, location_visible=False)
+
+        redacted = redact_event(event, is_organizer=True)
+
+        assert redacted == event

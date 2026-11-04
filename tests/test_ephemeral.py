@@ -183,6 +183,15 @@ def lite_client(db, key_manager, content_manager, lifecycle):
         yield test_client
 
 
+@pytest.fixture
+def full_with_lite_client(db, key_manager, content_manager, lifecycle, monkeypatch):
+    """Full profile with the lite funnel explicitly enabled (dev/tests only)."""
+    monkeypatch.setenv("GATEKEYP_LITE_ENABLED", "1")
+    app = _build_app(db, key_manager, content_manager, lifecycle, "full")
+    with TestClient(app) as test_client:
+        yield test_client
+
+
 class TestSchemaMigration:
     """Phase A schema lands on fresh and pre-existing databases alike."""
 
@@ -506,11 +515,11 @@ def _create_lite(client, *, with_flyer: bool = False, **overrides: str | int):
 
 
 class TestLiteRoutes:
-    """HTTP surface of the ephemeral funnel (full profile)."""
+    """HTTP surface of the ephemeral funnel (lite profile)."""
 
-    def test_create_lite_event(self, client):
+    def test_create_lite_event(self, lite_client):
         """Creating returns the secrets plus shareable URLs."""
-        resp = _create_lite(client)
+        resp = _create_lite(lite_client)
         assert resp.status_code == 201
         body = resp.json()
         assert body["event_id"].startswith("event_")
@@ -519,10 +528,10 @@ class TestLiteRoutes:
         assert "#/organizer/" in body["organizer_url"]
         assert f"k={body['organizer_key']}" in body["organizer_url"]
 
-    def test_og_page_shows_invite_details_never_keys(self, client):
+    def test_og_page_shows_invite_details_never_keys(self, lite_client):
         """The OG page carries the invite details; keys never appear."""
-        body = _create_lite(client, description="private description").json()
-        page = client.get(f"/i/{body['event_id']}")
+        body = _create_lite(lite_client, description="private description").json()
+        page = lite_client.get(f"/i/{body['event_id']}")
         assert page.status_code == 200
         assert 'property="og:title"' in page.text
         assert body["organizer_key"] not in page.text
@@ -531,56 +540,56 @@ class TestLiteRoutes:
         assert "The roof" in page.text
         assert "wiped automatically" not in page.text
 
-    def test_og_page_formats_iso_when_free_text_verbatim(self, client):
+    def test_og_page_formats_iso_when_free_text_verbatim(self, lite_client):
         """ISO timestamps render as readable stamps; free text stays verbatim."""
-        body = _create_lite(client, when="2099-01-01T21:00:00+00:00").json()
-        page = client.get(f"/i/{body['event_id']}")
+        body = _create_lite(lite_client, when="2099-01-01T21:00:00+00:00").json()
+        page = lite_client.get(f"/i/{body['event_id']}")
         assert "Jan 01, 2099 21:00 UTC" in page.text
         assert "2099-01-01T21:00:00" not in page.text
 
-    def test_og_page_does_not_duplicate_default_description(self, client):
+    def test_og_page_does_not_duplicate_default_description(self, lite_client):
         """When description defaults to the title, the page renders it once."""
-        body = _create_lite(client, description=None).json()
-        page = client.get(f"/i/{body['event_id']}")
+        body = _create_lite(lite_client, description=None).json()
+        page = lite_client.get(f"/i/{body['event_id']}")
         assert f"<p>{body['title']}</p>" not in page.text
 
-    def test_event_time_anchors_expiry_over_http(self, client):
+    def test_event_time_anchors_expiry_over_http(self, lite_client):
         """The wipe deadline counts from the event time, not the creation moment."""
-        body = _create_lite(client, when="2099-01-01T21:00:00+00:00", ttl_hours=24).json()
+        body = _create_lite(lite_client, when="2099-01-01T21:00:00+00:00", ttl_hours=24).json()
         assert body["event_expires_at"] == "2099-01-02T21:00:00+00:00"
 
-    def test_past_event_time_rejected_over_http(self, client):
+    def test_past_event_time_rejected_over_http(self, lite_client):
         """A past event time is a 400 with a plain-spoken detail."""
-        resp = _create_lite(client, when="2001-01-01T00:00:00+00:00")
+        resp = _create_lite(lite_client, when="2001-01-01T00:00:00+00:00")
         assert resp.status_code == 400
         assert "already passed" in resp.json()["detail"]
 
-    def test_og_page_after_wipe_shows_honest_ended_page(self, client, db):
+    def test_og_page_after_wipe_shows_honest_ended_page(self, lite_client, db):
         """A wiped event renders a noindex 'ended' page, not old content."""
-        body = _create_lite(client, title="Doomed Event").json()
+        body = _create_lite(lite_client, title="Doomed Event").json()
         event_id = body["event_id"]
         db.wipe_event(event_id)
 
-        page = client.get(f"/i/{event_id}")
+        page = lite_client.get(f"/i/{event_id}")
         assert page.status_code == 200
         assert "Event ended" in page.text
         assert "noindex" in page.text
         assert "Doomed" not in page.text
 
-    def test_flyer_served_publicly_without_key(self, client):
+    def test_flyer_served_publicly_without_key(self, lite_client):
         """The flyer is the one public asset; bytes round-trip, cacheable."""
-        body = _create_lite(client, with_flyer=True).json()
-        resp = client.get(f"/api/lite/events/{body['event_id']}/flyer")
+        body = _create_lite(lite_client, with_flyer=True).json()
+        resp = lite_client.get(f"/api/lite/events/{body['event_id']}/flyer")
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "image/png"
         assert resp.headers["cache-control"] == "public, max-age=86400"
         assert resp.headers["etag"] == f'"{body["flyer_asset_id"]}"'
         assert resp.content == _FLYER
 
-    def test_oversized_flyer_rejected_with_human_message(self, client):
+    def test_oversized_flyer_rejected_with_human_message(self, lite_client):
         """A flyer over the cap is a 400 naming the limit, not a byte count."""
         big = b"PNG" + b"\x00" * (26 * 1024 * 1024)
-        resp = client.post(
+        resp = lite_client.post(
             "/api/lite/events",
             data={
                 "title": "Big",
@@ -594,16 +603,16 @@ class TestLiteRoutes:
         assert resp.status_code == 400
         assert "Flyer exceeds the 25 MB limit" in resp.json()["detail"]
 
-    def test_flyer_404_when_absent(self, client):
+    def test_flyer_404_when_absent(self, lite_client):
         """Events without a flyer report 404 on the flyer route."""
-        body = _create_lite(client).json()
-        resp = client.get(f"/api/lite/events/{body['event_id']}/flyer")
+        body = _create_lite(lite_client).json()
+        resp = lite_client.get(f"/api/lite/events/{body['event_id']}/flyer")
         assert resp.status_code == 404
 
-    def test_keyed_view_with_organizer_key(self, client):
+    def test_keyed_view_with_organizer_key(self, lite_client):
         """Keyed attendee view returns when/where with a valid organizer key."""
-        body = _create_lite(client).json()
-        resp = client.get(
+        body = _create_lite(lite_client).json()
+        resp = lite_client.get(
             f"/api/lite/events/{body['event_id']}", params={"key": body["organizer_key"]}
         )
         assert resp.status_code == 200
@@ -612,71 +621,75 @@ class TestLiteRoutes:
         assert data["when"] == "Friday 9pm"
         assert data["where"] == "The roof"
 
-    def test_keyed_view_with_attendee_access_key(self, client):
+    def test_keyed_view_with_attendee_access_key(self, full_with_lite_client):
         """An access key generated through the standard API unlocks the view."""
-        body = _create_lite(client).json()
-        resp = client.post(
+        body = _create_lite(full_with_lite_client).json()
+        resp = full_with_lite_client.post(
             f"/api/events/{body['event_id']}/access-keys",
             json={"organizer_key": body["organizer_key"], "event_id": body["event_id"], "days": 1},
         )
         assert resp.status_code == 200
         access_key = resp.json()["access_key"]
-        keyed = client.get(f"/api/lite/events/{body['event_id']}", params={"key": access_key})
+        keyed = full_with_lite_client.get(
+            f"/api/lite/events/{body['event_id']}", params={"key": access_key}
+        )
         assert keyed.status_code == 200
         assert keyed.json()["event"]["title"] == "Flyer show"
 
-    def test_keyed_view_rejects_unknown_key(self, client):
+    def test_keyed_view_rejects_unknown_key(self, lite_client):
         """A well-formed key with no grants yields 400, not 500."""
-        body = _create_lite(client).json()
-        resp = client.get(
+        body = _create_lite(lite_client).json()
+        resp = lite_client.get(
             f"/api/lite/events/{body['event_id']}", params={"key": "local:" + "ab" * 32}
         )
         assert resp.status_code == 400
 
-    def test_malformed_key_is_a_client_error(self, client):
+    def test_malformed_key_is_a_client_error(self, lite_client):
         """InvalidKeyFormatError maps to 400 (was a 500 before Phase A)."""
-        body = _create_lite(client).json()
-        resp = client.get(
+        body = _create_lite(lite_client).json()
+        resp = lite_client.get(
             f"/api/lite/events/{body['event_id']}", params={"key": "not-a-real-key-format"}
         )
         assert resp.status_code == 400
         assert resp.json()["detail"]
 
-    def test_unknown_event_404(self, client):
+    def test_unknown_event_404(self, lite_client):
         """Unknown events are 404 on every lite route."""
-        assert client.get("/i/event_missing").status_code == 404
-        missing = client.get("/api/lite/events/event_missing", params={"key": "local:" + "ab" * 32})
+        assert lite_client.get("/i/event_missing").status_code == 404
+        missing = lite_client.get(
+            "/api/lite/events/event_missing", params={"key": "local:" + "ab" * 32}
+        )
         assert missing.status_code == 404
-        assert client.get("/api/lite/events/event_missing/flyer").status_code == 404
+        assert lite_client.get("/api/lite/events/event_missing/flyer").status_code == 404
 
-    def test_standard_events_not_exposed_via_lite_routes(self, client):
+    def test_standard_events_not_exposed_via_lite_routes(self, full_with_lite_client):
         """Standard events stay invisible on the lite surface."""
-        std = client.post(
+        std = full_with_lite_client.post(
             "/api/events",
             json={"title": "Standard", "description": "d", "organizer_id": "org_1"},
         ).json()
-        assert client.get(f"/i/{std['event_id']}").status_code == 404
-        keyed = client.get(
+        assert full_with_lite_client.get(f"/i/{std['event_id']}").status_code == 404
+        keyed = full_with_lite_client.get(
             f"/api/lite/events/{std['event_id']}", params={"key": std["organizer_key"]}
         )
         assert keyed.status_code == 404
 
-    def test_creation_validation_errors(self, client):
+    def test_creation_validation_errors(self, lite_client):
         """TTL bounds and the MIME allow-list surface as 400s."""
-        assert _create_lite(client, ttl_hours=0).status_code == 400
-        wrong_mime = client.post(
+        assert _create_lite(lite_client, ttl_hours=0).status_code == 400
+        wrong_mime = lite_client.post(
             "/api/lite/events",
             data={"title": "Bad flyer"},
             files={"flyer": ("page.html", b"<h1>x</h1>", "text/html")},
         )
         assert wrong_mime.status_code == 400
 
-    def test_rate_limit_kicks_in_on_sixth_event(self, client):
-        """Five events per window per client; the sixth is a 429."""
+    def test_rate_limit_kicks_in_on_sixth_event(self, lite_client):
+        """Five events per window per lite_client; the sixth is a 429."""
         for i in range(5):
-            resp = _create_lite(client, title=f"Event {i}")
+            resp = _create_lite(lite_client, title=f"Event {i}")
             assert resp.status_code == 201
-        limited = _create_lite(client, title="Too many")
+        limited = _create_lite(lite_client, title="Too many")
         assert limited.status_code == 429
         assert "Retry-After" in limited.headers
 

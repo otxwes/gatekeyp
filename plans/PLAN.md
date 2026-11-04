@@ -852,3 +852,172 @@ old tests could never expose this.
       workspace header keeps the 260px thumbnail cap.
 - [x] T3. Full verification: unit 363 passed / 55 deselected; e2e 55 passed;
       ruff clean; node checks OK.
+
+---
+
+
+# Round 8 (2026-11-03) — editable event fields, per-field visibility, timezone label, and lite withdrawal
+
+Owner requests, in order:
+1. Description, location, date, and time each editable after creation, each
+   with its own show/hide switch for the event page (e.g. location reads
+   "secret" until the day, then the real address).
+2. Hidden means the server must not send the value at all — page-level hiding
+   would leak it through the API response (owner decision).
+3. Date and time are new first-class event fields.
+4. A timezone label the organizer chooses to display (e.g. `EST`).
+5. Title editing too.
+6. The lite/flyer funnel is withdrawn from the public server for now; the code
+   stays for future development.
+
+Context from recon: there is no `PUT`/`PATCH` route and no event-field update
+method today; date/time exist only as a free-text `schedule` content block and
+are not rendered on the attendee page. The attendee page is fed by
+`POST /api/access` (gateway), which returns the whole event row — so redaction
+belongs in the serializers. Hiding the location must also drop
+`location_lat`/`location_lon` and the map URL, or the address leaks anyway.
+The full profile mounts the ephemeral router (`server.py:630`); the public
+server runs the full profile.
+
+## Goal
+
+An organizer can change title, description, location, date, time, and a
+timezone label at any time, and independently choose which of
+description/location/date/time guests can see; hidden values never leave the
+server for non-organizer keys. The lite funnel is not reachable on the public
+server.
+
+## Phase A — editable fields, visibility, timezone, title
+
+- [ ] New `events` columns: `event_date TEXT`, `event_time TEXT`,
+      `event_timezone TEXT` (free-text display label such as `EST` or `GMT+2`),
+      `description_visible INTEGER NOT NULL DEFAULT 1`,
+      `location_visible INTEGER NOT NULL DEFAULT 1`,
+      `date_visible INTEGER NOT NULL DEFAULT 1`,
+      `time_visible INTEGER NOT NULL DEFAULT 1`; additive migration via
+      `_ensure_column`; legacy rows default visible.
+- [ ] `POST /api/events/{event_id}/details` — organizer key only; partial
+      update: only fields present in the request body change. Accepts `title`,
+      `description`, `location_data`, `event_date`, `event_time`,
+      `event_timezone`, and the four visibility booleans.
+- [ ] Validation: `title` non-empty when provided (same rule as creation);
+      `event_date` must be `YYYY-MM-DD`; `event_time` must be `HH:MM` (24h);
+      `event_timezone` trimmed, max 12 chars; empty string clears date, time,
+      or timezone. Location update re-encrypts and re-geocodes when the map is
+      on; clearing the location clears stored coordinates.
+- [ ] Organizer-only: an `access` key gets 400 and nothing changes (same rule
+      as the map toggle).
+- [ ] Redaction for non-organizer responses: hidden `description`,
+      `location_data` (+ `location_lat`, `location_lon`, map fields),
+      `event_date`, `event_time`, `event_timezone` are **absent** from the
+      dict. Applied in `POST /api/access` (gateway) and in the RSVP public
+      view. Organizer `GET /api/events/{id}` is never redacted. The timezone
+      label follows the time's visibility (no separate toggle) — stated as a
+      builder call; title is always visible.
+- [ ] Organizer workspace: an "Event details" panel with six inputs (title,
+      description, location, date, time, timezone) and four show/hide toggles,
+      one Save action; on success the workspace and the attendee view reflect
+      the new values after reload.
+- [ ] Attendee event page renders date, time, and the timezone label (new) and
+      tolerates absent fields (hidden or empty) without placeholder clutter.
+- [ ] Tests: DB migration/round-trip; lifecycle validation + organizer-only;
+      API update route; redaction proven at the API layer (attendee key
+      response lacks the hidden value, organizer response contains it); RSVP
+      public view respects `description_visible`; e2e edit + toggle with a
+      network-level absence assertion.
+
+## Phase B — withdraw the lite funnel from the public server
+
+- [ ] `GATEKEYP_LITE_ENABLED` env flag, default off. In the **full** profile,
+      do not mount `build_ephemeral_router` unless the flag is on; the `lite`
+      profile still mounts it (development and tests keep working).
+- [ ] Public UI: remove the "Flyer" nav entry (`web/index.html:23`) and the
+      flyer section markup (`web/index.html:134-180`). Keep `renderFlyer` and
+      related JS; ensure handlers guard on missing elements.
+- [ ] On the full profile, `/api/lite/*` and `/i/{id}` return 404; the Flyer
+      nav and form are absent.
+- [ ] E2E: lite tests run against a dedicated lite-profile server fixture
+      (boot `python -m src.api.server` with `GATEKEYP_PROFILE=lite`); add a
+      full-profile test asserting the lite routes 404 and the nav is absent.
+- [ ] Consequence (accepted): lite events already in the production DB become
+      unreachable on the public server; they are ephemeral by design.
+
+## Out of scope
+
+- Timezone conversion, recurrence, calendar integration. Date and time are
+  stored and displayed exactly as typed; the timezone is a display label.
+- Title visibility toggle, organizer-name visibility, per-attendee visibility.
+- Deleting the lite code, routes module, tests, or DB rows.
+- The QR stamp implementation (`art-cringstar8`), still a separate task.
+- Invite-card rendering — the card carries no event metadata by design.
+
+## Approach
+
+1. `src/db/database_handler.py` — add the seven columns to `CREATE TABLE` and
+   to `_migrate_schema` via `_ensure_column`; read them in `get_event`
+   (booleans default `True` for legacy rows); add `set_event_fields(event_id,
+   **changes)` that updates only provided columns (including `title`).
+2. `src/core/event_lifecycle.py` — `update_event_fields(organizer_key,
+   event_id, **changes)`: verify organizer-type key (reuse the map-toggle
+   check), validate title/date/time/timezone, re-encrypt location, geocode on
+   change when `show_map` and a geocoder exist, clear coordinates when the
+   location is cleared, return the updated event. Add `redact_event(event, *,
+   is_organizer: bool) -> dict` (drops hidden fields; drops location
+   coordinates and map fields when the location is hidden; drops timezone when
+   the time is hidden).
+3. `src/api/server.py` — `UpdateEventFieldsRequest` with optional fields
+   (presence via `model_fields_set`), route `POST /api/events/{event_id}/details`
+   using the existing `EventLifecycleError` → 400 pattern. Gate the ephemeral
+   router in the full profile on `GATEKEYP_LITE_ENABLED`.
+4. `src/api/gateway.py` — redact the event payload for non-organizer keys
+   before returning it from `POST /api/access`.
+5. `src/rsvp/service.py` — `get_public_view` omits `description` when
+   `description_visible` is false.
+6. `web/index.html` + `web/app.js` — organizer workspace "Event details" panel
+   (six inputs + four toggles + Save); attendee page renders date, time, and
+   timezone; remove the Flyer nav entry and flyer form markup (Phase B).
+7. `tests/e2e/conftest.py` — add a `lite_server` fixture booting the lite
+   profile; repoint lite e2e tests; add the full-profile 404/nav assertions.
+8. Tests as listed under Requirements; update any exact-dict assertions that
+   gain the new keys.
+
+## Verification
+
+```bash
+uv run pytest -q
+uv run pytest tests/e2e -m e2e -q
+uv run ruff check src tests
+node --check web/app.js
+```
+
+## Edge cases to test
+
+- Hiding the location removes the address **and** coordinates/map from the
+  attendee response; organizer still sees everything.
+- Hiding the time also hides the timezone label.
+- Description hidden → absent from the RSVP public view.
+- Clearing date, time, or timezone → nothing rendered, no crash.
+- Invalid date/time or empty title rejected without changing stored values.
+- Access key rejected by the details route; value unchanged.
+- Legacy rows (pre-migration) are fully visible.
+- Partial update touches only the submitted fields.
+- Full profile: `/api/lite/events` and `/i/{id}` 404; no Flyer nav/form.
+- Lite profile: lite routes still work for development and tests.
+
+## Progress
+
+- [x] T1. Schema + migration + read/write (Phase A columns).
+- [x] T2. Lifecycle update + validation + redaction helper.
+- [x] T3. API route + gateway/RSVP redaction.
+- [x] T4. Organizer panel + attendee date/time/timezone rendering.
+- [x] T5. Tests (unit + e2e, incl. network-level absence).
+- [x] T6. Phase B: gate the ephemeral router + remove public Flyer UI.
+- [x] T7. Phase B tests: lite-profile e2e fixture + full-profile 404/nav.
+- [x] T8. Full verification, real output reported.
+
+### Status — implemented & verified (2026-11-03)
+
+- `uv run pytest -q` → 397 passed, 59 deselected
+- `uv run pytest tests/e2e -m e2e -q` → 59 passed
+- `uv run ruff check src tests` → clean
+- `node --check web/app.js` → OK

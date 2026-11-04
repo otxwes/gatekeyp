@@ -4,7 +4,7 @@ import json
 import re
 
 import pytest
-from pages import AttendeePage, OrganizerPage, wait_event_page
+from pages import AttendeePage, OrganizerPage, create_lite_event, wait_event_page
 from playwright.sync_api import expect
 
 pytestmark = pytest.mark.e2e
@@ -178,22 +178,13 @@ def test_missing_widget_marks_map_unavailable(organizer_context, attendee_contex
     expect(att.page.locator(".event-map-links a", has_text="Open map")).to_be_visible()
 
 
-def test_lite_page_renders_map_widget(organizer_context, server):
+def test_lite_page_renders_map_widget(lite_server, organizer_context):
     page = organizer_context.new_page()
-    page.goto(f"{server.base_url}/#/flyer")
-    page.fill("#flyer-title", "Mapped Lite")
-    page.fill("#flyer-description", "Public directions.")
-    page.fill("#flyer-when", "2030-01-01T20:00")
-    page.fill("#flyer-where", "Main St")
-    page.click("#flyer-btn")
-    page.locator("#modal-root .modal").wait_for(timeout=10_000)
-    with page.expect_download() as download:
-        page.locator('[data-act="confirm"]').click()
-    assert download.value.suggested_filename.endswith("organizer card.png")
-    page.locator("#flyer-done").wait_for(state="visible")
-    public_url = page.locator("#flyer-done code").inner_text().strip()
+    created = create_lite_event(
+        page, lite_server.base_url, "Mapped Lite", description="Public directions.", where="Main St"
+    )
 
-    page.goto(public_url)
+    page.goto(created["public_url"])
     expect(page.locator("[data-gatekeyp-map]")).to_be_visible()
     expect(page.locator(".event-map-load")).to_have_text("Show map")
     expect(page.locator(".event-map-links a")).to_have_text("Open map")
@@ -210,23 +201,18 @@ def test_lite_page_renders_map_widget(organizer_context, server):
     assert abs(canvas["height"] - wrapper["height"]) < 2, f"canvas {canvas} vs wrapper {wrapper}"
 
 
-def test_lite_map_off_hides_card_but_keeps_links(organizer_context, server):
+def test_lite_map_off_hides_card_but_keeps_links(lite_server, organizer_context):
     page = organizer_context.new_page()
-    page.goto(f"{server.base_url}/#/flyer")
-    page.fill("#flyer-title", "No Map Lite")
-    page.fill("#flyer-description", "Public directions.")
-    page.fill("#flyer-when", "2030-01-01T20:00")
-    page.fill("#flyer-where", "Main St")
-    page.uncheck("#flyer-show-map")
-    page.click("#flyer-btn")
-    page.locator("#modal-root .modal").wait_for(timeout=10_000)
-    with page.expect_download() as download:
-        page.locator('[data-act="confirm"]').click()
-    assert download.value.suggested_filename.endswith("organizer card.png")
-    page.locator("#flyer-done").wait_for(state="visible")
-    public_url = page.locator("#flyer-done code").inner_text().strip()
+    created = create_lite_event(
+        page,
+        lite_server.base_url,
+        "No Map Lite",
+        description="Public directions.",
+        where="Main St",
+        show_map=False,
+    )
 
-    page.goto(public_url)
+    page.goto(created["public_url"])
     expect(page.locator("[data-gatekeyp-map]")).to_have_count(0)
     expect(page.locator(".event-map-load")).to_have_count(0)
     expect(page.locator(".event-map-links a", has_text="Open map")).to_have_attribute(
