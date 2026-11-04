@@ -441,6 +441,9 @@ function bindOrganizeEntry() {
         const description = getField(createForm, "description");
         const location_data = getField(createForm, "location_data") || null;
         const organizer_name = getField(createForm, "organizer_name") || "";
+        const event_date = getField(createForm, "event_date") || null;
+        const event_time = getField(createForm, "event_time") || null;
+        const event_timezone = getField(createForm, "event_timezone") || "";
         const show_map = Boolean(createForm.elements.show_map?.checked);
         if (!title || !description) {
             note(noteEl, "A title and description are required.", "error");
@@ -457,6 +460,9 @@ function bindOrganizeEntry() {
                     location_data,
                     organizer_name,
                     show_map,
+                    event_date,
+                    event_time,
+                    event_timezone,
                 },
             });
             org = {
@@ -470,6 +476,9 @@ function bindOrganizeEntry() {
                     organizerName: organizer_name,
                     flyerId: null,
                     showMap: created.show_map ?? show_map,
+                    eventDate: created.event_date ?? event_date,
+                    eventTime: created.event_time ?? event_time,
+                    eventTimezone: created.event_timezone ?? event_timezone,
                 },
             };
             // Optional flyer: upload it onto the event, then record it as the

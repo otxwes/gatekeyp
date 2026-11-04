@@ -43,6 +43,9 @@ class CreateEventRequest(BaseModel):
     location_data: str | None = Field(default=None, max_length=1024)
     organizer_name: str = Field(default="", max_length=128)
     show_map: bool = True
+    event_date: str | None = Field(default=None, max_length=10)
+    event_time: str | None = Field(default=None, max_length=5)
+    event_timezone: str = Field(default="", max_length=12)
 
 
 class SetEventMapRequest(BaseModel):
@@ -380,6 +383,9 @@ def create_app(  # noqa: C901, PLR0915 - FastAPI app factory with many routes
                 location_data=request.location_data,
                 organizer_name=request.organizer_name,
                 show_map=request.show_map,
+                event_date=request.event_date,
+                event_time=request.event_time,
+                event_timezone=request.event_timezone,
             )
         except EventLifecycleError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err

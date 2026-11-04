@@ -181,6 +181,9 @@ class OrganizerPage:
         *,
         location: str = "",
         show_map: bool = True,
+        date: str = "",
+        time: str = "",
+        timezone: str = "",
     ) -> "EventHandle":
         """Drive `#create-event-form`; the org key arrives on the wire, and the
         fresh (locked) organizer card modal is completed via its download."""
@@ -189,6 +192,12 @@ class OrganizerPage:
         self.page.fill("#description", description)
         if location:
             self.page.fill("#location-data", location)
+        if date:
+            self.page.fill("#create-date", date)
+        if time:
+            self.page.fill("#create-time", time)
+        if timezone:
+            self.page.fill("#create-timezone", timezone)
         if not show_map:
             self.page.uncheck("#show-map")
         self.page.click("#create-btn")

@@ -1021,3 +1021,7 @@ node --check web/app.js
 - `uv run pytest tests/e2e -m e2e -q` → 59 passed
 - `uv run ruff check src tests` → clean
 - `node --check web/app.js` → OK
+
+Follow-up (2026-11-04): the `/organize` create form now accepts date, time,
+and timezone at creation (API `CreateEventRequest` + lifecycle `create_event`
++ `add_event`); covered by unit and e2e tests.

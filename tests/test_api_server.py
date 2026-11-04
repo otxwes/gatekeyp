@@ -577,3 +577,46 @@ class TestLiteWithdrawal:
             assert created.status_code == 201
             event_id = created.json()["event_id"]
             assert client.get(f"/i/{event_id}").status_code == 200
+
+
+class TestCreateEventScheduleFields:
+    def test_create_event_accepts_schedule_fields(self, client):
+        response = client.post(
+            "/api/events",
+            json={
+                "title": "Timed Night",
+                "description": "Has a schedule",
+                "organizer_id": "@theo:nyc",
+                "event_date": "2026-12-31",
+                "event_time": "19:30",
+                "event_timezone": "EST",
+            },
+        )
+
+        assert response.status_code == 200
+        created = response.json()
+        assert created["event_date"] == "2026-12-31"
+        assert created["event_time"] == "19:30"
+        assert created["event_timezone"] == "EST"
+
+        details = client.get(
+            f"/api/events/{created['event_id']}",
+            params={"organizer_key": created["organizer_key"]},
+        )
+        event = details.json()["event"]
+        assert event["event_date"] == "2026-12-31"
+        assert event["event_time"] == "19:30"
+        assert event["event_timezone"] == "EST"
+
+    def test_create_event_rejects_bad_time(self, client):
+        response = client.post(
+            "/api/events",
+            json={
+                "title": "Bad time",
+                "description": "d",
+                "organizer_id": "@theo:nyc",
+                "event_time": "7pm",
+            },
+        )
+
+        assert response.status_code == 400

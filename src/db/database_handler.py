@@ -617,6 +617,9 @@ class DatabaseHandler:
         *,
         location_geo: str | None = None,
         show_map: bool = True,
+        event_date: str | None = None,
+        event_time: str | None = None,
+        event_timezone: str = "",
     ) -> None:
         """Add an event, encrypting location and coordinates at rest."""
         now = self._now_iso()
@@ -626,8 +629,9 @@ class DatabaseHandler:
             """
             INSERT INTO events
                 (event_id, title, description, organizer_id, location_data, created_at,
-                 slug, organizer_name, location_geo, show_map)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 slug, organizer_name, location_geo, show_map,
+                 event_date, event_time, event_timezone)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 event_id,
@@ -640,6 +644,9 @@ class DatabaseHandler:
                 organizer_name or "",
                 encrypted_geo,
                 1 if show_map else 0,
+                event_date,
+                event_time,
+                event_timezone or "",
             ),
         )
         self.connection.commit()

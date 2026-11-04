@@ -850,3 +850,42 @@ class TestRedactEvent:
         redacted = redact_event(event, is_organizer=True)
 
         assert redacted == event
+
+
+class TestCreateEventSchedule:
+    def test_create_event_stores_schedule_fields(self, lifecycle, db):
+        """Date, time, and timezone are accepted at creation."""
+        result = lifecycle.create_event(
+            title="Timed Gathering",
+            description="Has a schedule",
+            organizer_id="@user:test",
+            event_date="2026-12-31",
+            event_time="19:30",
+            event_timezone="EST",
+        )
+
+        assert result["event_date"] == "2026-12-31"
+        assert result["event_time"] == "19:30"
+        assert result["event_timezone"] == "EST"
+        stored = db.get_event(result["event_id"])
+        assert stored["event_date"] == "2026-12-31"
+        assert stored["event_time"] == "19:30"
+        assert stored["event_timezone"] == "EST"
+
+    def test_create_event_rejects_bad_date(self, lifecycle):
+        with pytest.raises(EventLifecycleError, match="YYYY-MM-DD"):
+            lifecycle.create_event(
+                title="Bad date",
+                description="d",
+                organizer_id="@user:test",
+                event_date="31/12/2026",
+            )
+
+    def test_create_event_rejects_long_timezone(self, lifecycle):
+        with pytest.raises(EventLifecycleError, match="12"):
+            lifecycle.create_event(
+                title="Bad tz",
+                description="d",
+                organizer_id="@user:test",
+                event_timezone="GMT+123456789",
+            )

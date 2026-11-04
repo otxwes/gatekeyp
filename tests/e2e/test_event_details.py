@@ -152,3 +152,28 @@ def test_details_survive_workspace_reload(organizer_context, server):
     expect(org.page.locator("#details-description")).to_have_value("Edited description")
     expect(org.page.locator("#details-date")).to_have_value("2027-01-02")
     org.watcher.expect_clean()
+
+
+def test_create_form_accepts_schedule_fields(organizer_context, attendee_context, server):
+    """Date, time, and timezone can be set on the create form, not just edited
+    afterwards, and reach the attendee page."""
+    org = OrganizerPage(organizer_context.new_page(), server.base_url)
+    handle = org.create_event(
+        "Created With Schedule",
+        "Made in one step",
+        date="2027-02-14",
+        time="20:00",
+        timezone="PST",
+    )
+
+    key = org.mint_key("Schedule Guest")
+    att = AttendeePage(attendee_context.new_page(), server.base_url)
+    att.unlock_by_stego_png(handle.attendee_card_png(key))
+    att.expect_event_title("Created With Schedule")
+    expect(att.page.locator(".ep-when")).to_have_text("2027-02-14 · 20:00 PST")
+
+    data = _access_payload(att.page, key, handle.event_id)
+    assert data["event_date"] == "2027-02-14"
+    assert data["event_time"] == "20:00"
+    assert data["event_timezone"] == "PST"
+    att.watcher.expect_clean()

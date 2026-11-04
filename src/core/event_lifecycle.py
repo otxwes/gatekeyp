@@ -224,6 +224,9 @@ class EventLifecycleManager:
         organizer_key_days: int = DEFAULT_ORGANIZER_KEY_DAYS,
         organizer_name: str = "",
         show_map: bool = True,
+        event_date: str | None = None,
+        event_time: str | None = None,
+        event_timezone: str = "",
     ) -> dict:
         """
         Create a new event with a organizer key.
@@ -253,6 +256,13 @@ class EventLifecycleManager:
             message = "Organizer ID cannot be empty"
             raise EventLifecycleError(message)
 
+        event_date = _validated_date(event_date)
+        event_time = _validated_time(event_time)
+        event_timezone = (event_timezone or "").strip()
+        if len(event_timezone) > MAX_TIMEZONE_LABEL:
+            message = f"Timezone label must be {MAX_TIMEZONE_LABEL} characters or fewer"
+            raise EventLifecycleError(message)
+
         # Generate event ID
         event_id = self._generate_id("event")
         slug = self._make_slug(title)
@@ -276,6 +286,9 @@ class EventLifecycleManager:
             organizer_name=organizer_name,
             location_geo=location_geo,
             show_map=show_map,
+            event_date=event_date,
+            event_time=event_time,
+            event_timezone=event_timezone,
         )
 
         # Generate a organizer key for this event
@@ -304,6 +317,9 @@ class EventLifecycleManager:
             "expires_at": expires_at,
             "show_map": show_map,
             "map_available": bool(location_geo) and bool(self.map_style_url),
+            "event_date": event_date,
+            "event_time": event_time,
+            "event_timezone": event_timezone,
         }
 
     # ------------------------------------------------------------------
