@@ -1025,3 +1025,24 @@ node --check web/app.js
 Follow-up (2026-11-04): the `/organize` create form now accepts date, time,
 and timezone at creation (API `CreateEventRequest` + lifecycle `create_event`
 + `add_event`); covered by unit and e2e tests.
+
+---
+
+# Round 9 (2026-11-04) — printed public-URL stamp on both card types
+
+Owner request: put the agreed QR stamp (`art-cringstar8`: 29×29 ECC M,
+halftone field, circular anchor borders with 8-point-star centres, no
+knockout) on **both** card types, large at the bottom without dominating.
+
+- [x] Baked the verified matrix into `web/invite_card.js` (no QR encoder ships;
+      payload is the public site URL only, never key material).
+- [x] 260px stamp at (270, 880) with a 4-module quiet zone as its own paper
+      ground (reads on full-bleed photos); bottom keyhole removed; organizer
+      note moved above the stamp.
+- [x] `tests/card_ref.py` pins the geometry, quiet zone, module count, and a
+      SHA-256 of the matrix rows; `test_invite_card_cover.py` enforces the
+      lock-step against the shipped JS.
+- [x] Threat model updated: the stamp is exempt from the "no printed QR"
+      rule because it carries no key material.
+- [x] Verified: both card types decode the stamp (zxing-cpp, 260px); unit 403
+      passed; e2e 61 passed; ruff clean; `node --check` OK.

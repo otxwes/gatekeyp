@@ -5,8 +5,9 @@
  * keyhole mark), then passes the PNG through `gkpStego.embed()` so the invite
  * payload (`event_id\naccess_key`) is hidden in the pixels. The resulting PNG
  * downloads as the attendee's credential — drop it at the door to unlock.
- * No printed QR (Phase B): the stego layer is the only channel — a scannable
- * key is a secrecy downgrade, so the card carries no visible key material.
+ * The card carries a printed stamp at the bottom: a baked QR for the PUBLIC
+ * cellar URL only (no key material), so a printed flyer can be scanned to the
+ * site. The stego layer remains the only channel for the key itself.
  *
  * Depends on: gkpStego (web/stego.js).
  */
@@ -16,6 +17,44 @@
 window.gkpInviteCard = (function () {
     const CARD_W = 800;
     const CARD_H = 1200;
+
+    // Printed stamp: the public cellar URL only, never key material. The
+    // matrix is baked (29x29, ECC M) so no QR encoder ships to the browser.
+    const STAMP_SIZE = 260;
+    const STAMP_X = 270;
+    const STAMP_Y = 880;
+    const STAMP_QUIET = 4;
+    const STAMP_ROWS = [
+        "11111110111110111000001111111",
+        "10000010111011000000101000001",
+        "10111010001010111011001011101",
+        "10111010011001001100101011101",
+        "10111010010111110011101011101",
+        "10000010000001000000101000001",
+        "11111110101010101010101111111",
+        "00000000000010010010100000000",
+        "01000011101110010110110000011",
+        "01010100100100101111000110010",
+        "01011110001001110000111000000",
+        "11101101100101110011101101000",
+        "01101011100011000000111000010",
+        "10001001011111101111101011011",
+        "10100110110100000100101100000",
+        "01110101000101101011100011101",
+        "10101110100011100100000001100",
+        "11000101000010100011101011001",
+        "11101010101010111111100000001",
+        "10000101101000000000011011011",
+        "10010010001011010101111110101",
+        "00000000100011110100100011110",
+        "11111110101000010001101010000",
+        "10000010010001011001100011011",
+        "10111010011111001001111110000",
+        "10111010000000000011100101010",
+        "10111010010111011111111111010",
+        "10000010111001000010010011101",
+        "11111110001010110111001011100",
+    ];
 
     // Design tokens — mirrors the web design system (monochrome, paper & ink).
     const INK = "#111111";
@@ -291,7 +330,65 @@ window.gkpInviteCard = (function () {
         ctx.globalAlpha = 0.72;
         ctx.font = "italic 400 17px Georgia, 'Times New Roman', serif";
         ctx.textAlign = "center";
-        ctx.fillText("The one key this event answers to. Keep it private.", CARD_W / 2, CARD_H - 128);
+        ctx.fillText("The one key this event answers to. Keep it private.", CARD_W / 2, STAMP_Y - 30);
+        ctx.restore();
+    }
+
+    /**
+     * The printed stamp: halftone field, circular anchor borders with 8-point
+     * star centres, baked 29x29 matrix. The paper ground includes the 4-module
+     * quiet zone, so the stamp reads on full-bleed photos without a plate.
+     * Encodes the public cellar URL only.
+     */
+    function drawStamp(ctx, x, y, size) {
+        const n = STAMP_ROWS.length;
+        const unit = size / (n + STAMP_QUIET * 2);
+        ctx.save();
+        ctx.fillStyle = PAPER;
+        ctx.fillRect(x, y, size, size);
+        ctx.fillStyle = INK;
+        ctx.strokeStyle = INK;
+
+        const px = (i) => x + (STAMP_QUIET + i) * unit;
+        const py = (i) => y + (STAMP_QUIET + i) * unit;
+        const isFinder = (r, c) =>
+            (r < 7 && c < 7) || (r < 7 && c >= n - 7) || (r >= n - 7 && c < 7);
+        const mid = n / 2;
+        for (let r = 0; r < n; r++) {
+            for (let c = 0; c < n; c++) {
+                if (STAMP_ROWS[r][c] !== "1" || isFinder(r, c)) continue;
+                const dr = r - mid + 0.5;
+                const dc = c - mid + 0.5;
+                const dist = Math.sqrt(dr * dr + dc * dc) / (n * 0.707);
+                const rad = (dist < 0.55 ? 0.46 : 0.30) * unit;
+                ctx.beginPath();
+                ctx.arc(px(c) + unit / 2, py(r) + unit / 2, rad, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        const eye = (x0, y0) => {
+            const cx = x0 + unit * 3.5;
+            const cy = y0 + unit * 3.5;
+            ctx.lineWidth = unit;
+            ctx.beginPath();
+            ctx.arc(cx, cy, unit * 3, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            for (let k = 0; k < 16; k++) {
+                const ang = -Math.PI / 2 + (k * Math.PI) / 8;
+                const radius = k % 2 === 0 ? unit * 1.5 : unit * 0.95;
+                const sx = cx + Math.cos(ang) * radius;
+                const sy = cy + Math.sin(ang) * radius;
+                if (k === 0) ctx.moveTo(sx, sy);
+                else ctx.lineTo(sx, sy);
+            }
+            ctx.closePath();
+            ctx.fill();
+        };
+        eye(px(0), py(0));
+        eye(px(n - 7), py(0));
+        eye(px(0), py(n - 7));
         ctx.restore();
     }
 
@@ -337,12 +434,9 @@ window.gkpInviteCard = (function () {
             drawCoverBand(ctx, 48, 120, CARD_W - 96, 600, o.cover, o.coverImage || null);
         }
 
-        // No printed QR on the card (Phase B): the stego layer is the only
-        // channel — a scannable key would be a secrecy downgrade.
-
-        // Bottom ornament: a single keyhole, centered. Full-bleed photo cards
-        // skip it — the art runs edge to edge.
-        if (!fullBleed) drawKeyhole(ctx, CARD_W / 2, CARD_H - 70, 12);
+        // Printed stamp: the public cellar URL only. Its quiet zone is part of
+        // the stamp's paper ground, so it reads on full-bleed photos too.
+        drawStamp(ctx, STAMP_X, STAMP_Y, STAMP_SIZE);
 
         // Organizer card stamp (drawn on top of any cover, including full-bleed
         // photos — the chip carries its own paper ground so it always reads).

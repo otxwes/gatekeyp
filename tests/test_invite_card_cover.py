@@ -98,6 +98,28 @@ def test_app_picker_presets_match_oracle() -> None:
     assert ids == set(card_ref.COVER_PRESET_IDS)
 
 
+def test_stamp_geometry_and_matrix_match_oracle() -> None:
+    """The printed stamp's box, quiet zone, and baked matrix must not drift."""
+    import hashlib
+
+    js = (_WEB / "invite_card.js").read_text(encoding="utf-8")
+    for name, expected in (
+        ("STAMP_SIZE", card_ref.STAMP_SIZE),
+        ("STAMP_X", card_ref.STAMP_X),
+        ("STAMP_Y", card_ref.STAMP_Y),
+        ("STAMP_QUIET", card_ref.STAMP_QUIET),
+    ):
+        match = re.search(rf"const {name} = (\d+);", js)
+        assert match, name
+        assert int(match.group(1)) == expected, name
+
+    rows = re.findall(r'^\s+"([01]{29})",$', js, re.MULTILINE)
+    assert len(rows) == card_ref.STAMP_MODULES
+    assert all(len(row) == card_ref.STAMP_MODULES for row in rows)
+    digest = hashlib.sha256("\n".join(rows).encode()).hexdigest()
+    assert digest == card_ref.STAMP_MATRIX_SHA256
+
+
 def test_contain_fit_golden_vectors() -> None:
     # (src_w, src_h, dst_w, dst_h) -> expected (dx, dy, dw, dh).
     cases = [
@@ -224,9 +246,12 @@ def test_invite_card_full_bleed_blurs_letterbox_without_outline() -> None:
     assert "function drawBlurBackdrop(" in js
 
 
-def test_invite_card_photo_cards_skip_paper_ornaments() -> None:
+def test_invite_card_photo_cards_skip_paper_ornaments_but_keep_the_stamp() -> None:
     """Full-card photos must not show the dotted paper, keyline frame or the
-    keyhole ornaments on top of the art."""
+    old bottom keyhole. The printed stamp is the deliberate exception: it is
+    drawn on every card and carries its own paper quiet zone."""
     js = (_WEB / "invite_card.js").read_text(encoding="utf-8")
     assert re.search(r"if \(!fullBleed\) \{\s*\n\s*drawDots\(", js)
-    assert re.search(r"if \(!fullBleed\) drawKeyhole\(ctx, CARD_W / 2, CARD_H - 70, 12\);", js)
+    assert "drawKeyhole(ctx, CARD_W / 2, CARD_H - 70, 12)" not in js
+    assert re.search(r"^\s+drawStamp\(ctx, STAMP_X, STAMP_Y, STAMP_SIZE\);", js, re.MULTILINE)
+    assert "if (!fullBleed) drawStamp" not in js

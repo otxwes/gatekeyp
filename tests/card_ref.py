@@ -22,6 +22,16 @@ COVER_PRESET_IDS = ("none", "hatch", "keyline", "dots", "keyhole")
 CARD_W = 800
 CARD_H = 1200
 
+# Printed stamp — must stay in lock-step with web/invite_card.js. It encodes
+# ONLY the public cellar URL (never key material), so the matrix is baked.
+STAMP_SIZE = 260
+STAMP_X = 270
+STAMP_Y = 880
+STAMP_QUIET = 4
+STAMP_MODULES = 29
+STAMP_URL = "https://cellar.otxwes.nohost.me"
+STAMP_MATRIX_SHA256 = "4ad4a9aec38b2c865b289f0f3d0b2fbe657abe481043b5366bbf62f6bcb92472"
+
 
 def cover_fit(
     src_w: float, src_h: float, dst_w: float, dst_h: float
