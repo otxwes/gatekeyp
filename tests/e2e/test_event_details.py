@@ -177,3 +177,33 @@ def test_create_form_accepts_schedule_fields(organizer_context, attendee_context
     assert data["event_time"] == "20:00"
     assert data["event_timezone"] == "PST"
     att.watcher.expect_clean()
+
+
+def test_visibility_toggles_sit_under_their_fields(organizer_context, server):
+    """Each show/hide toggle follows the field it controls, not a shared row."""
+    org = OrganizerPage(organizer_context.new_page(), server.base_url)
+    org.create_event("Order Check", "Checkbox order")
+    org.tab("details")
+    org.page.locator("#details-form").wait_for(state="visible")
+
+    tops = org.page.evaluate(
+        """() => {
+            const ids = [
+              'details-description', 'details-show-description',
+              'details-location', 'details-show-location',
+              'details-date', 'details-show-date',
+              'details-time', 'details-timezone', 'details-show-time',
+            ];
+            const out = {};
+            for (const id of ids) {
+              const el = document.getElementById(id);
+              out[id] = el.getBoundingClientRect().top;
+            }
+            return out;
+        }"""
+    )
+    assert tops["details-description"] < tops["details-show-description"] < tops["details-location"]
+    assert tops["details-location"] < tops["details-show-location"] < tops["details-date"]
+    assert tops["details-date"] < tops["details-show-date"] < tops["details-time"]
+    assert tops["details-time"] < tops["details-timezone"] < tops["details-show-time"]
+    org.watcher.expect_clean()

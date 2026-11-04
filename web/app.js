@@ -771,18 +771,18 @@ async function wsDetails(main) {
         `<input type="text" id="details-title" name="title" maxlength="256" required autocomplete="off"></div>` +
         `<div class="field"><label for="details-description">Description</label>` +
         `<textarea id="details-description" name="description" rows="4" maxlength="65536"></textarea></div>` +
+        `<div class="field field-check"><label for="details-show-description"><input type="checkbox" id="details-show-description" name="description_visible"> Show description</label></div>` +
         `<div class="field"><label for="details-location">Location</label>` +
         `<input type="text" id="details-location" name="location_data" maxlength="1024" autocomplete="off"></div>` +
+        `<div class="field field-check"><label for="details-show-location"><input type="checkbox" id="details-show-location" name="location_visible"> Show location</label></div>` +
         `<div class="field"><label for="details-date">Date</label>` +
         `<input type="date" id="details-date" name="event_date"></div>` +
+        `<div class="field field-check"><label for="details-show-date"><input type="checkbox" id="details-show-date" name="date_visible"> Show date</label></div>` +
         `<div class="field"><label for="details-time">Time</label>` +
         `<input type="time" id="details-time" name="event_time"></div>` +
         `<div class="field"><label for="details-timezone">Timezone label</label>` +
         `<input type="text" id="details-timezone" name="event_timezone" maxlength="12" autocomplete="off" placeholder="EST"></div>` +
-        `<div class="field field-check"><label for="details-show-description"><input type="checkbox" id="details-show-description" name="description_visible"> Show description</label></div>` +
-        `<div class="field field-check"><label for="details-show-location"><input type="checkbox" id="details-show-location" name="location_visible"> Show location</label></div>` +
-        `<div class="field field-check"><label for="details-show-date"><input type="checkbox" id="details-show-date" name="date_visible"> Show date</label></div>` +
-        `<div class="field field-check"><label for="details-show-time"><input type="checkbox" id="details-show-time" name="time_visible"> Show time</label></div>` +
+        `<div class="field field-check"><label for="details-show-time"><input type="checkbox" id="details-show-time" name="time_visible"> Show time &amp; timezone</label></div>` +
         `<p id="details-note" class="form-note" role="status" aria-live="polite"></p>` +
         `<button type="submit" class="btn btn-primary" id="details-save">Save</button>` +
         `</form>` +
