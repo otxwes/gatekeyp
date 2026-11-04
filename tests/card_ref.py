@@ -29,8 +29,8 @@ STAMP_X = 270
 STAMP_Y = 880
 STAMP_QUIET = 4
 STAMP_MODULES = 29
-STAMP_URL = "https://cellar.otxwes.nohost.me"
-STAMP_MATRIX_SHA256 = "4ad4a9aec38b2c865b289f0f3d0b2fbe657abe481043b5366bbf62f6bcb92472"
+STAMP_URL = "https://cellar.otxwes.nohost.me/#/join"
+STAMP_MATRIX_SHA256 = "158f13c69c3a5356228fed25198905c4a8c4d4d24149db7072c861156f16f29c"
 
 
 def cover_fit(
