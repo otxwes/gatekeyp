@@ -690,7 +690,8 @@ class DatabaseHandler:
             if column.endswith("_visible"):
                 value: object = 1 if raw_value else 0
             elif column == "location_data":
-                value = self._encrypt(raw_value) if raw_value else None
+                text = str(raw_value) if raw_value else ""
+                value = self._encrypt(text) if text else None
             else:
                 value = raw_value
             self.cursor.execute(statements[column], (value, event_id))
