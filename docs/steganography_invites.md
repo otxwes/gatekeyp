@@ -123,6 +123,8 @@ decodes any valid PNG an attendee brings.
 |---|---|
 | `web/stego.js` | zero-dependency codec: `embed` / `extract` / `makePayload` / `parsePayload` / `classifyInvite` / `inviteRejectReason` |
 | `web/invite_card.js` | canvas card renderer (`render`) + embed-and-download (`download`) + cover engine (`coverFit`, `containFit`, `backdropCrop`, `drawImageFullCard`, `drawPreset`, `drawCoverBand`, `renderCover`, `loadCoverImage`) |
+| `web/app.js` | RSVP-tab card-style picker + live preview; `coverFromCardStyle`; locked attendee/single-key card modal (no cover chips) |
+| `src/rsvp/service.py` + `src/rsvp/routes.py` | card-style validation, settings/public-view normalization, public `rsvp/card-cover` route |
 | `tests/stego_ref.py` | stdlib-only Python mirror (the oracle) + `--write-fixture` / `--decode` CLI |
 | `tests/test_stego_invites.py` | Hypothesis round-trips, golden vectors, filter/CRC coverage, corruption recovery, fixture decode |
 | `tests/card_ref.py` | stdlib-only mirror of the cover math (`cover_fit`) + canonical preset ids |
@@ -167,16 +169,22 @@ arch -x86_64 python -m pytest -q               # full suite (Apple Silicon)
 
 ### Organizer (creation + Access-keys tab)
 
-- **Create an event / mint a key / approve an RSVP** → the fresh key's card
-  modal opens **immediately**: the one-shot warning, the cover picker (preset
-  monochrome patterns — hatch / keyline / dots / keyhole — drawn on the
-  704×600 hero band, or the organizer's own image spread across the **entire
-  card surface**, *contain-fit*, letterboxed by a blurred extension of the
-  picture), a live 200×300 preview, then **Download card**. Closing without
-  downloading destroys the key — the server stored only a fingerprint. The
-  cover never leaves the tab; the hidden key is untouched.
-- The **About-tab organizer card action** re-issues the organizer card from the
-  tab's session (no key re-entry, no warning — that card is not one-shot).
+- **Create an event** → the fresh organizer card modal opens **immediately**
+  with the one-shot warning and the cover picker (preset monochrome patterns —
+  hatch / keyline / dots / keyhole — drawn on the 704×600 hero band, or the
+  organizer's own image spread across the **entire card surface**,
+  *contain-fit*, letterboxed by a blurred extension of the picture), a live
+  200×300 preview, then **Download card**. Closing without downloading destroys
+  the key — the server stored only a fingerprint. The cover never leaves the
+  tab; the hidden key is untouched.
+- **Mint a key / approve an RSVP** → the fresh attendee card modal opens
+  **immediately** with the event's card style already applied and **no cover
+  picker**: the organizer chose the look once, in the RSVP funnel tab (None,
+  a preset, the event flyer, or a dedicated uploaded image). The same style is
+  used for single and bulk key generation. The key still never leaves the tab.
+- The **workspace organizer-card action** re-issues the organizer card from the
+  tab's session (no key re-entry, no warning — that card is not one-shot) and
+  keeps its own picker, defaulting to the event style.
 - The card is **text-free and scannable-free** (minimalist pass + Phase B):
   preset/paper cards carry the keyhole ornaments, dotted paper and keyline
   frame with a hero cover band (or plain dotted paper when no cover); a
@@ -220,8 +228,16 @@ arch -x86_64 python -m pytest -q               # full suite (Apple Silicon)
 - **Key parity.** Expiry, revocation and rate limiting are unchanged; the card
   is only a distribution format for the same bearer credential. A revoked key
   still fails at the gateway even though the card looks fine.
-- **No new server surface.** `stego.js`/`invite_card.js` are static files
-  served by the existing `web/` mount; no new endpoints, no key storage.
+- **Card style is server-backed, not a new key surface.** The organizer picks
+  one style per event (`events.card_style`): none, a preset, the event flyer,
+  or a dedicated image asset. It is set through the organizer-gated
+  `POST /api/events/{event_id}/rsvp/card-style`; the organizer settings GET and
+  the public RSVP view expose the normalized style so attendee browsers can
+  render it. A dedicated image is served unauthenticated on
+  `GET /api/events/{event_id}/rsvp/card-cover` while the event is live (same
+  headers and 410-after-wipe behavior as the flyer). The style holds no key
+  material; `stego.js`/`invite_card.js` remain static files with no key
+  storage.
 - **Third-party audit.** No vendored third-party assets remain (Phase B
   removed `qrcode-generator` and `jsQR` along with the QR path); every line
   shipped in `web/` is first-party.
@@ -236,6 +252,8 @@ arch -x86_64 python -m pytest -q               # full suite (Apple Silicon)
 - The stego placement is deterministic (fixed seed); this is deliberate — the
   key is the secret, not the placement — and keeps the format auditable and
   the two implementations in lock-step.
-- Covers are chosen per-download and not persisted (no server surface, and
-  cover files are never uploaded); a remembered per-event cover would need
-  storage and is deliberately out of scope.
+- The card style is chosen by the organizer per event and persisted as JSON on
+  the event row. It applies to cards generated after the save; cards already
+  downloaded keep their pixels because the raw key exists only inside them.
+  A dedicated image is stored as an event media asset and deleted with the
+  event by the existing wipe cascade.

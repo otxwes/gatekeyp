@@ -1243,3 +1243,33 @@ The OpenFreeMap/OpenMapTiles/OSM attribution line stays (license
 requirement). While doing this, the same container-collapse fix was applied
 to the lite page's inline CSS, and its e2e test now asserts the container
 geometry too.
+
+## Organizer-controlled invite-card style (2026-11-08)
+
+**What was done:** the organizer sets one card style per event in the RSVP
+funnel tab; every attendee card (RSVP-submitted, single, bulk) uses it and
+attendees get no cover picker. The organizer's own card keeps its picker and
+defaults to the event style.
+
+**Implementation:**
+- `events.card_style` JSON (`none` / `preset:id` / `flyer` / `image:asset_id`)
+  via `_ensure_column`; `get_media_asset_meta` (metadata only, no blob).
+- `POST /api/events/{id}/rsvp/card-style` validates preset ids, flyer
+  presence, and image ownership/MIME; the organizer settings GET and the
+  public RSVP view normalize with safe fallbacks;
+  `GET /api/events/{id}/rsvp/card-cover` serves a dedicated image with the
+  flyer's caching/ETag/410 behavior.
+- `web/app.js`: `coverFromCardStyle`; `openCardCoverModal` gains an initial
+  cover + `lockedCover` (no chips); RSVP-tab "Invite card" section with a
+  live 200×300 preview and explicit save; single/bulk key cards use the
+  event style; the organizer card keeps the picker.
+- `web/style.css`: `#rsvp-card-preview` shares the modal preview styling.
+
+**Verification:** 430 unit tests, 65 E2E, `ruff check src tests` clean,
+`node --check web/app.js`.
+
+**Lesson:** the card style is a public aesthetic setting, not key material.
+The raw keys exist only inside downloaded cards, so a style change cannot
+restyle existing cards — only cards generated after the save. The public
+card-cover route must fall back to `none` when the referenced asset is gone
+and 410 after a wipe.

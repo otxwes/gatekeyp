@@ -55,10 +55,12 @@ gatekeyp is designed to help communities organize events while prioritizing:
     post on the bulletin board, comment, and view media — no account required
   - Invite cards (stego-only, Phase B): the access key is hidden in the
     card's pixels by a steganographic codec (`web/stego.js` +
-    `web/invite_card.js`); a client-side cover picker adds a preset
-    monochrome pattern (hatch / keyline / dots / keyhole) or an uploaded
-    image spread across the whole card — the key never leaves the tab, and
-    nothing scannable is printed on the card
+    `web/invite_card.js`). The organizer sets one card style per event in the
+    RSVP funnel tab — a preset monochrome pattern (hatch / keyline / dots /
+    keyhole), the event flyer, or a dedicated uploaded image — and every
+    attendee card (RSVP, single, bulk) uses it. Attendees never get a cover
+    picker; the key never leaves the tab, and nothing scannable is printed on
+    the card
   - Door invite decode: drop a card PNG or paste the `gkp:` key line; decode
     is local, with honest rejection + share guidance when a card can't be read
   - Keys held only in the session tab (sessionStorage); no third-party tracking or analytics
@@ -76,7 +78,7 @@ gatekeyp is designed to help communities organize events while prioritizing:
 │   └── db/          # Database handler
 ├── tests/           # Unit, integration, property-based, and security tests
 ├── web/             # Static web UI (hash-routed SPA, no build step)
-│   ├── app.js       # SPA: organizer desk + attendee door + cover picker
+│   ├── app.js       # SPA: organizer desk + attendee door + card-style controls
 │   ├── invite_card.js  # Invite-card renderer + cover engine + key embed
 │   └── stego.js     # Steganographic codec (hide / reveal the key in pixels)
 ├── pyproject.toml   # Modern dependency management (uv)
