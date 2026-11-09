@@ -73,6 +73,17 @@ class RsvpSettingsRequest(BaseModel):
     auto_approve: int | None = Field(default=None, ge=0, le=MAX_AUTO_APPROVE)
 
 
+class RsvpCardStyleRequest(BaseModel):
+    """Set the event's invite-card style (organizer-gated)."""
+
+    organizer_key: str = Field(
+        ...,
+        min_length=1,
+        max_length=2048,
+    )
+    style: dict = Field(...)
+
+
 def build_rsvp_router(  # noqa: C901, PLR0915 - many routes
     service: RsvpService,
 ) -> APIRouter:
@@ -166,6 +177,34 @@ def build_rsvp_router(  # noqa: C901, PLR0915 - many routes
             },
         )
 
+    @router.get("/api/events/{event_id}/rsvp/card-cover")
+    def rsvp_card_cover(event_id: str) -> Response:
+        """Serve the organizer's dedicated card image (public, no key)."""
+        try:
+            asset = service.get_card_cover_asset(event_id)
+        except RsvpNotFoundError as err:
+            message = "No card cover for this event"
+            raise HTTPException(status_code=404, detail=message) from err
+        except RsvpGoneError as err:
+            raise HTTPException(status_code=410, detail="This event has ended") from err
+        except DecryptionError as err:
+            message = "Card cover could not be decrypted"
+            raise HTTPException(status_code=500, detail=message) from err
+        filename = quote(asset["filename"])
+        return Response(
+            content=asset["data"],
+            media_type=asset["mime_type"],
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                # Same public, immutable-per-asset caching as the flyer. The
+                # image carries no key material and stops being served when
+                # the event is wiped or the style changes.
+                "Cache-Control": "public, max-age=86400",
+                "ETag": f'"{asset["id"]}"',
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
     @router.post("/api/events/{event_id}/rsvp/decide")
     def decide_rsvp(event_id: str, body: RsvpDecisionRequest) -> dict:
         """Approve or deny an RSVP (organizer-gated)."""
@@ -196,6 +235,16 @@ def build_rsvp_router(  # noqa: C901, PLR0915 - many routes
             )
         except RsvpValidationError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err
+
+    @router.post("/api/events/{event_id}/rsvp/card-style")
+    def update_rsvp_card_style(event_id: str, body: RsvpCardStyleRequest) -> dict:
+        """Set the event's invite-card style (organizer-gated)."""
+        try:
+            return service.update_rsvp_card_style(body.organizer_key, event_id, body.style)
+        except RsvpValidationError as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+        except RsvpNotFoundError as err:
+            raise HTTPException(status_code=404, detail=str(err)) from err
 
     @router.get("/api/events/{event_id}/rsvp/list")
     def list_rsvps(event_id: str, key: str) -> list[dict]:

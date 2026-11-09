@@ -121,6 +121,29 @@ def _set_flyer_over_http(client: TestClient, created: dict) -> str:
     return asset_id
 
 
+def _upload_media_over_http(
+    client: TestClient, created: dict, *, filename: str = "card.png"
+) -> str:
+    """Upload an image asset to the event and return its id."""
+    uploaded = client.post(
+        f"/api/events/{created['event_id']}/media",
+        params={"key": created["organizer_key"]},
+        files={"file": (filename, _FLYER_BYTES, "image/png")},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    return uploaded.json()["id"]
+
+
+def _set_card_style_over_http(client: TestClient, created: dict, style: dict):
+    """Set the event card style through the organizer route."""
+    response = client.post(
+        f"/api/events/{created['event_id']}/rsvp/card-style",
+        json={"organizer_key": created["organizer_key"], "style": style},
+    )
+    assert response.status_code == 200, response.text
+    return response
+
+
 class TestSubmitRsvp:
     """Attendee submissions pre-mint grant-free keys, shown exactly once."""
 
@@ -783,6 +806,8 @@ class TestAppWiring:
             "/api/events/{event_id}/rsvp/decide",
             "/api/events/{event_id}/rsvp/settings",
             "/api/events/{event_id}/rsvp/list",
+            "/api/events/{event_id}/rsvp/card-style",
+            "/api/events/{event_id}/rsvp/card-cover",
         }
     )
 
@@ -915,6 +940,80 @@ class TestRoutes:
         """Live events without a flyer report 404 on the flyer route."""
         created = _make_event(lifecycle)
         assert client.get(f"/api/events/{created['event_id']}/rsvp/flyer").status_code == 404
+
+    def test_card_style_roundtrip_over_http(self, client, lifecycle):
+        """The organizer sets a style; settings and the public view see it."""
+        created = _make_event(lifecycle)
+        response = _set_card_style_over_http(client, created, {"type": "preset", "id": "dots"})
+        assert response.json() == {
+            "event_id": created["event_id"],
+            "card_style": {"type": "preset", "id": "dots"},
+        }
+        settings = client.get(
+            f"/api/events/{created['event_id']}/rsvp/settings",
+            params={"key": created["organizer_key"]},
+        ).json()
+        assert settings["card_style"] == {"type": "preset", "id": "dots"}
+        view = client.get(f"/api/events/{created['event_id']}/rsvp/view").json()
+        assert view["event"]["card_style"] == {"type": "preset", "id": "dots"}
+
+    def test_card_style_rejects_bad_input_and_key(self, client, lifecycle):
+        """Bad presets and unauthorized keys are 400, not 500."""
+        created = _make_event(lifecycle)
+        bad = client.post(
+            f"/api/events/{created['event_id']}/rsvp/card-style",
+            json={
+                "organizer_key": created["organizer_key"],
+                "style": {"type": "preset", "id": "sparkles"},
+            },
+        )
+        assert bad.status_code == 400
+        unauthorized = client.post(
+            f"/api/events/{created['event_id']}/rsvp/card-style",
+            json={"organizer_key": "local:not-a-real-key", "style": {"type": "none"}},
+        )
+        assert unauthorized.status_code == 400
+
+    def test_card_cover_served_publicly_without_key(self, client, lifecycle):
+        """The dedicated card image needs no key; bytes round-trip, cacheable."""
+        created = _make_event(lifecycle)
+        asset_id = _upload_media_over_http(client, created)
+        _set_card_style_over_http(client, created, {"type": "image", "asset_id": asset_id})
+        resp = client.get(f"/api/events/{created['event_id']}/rsvp/card-cover")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/png"
+        assert resp.headers["content-disposition"].startswith("inline")
+        assert resp.headers["cache-control"] == "public, max-age=86400"
+        assert resp.headers["etag"] == f'"{asset_id}"'
+        assert resp.headers["x-content-type-options"] == "nosniff"
+        assert resp.content == _FLYER_BYTES
+
+    def test_card_cover_404_when_absent(self, client, lifecycle):
+        """Events without an image style report 404 on the card-cover route."""
+        created = _make_event(lifecycle)
+        assert client.get(f"/api/events/{created['event_id']}/rsvp/card-cover").status_code == 404
+
+    def test_card_cover_404_after_style_change(self, client, lifecycle):
+        """Switching away from the image style stops serving the old asset."""
+        created = _make_event(lifecycle)
+        asset_id = _upload_media_over_http(client, created)
+        _set_card_style_over_http(client, created, {"type": "image", "asset_id": asset_id})
+        _set_card_style_over_http(client, created, {"type": "none"})
+        assert client.get(f"/api/events/{created['event_id']}/rsvp/card-cover").status_code == 404
+
+    def test_card_cover_410_after_wipe(self, client, lifecycle, db):
+        """A tombstoned event stops serving its card image with a 410."""
+        created = _make_event(lifecycle)
+        asset_id = _upload_media_over_http(client, created)
+        _set_card_style_over_http(client, created, {"type": "image", "asset_id": asset_id})
+        db.wipe_event(created["event_id"])
+        resp = client.get(f"/api/events/{created['event_id']}/rsvp/card-cover")
+        assert resp.status_code == 410
+        assert resp.json()["detail"] == "This event has ended"
+
+    def test_card_cover_unknown_event_is_404(self, client):
+        """Unknown event ids are 404 on the public card-cover route."""
+        assert client.get("/api/events/event_nope/rsvp/card-cover").status_code == 404
 
     def test_decide_approve_flow(self, client, lifecycle):
         """Organizer approval works end-to-end over HTTP."""
