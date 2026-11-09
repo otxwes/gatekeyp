@@ -88,8 +88,9 @@ def test_organizer_uploads_dedicated_card_art(
     attendee.watcher.expect_clean()
 
 
-def test_organizer_changes_card_style_at_any_time(organizer_context, server):
-    """The RSVP tab can save a new style later; the saved chip stays selected."""
+def test_organizer_changes_card_style_at_any_time(organizer_context, attendee_context, server):
+    """The RSVP tab can save a new style later; the saved chip stays selected
+    and a later RSVP renders the new style with no picker."""
     organizer = OrganizerPage(organizer_context.new_page(), server.base_url)
     handle = organizer.create_event("Restyle", "Change it later.")
     organizer.set_card_style("hatch")
@@ -109,4 +110,11 @@ def test_organizer_changes_card_style_at_any_time(organizer_context, server):
     expect(
         organizer.page.locator('#rsvp-card-form .cover-chip[data-cover="dots"]')
     ).to_have_attribute("aria-pressed", "true")
+
+    funnel = organizer.set_gate_settings()
+    attendee = AttendeePage(attendee_context.new_page(), server.base_url)
+    attendee.rsvp(funnel, name="Late Guest")
+    expect(attendee.page.locator("#card-preview")).to_be_visible()
+    expect(attendee.page.locator("#modal-root .cover-chip")).to_have_count(0)
     organizer.watcher.expect_clean()
+    attendee.watcher.expect_clean()
