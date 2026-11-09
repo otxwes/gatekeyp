@@ -52,6 +52,41 @@ class TestDatabaseHandler(unittest.TestCase):
         event = self.db.get_event("event_on")
         self.assertEqual(event["organizer_name"], "Cellar Collective")
 
+    def test_event_card_style_defaults_none(self):
+        """A fresh event has no organizer-chosen card style."""
+        self.db.add_event("event_style", "title", "description", "organizer_id")
+        self.assertIsNone(self.db.get_event("event_style")["card_style"])
+
+    def test_set_rsvp_card_style_round_trips(self):
+        """The organizer card style is stored as the exact JSON string."""
+        self.db.add_event("event_style", "title", "description", "organizer_id")
+        style = '{"type":"preset","id":"hatch"}'
+        self.db.set_rsvp_card_style("event_style", style)
+        self.assertEqual(self.db.get_event("event_style")["card_style"], style)
+
+    def test_get_media_asset_meta_omits_blob(self):
+        """Metadata reads never decrypt or return the stored bytes."""
+        self.db.add_media_asset(
+            "asset_meta",
+            "event_meta",
+            "key_meta",
+            "cover.png",
+            "image/png",
+            b"not-a-real-png",
+        )
+        meta = self.db.get_media_asset_meta("asset_meta")
+        self.assertIsNotNone(meta)
+        self.assertEqual(meta["id"], "asset_meta")
+        self.assertEqual(meta["event_id"], "event_meta")
+        self.assertEqual(meta["filename"], "cover.png")
+        self.assertEqual(meta["mime_type"], "image/png")
+        self.assertEqual(meta["size_bytes"], len(b"not-a-real-png"))
+        self.assertNotIn("data", meta)
+
+    def test_get_media_asset_meta_unknown_is_none(self):
+        """An unknown asset id has no metadata."""
+        self.assertIsNone(self.db.get_media_asset_meta("asset_nope"))
+
     def test_content_payload_encrypted_at_rest(self):
         """Sensitive payloads must be encrypted in the database, not plaintext."""
         self.db.add_content_block("block_enc", "event_1", "key_1", "location", "40.7128,-74.0060")
@@ -193,6 +228,11 @@ class TestDatabaseHandler(unittest.TestCase):
         self.assertEqual(columns[20], "date_visible")
         self.assertEqual(columns[21], "time_visible")
 
+    def test_fresh_schema_card_style_column_order(self):
+        """The card style follows the schedule columns."""
+        columns = [row[1] for row in self.db.cursor.execute("PRAGMA table_info(events)")]
+        self.assertEqual(columns[22], "card_style")
+
     def test_revoke_key(self):
         """Revoking a key marks it as revoked."""
         self.db.add_key("hash_1", "access")
@@ -287,6 +327,7 @@ class TestSchemaMigration(unittest.TestCase):
                 "slug",
                 "organizer_name",
                 "location_data",
+                "card_style",
             ):
                 self.assertIn(col, event_cols)
             for col in ("created_at", "revoked", "revoked_at", "owner_id", "rsvp_id"):
@@ -394,6 +435,7 @@ class TestScheduleFieldMigration(unittest.TestCase):
                 "location_visible",
                 "date_visible",
                 "time_visible",
+                "card_style",
             ):
                 self.assertIn(col, cols)
 
@@ -405,6 +447,7 @@ class TestScheduleFieldMigration(unittest.TestCase):
             self.assertTrue(event["location_visible"])
             self.assertTrue(event["date_visible"])
             self.assertTrue(event["time_visible"])
+            self.assertIsNone(event["card_style"])
         finally:
             if db is not None:
                 db.close()

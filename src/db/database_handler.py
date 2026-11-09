@@ -31,6 +31,7 @@ _EVENT_DESC_VIS_MIN_COLS = 18  # events.description_visible lives at column inde
 _EVENT_LOC_VIS_MIN_COLS = 19  # events.location_visible lives at column index 19
 _EVENT_DATE_VIS_MIN_COLS = 20  # events.date_visible lives at column index 20
 _EVENT_TIME_VIS_MIN_COLS = 21  # events.time_visible lives at column index 21
+_EVENT_CARD_STYLE_MIN_COLS = 22  # events.card_style lives at column index 22
 _RSVP_MSG_MIN_COLS = 8  # rsvps.message lives at column index 8
 
 
@@ -165,7 +166,8 @@ class DatabaseHandler:
                 description_visible INTEGER NOT NULL DEFAULT 1,
                 location_visible INTEGER NOT NULL DEFAULT 1,
                 date_visible INTEGER NOT NULL DEFAULT 1,
-                time_visible INTEGER NOT NULL DEFAULT 1
+                time_visible INTEGER NOT NULL DEFAULT 1,
+                card_style TEXT
             )
         """)
         self.cursor.execute("""
@@ -286,6 +288,9 @@ class DatabaseHandler:
         self._ensure_column("events", "location_visible", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("events", "date_visible", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("events", "time_visible", "INTEGER NOT NULL DEFAULT 1")
+
+        # Organizer-chosen invite-card style (JSON; NULL = classic paper card).
+        self._ensure_column("events", "card_style", "TEXT")
 
         # Phase B: RSVP requests link back to their pre-minted access keys
         self._ensure_column("keys", "rsvp_id", "TEXT")
@@ -586,6 +591,7 @@ class DatabaseHandler:
                 "time_visible": (
                     bool(result[21]) if len(result) > _EVENT_TIME_VIS_MIN_COLS else True
                 ),
+                "card_style": (result[22] if len(result) > _EVENT_CARD_STYLE_MIN_COLS else None),
             }
         return None
 
@@ -719,6 +725,14 @@ class DatabaseHandler:
         self.cursor.execute(
             "UPDATE events SET rsvp_passphrase_hash = ?, rsvp_auto_approve = ? WHERE event_id = ?",
             (passphrase_hash, auto_approve, event_id),
+        )
+        self.connection.commit()
+
+    def set_rsvp_card_style(self, event_id: str, style_json: str | None) -> None:
+        """Store the organizer-chosen invite-card style (NULL clears it)."""
+        self.cursor.execute(
+            "UPDATE events SET card_style = ? WHERE event_id = ?",
+            (style_json, event_id),
         )
         self.connection.commit()
 
@@ -1112,6 +1126,27 @@ class DatabaseHandler:
                 "size_bytes": result[5],
                 "data": data,
                 "created_at": result[7],
+            }
+        return None
+
+    def get_media_asset_meta(self, asset_id: str) -> dict | None:
+        """Retrieve media metadata without decrypting or returning the blob."""
+        self.cursor.execute(
+            """
+            SELECT asset_id, event_id, filename, mime_type, size_bytes, created_at
+            FROM media_assets WHERE asset_id = ?
+            """,
+            (asset_id,),
+        )
+        result = self.cursor.fetchone()
+        if result:
+            return {
+                "id": result[0],
+                "event_id": result[1],
+                "filename": result[2],
+                "mime_type": result[3],
+                "size_bytes": result[4],
+                "created_at": result[5],
             }
         return None
 
