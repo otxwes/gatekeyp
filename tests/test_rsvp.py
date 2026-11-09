@@ -23,6 +23,7 @@ from src.rsvp.service import (
     RsvpService,
     RsvpValidationError,
 )
+from tests import card_ref
 
 TEST_ORGANIZER_KEY = Fernet.generate_key().decode()
 TEST_HMAC_SECRET = "test-hmac-secret-for-unit-tests-only-1234567890"
@@ -308,7 +309,12 @@ class TestSettings:
         """A fresh event requires no passphrase and approves nothing."""
         created = _make_event(lifecycle)
         settings = rsvp.get_rsvp_settings(created["organizer_key"], created["event_id"])
-        assert settings == {"passphrase_required": False, "auto_approve": None}
+        assert settings == {
+            "passphrase_required": False,
+            "auto_approve": None,
+            "card_style": {"type": "none"},
+            "flyer_asset_id": None,
+        }
 
     def test_passphrase_is_stored_hashed(self, rsvp, lifecycle):
         """Setting a passphrase stores a hash that differs from the secret."""
@@ -354,6 +360,196 @@ class TestSettings:
             rsvp.get_rsvp_settings(other["organizer_key"], created["event_id"])
 
 
+class TestCardStyle:
+    """The organizer-chosen invite-card style (none/preset/flyer/image)."""
+
+    def test_presets_match_the_card_renderer_registry(self):
+        """The server's preset list is the renderer's list minus 'none'."""
+        from src.rsvp.service import CARD_COVER_PRESETS
+
+        assert set(CARD_COVER_PRESETS) == set(card_ref.COVER_PRESET_IDS) - {"none"}
+
+    def test_defaults_to_none(self, rsvp, lifecycle):
+        """A fresh event has no card style and no flyer."""
+        created = _make_event(lifecycle)
+        settings = rsvp.get_rsvp_settings(created["organizer_key"], created["event_id"])
+        assert settings["card_style"] == {"type": "none"}
+        assert settings["flyer_asset_id"] is None
+        assert rsvp.get_public_view(created["event_id"])["event"]["card_style"] == {"type": "none"}
+
+    def test_preset_roundtrip(self, rsvp, lifecycle):
+        """A preset is stored, returned by settings, and exposed publicly."""
+        created = _make_event(lifecycle)
+        result = rsvp.update_rsvp_card_style(
+            created["organizer_key"],
+            created["event_id"],
+            {"type": "preset", "id": "hatch"},
+        )
+        assert result == {
+            "event_id": created["event_id"],
+            "card_style": {"type": "preset", "id": "hatch"},
+        }
+        settings = rsvp.get_rsvp_settings(created["organizer_key"], created["event_id"])
+        assert settings["card_style"] == {"type": "preset", "id": "hatch"}
+        view = rsvp.get_public_view(created["event_id"])
+        assert view["event"]["card_style"] == {"type": "preset", "id": "hatch"}
+
+    def test_none_clears_the_style(self, rsvp, lifecycle):
+        """Selecting None clears the event style."""
+        created = _make_event(lifecycle)
+        rsvp.update_rsvp_card_style(
+            created["organizer_key"], created["event_id"], {"type": "preset", "id": "dots"}
+        )
+        result = rsvp.update_rsvp_card_style(
+            created["organizer_key"], created["event_id"], {"type": "none"}
+        )
+        assert result["card_style"] == {"type": "none"}
+
+    def test_flyer_style_tracks_the_event_flyer(self, rsvp, lifecycle):
+        """Flyer is dynamic: it uses the event flyer and falls back when removed."""
+        created = _make_event(lifecycle)
+        asset = lifecycle.content_manager.upload_media(
+            input_key=created["organizer_key"],
+            event_id=created["event_id"],
+            filename="flyer.png",
+            mime_type="image/png",
+            data=_FLYER_BYTES,
+        )
+        lifecycle.set_flyer(created["organizer_key"], created["event_id"], asset["id"])
+        result = rsvp.update_rsvp_card_style(
+            created["organizer_key"], created["event_id"], {"type": "flyer"}
+        )
+        assert result["card_style"] == {"type": "flyer"}
+        settings = rsvp.get_rsvp_settings(created["organizer_key"], created["event_id"])
+        assert settings["flyer_asset_id"] == asset["id"]
+        assert rsvp.get_public_view(created["event_id"])["event"]["card_style"] == {"type": "flyer"}
+
+        lifecycle.set_flyer(created["organizer_key"], created["event_id"], None)
+        assert rsvp.get_public_view(created["event_id"])["event"]["card_style"] == {"type": "none"}
+
+    def test_flyer_without_a_flyer_is_rejected(self, rsvp, lifecycle):
+        """You cannot select Flyer when the event has no flyer."""
+        created = _make_event(lifecycle)
+        with pytest.raises(RsvpValidationError, match="flyer"):
+            rsvp.update_rsvp_card_style(
+                created["organizer_key"], created["event_id"], {"type": "flyer"}
+            )
+
+    def test_image_style_roundtrip_and_cover_asset(self, rsvp, lifecycle):
+        """A dedicated image is stored and served as the public cover asset."""
+        created = _make_event(lifecycle)
+        asset = lifecycle.content_manager.upload_media(
+            input_key=created["organizer_key"],
+            event_id=created["event_id"],
+            filename="card.png",
+            mime_type="image/png",
+            data=_FLYER_BYTES,
+        )
+        result = rsvp.update_rsvp_card_style(
+            created["organizer_key"],
+            created["event_id"],
+            {"type": "image", "asset_id": asset["id"]},
+        )
+        url = f"/api/events/{created['event_id']}/rsvp/card-cover"
+        assert result["card_style"] == {"type": "image", "url": url}
+        assert rsvp.get_public_view(created["event_id"])["event"]["card_style"] == {
+            "type": "image",
+            "url": url,
+        }
+        cover = rsvp.get_card_cover_asset(created["event_id"])
+        assert cover["id"] == asset["id"]
+        assert cover["data"] == _FLYER_BYTES
+
+    def test_image_style_falls_back_when_asset_is_deleted(self, rsvp, lifecycle):
+        """A deleted card image degrades to the classic card, not a broken URL."""
+        created = _make_event(lifecycle)
+        asset = lifecycle.content_manager.upload_media(
+            input_key=created["organizer_key"],
+            event_id=created["event_id"],
+            filename="card.png",
+            mime_type="image/png",
+            data=_FLYER_BYTES,
+        )
+        rsvp.update_rsvp_card_style(
+            created["organizer_key"],
+            created["event_id"],
+            {"type": "image", "asset_id": asset["id"]},
+        )
+        rsvp.db.delete_media_asset(asset["id"])
+        assert rsvp.get_public_view(created["event_id"])["event"]["card_style"] == {"type": "none"}
+        with pytest.raises(RsvpNotFoundError):
+            rsvp.get_card_cover_asset(created["event_id"])
+
+    def test_image_requires_an_owned_image_asset(self, rsvp, lifecycle):
+        """Foreign, missing, and non-image assets are rejected."""
+        created = _make_event(lifecycle)
+        other = _make_event(lifecycle, "Other")
+        foreign = lifecycle.content_manager.upload_media(
+            input_key=other["organizer_key"],
+            event_id=other["event_id"],
+            filename="other.png",
+            mime_type="image/png",
+            data=_FLYER_BYTES,
+        )
+        document = lifecycle.content_manager.upload_media(
+            input_key=created["organizer_key"],
+            event_id=created["event_id"],
+            filename="notes.txt",
+            mime_type="text/plain",
+            data=b"notes",
+        )
+        for asset_id in (foreign["id"], "asset_nope", document["id"]):
+            with pytest.raises(RsvpValidationError, match="image"):
+                rsvp.update_rsvp_card_style(
+                    created["organizer_key"],
+                    created["event_id"],
+                    {"type": "image", "asset_id": asset_id},
+                )
+
+    def test_unknown_type_and_preset_are_rejected(self, rsvp, lifecycle):
+        """Unknown style types and preset ids fail validation."""
+        created = _make_event(lifecycle)
+        for style in ({"type": "fancy"}, {"type": "preset", "id": "sparkles"}, {}):
+            with pytest.raises(RsvpValidationError):
+                rsvp.update_rsvp_card_style(created["organizer_key"], created["event_id"], style)
+
+    def test_wrong_organizer_key_is_rejected(self, rsvp, lifecycle):
+        """Only the event's organizer key can set its card style."""
+        created = _make_event(lifecycle)
+        other = _make_event(lifecycle, "Other")
+        with pytest.raises(RsvpValidationError, match="grant access"):
+            rsvp.update_rsvp_card_style(
+                other["organizer_key"], created["event_id"], {"type": "none"}
+            )
+
+    def test_cover_asset_is_not_found_for_non_image_styles(self, rsvp, lifecycle):
+        """None/preset/flyer have no cover asset to serve."""
+        created = _make_event(lifecycle)
+        for style in ({"type": "none"}, {"type": "preset", "id": "hatch"}):
+            rsvp.update_rsvp_card_style(created["organizer_key"], created["event_id"], style)
+            with pytest.raises(RsvpNotFoundError):
+                rsvp.get_card_cover_asset(created["event_id"])
+
+    def test_cover_asset_is_gone_after_wipe(self, rsvp, lifecycle):
+        """A wiped event's cover route reports gone, not a stale image."""
+        created = _make_event(lifecycle)
+        asset = lifecycle.content_manager.upload_media(
+            input_key=created["organizer_key"],
+            event_id=created["event_id"],
+            filename="card.png",
+            mime_type="image/png",
+            data=_FLYER_BYTES,
+        )
+        rsvp.update_rsvp_card_style(
+            created["organizer_key"],
+            created["event_id"],
+            {"type": "image", "asset_id": asset["id"]},
+        )
+        rsvp.db.wipe_event(created["event_id"])
+        with pytest.raises(RsvpGoneError):
+            rsvp.get_card_cover_asset(created["event_id"])
+
+
 class TestWipe:
     """wipe_event purges RSVP rows and voids every pre-minted key."""
 
@@ -393,6 +589,7 @@ class TestPublicView:
             "description": "A test event",
             "organizer_name": "",
             "flyer_asset_id": None,
+            "card_style": {"type": "none"},
         }
         assert view["passphrase_required"] is False
 
@@ -789,7 +986,12 @@ class TestRoutes:
             params={"key": created["organizer_key"]},
         )
         assert read.status_code == 200
-        assert read.json() == {"passphrase_required": True, "auto_approve": 3}
+        assert read.json() == {
+            "passphrase_required": True,
+            "auto_approve": 3,
+            "card_style": {"type": "none"},
+            "flyer_asset_id": None,
+        }
 
     def test_settings_reject_wrong_key(self, client, lifecycle):
         """Settings endpoints require a key granting access to the event."""

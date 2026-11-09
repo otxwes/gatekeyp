@@ -16,10 +16,12 @@ remains.
 from __future__ import annotations
 
 import hmac
+import json
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
@@ -47,9 +49,45 @@ MAX_AUTO_APPROVE = 100000
 # cannot force unbounded pre-minted key growth in the keys table.
 MAX_PENDING_RSVP_PER_EVENT = 500
 
+# Invite-card style kinds. The organizer picks one per event; every attendee
+# card (RSVP, single, bulk) renders with it.
+CARD_STYLE_NONE = "none"
+CARD_STYLE_PRESET = "preset"
+CARD_STYLE_FLYER = "flyer"
+CARD_STYLE_IMAGE = "image"
+# Preset ids must stay in lock-step with tests/card_ref.py and web/app.js.
+CARD_COVER_PRESETS = ("hatch", "keyline", "dots", "keyhole")
+
 RSVP_STATUS_PENDING = "pending"
 RSVP_STATUS_APPROVED = "approved"
 RSVP_STATUS_DENIED = "denied"
+
+
+def _parse_card_style(raw: str | None) -> dict:
+    """Parse a stored card style, failing safe to the classic paper card."""
+    if not raw:
+        return {"type": CARD_STYLE_NONE}
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return {"type": CARD_STYLE_NONE}
+    if not isinstance(parsed, dict):
+        return {"type": CARD_STYLE_NONE}
+    kind = parsed.get("type")
+    if kind == CARD_STYLE_PRESET:
+        preset = parsed.get("id")
+        if isinstance(preset, str) and preset in CARD_COVER_PRESETS:
+            return {"type": CARD_STYLE_PRESET, "id": preset}
+        return {"type": CARD_STYLE_NONE}
+    if kind == CARD_STYLE_FLYER:
+        return {"type": CARD_STYLE_FLYER}
+    if kind == CARD_STYLE_IMAGE:
+        asset_id = parsed.get("asset_id")
+        if isinstance(asset_id, str) and asset_id:
+            return {"type": CARD_STYLE_IMAGE, "asset_id": asset_id}
+        return {"type": CARD_STYLE_NONE}
+    return {"type": CARD_STYLE_NONE}
+
 
 # RSVP passphrases are human-chosen, low-entropy secrets, so they must NOT use
 # the fast keyed HMAC (which would leave them open to offline brute-force).
@@ -353,6 +391,32 @@ class RsvpService:
 
     # -- Settings & organizer listing --------------------------------------
 
+    def _public_card_style(self, event: dict) -> dict:
+        """Normalize the stored style into the shape attendees can render."""
+        style = _parse_card_style(event.get("card_style"))
+        kind = style["type"]
+        if kind == CARD_STYLE_FLYER:
+            flyer_id = event.get("flyer_asset_id")
+            meta = self.db.get_media_asset_meta(flyer_id) if flyer_id else None
+            if meta is None or not meta["mime_type"].startswith("image/"):
+                return {"type": CARD_STYLE_NONE}
+            return {"type": CARD_STYLE_FLYER}
+        if kind == CARD_STYLE_IMAGE:
+            meta = self.db.get_media_asset_meta(style["asset_id"])
+            if (
+                meta is None
+                or meta["event_id"] != event["id"]
+                or not meta["mime_type"].startswith("image/")
+            ):
+                return {"type": CARD_STYLE_NONE}
+            return {
+                "type": CARD_STYLE_IMAGE,
+                "url": f"/api/events/{quote(event['id'])}/rsvp/card-cover",
+            }
+        if kind == CARD_STYLE_PRESET:
+            return {"type": CARD_STYLE_PRESET, "id": style["id"]}
+        return {"type": CARD_STYLE_NONE}
+
     def get_rsvp_settings(self, organizer_key: str | None, event_id: str) -> dict:
         """Return the event's RSVP gate settings (organizer-gated)."""
         self._verify_organizer(organizer_key, event_id)
@@ -360,6 +424,8 @@ class RsvpService:
         return {
             "passphrase_required": bool(event and event.get("rsvp_passphrase_hash")),
             "auto_approve": event.get("rsvp_auto_approve") if event else None,
+            "card_style": (self._public_card_style(event) if event else {"type": CARD_STYLE_NONE}),
+            "flyer_asset_id": event.get("flyer_asset_id") if event else None,
         }
 
     def update_rsvp_settings(
@@ -402,6 +468,69 @@ class RsvpService:
             "auto_approve": dial,
         }
 
+    def update_rsvp_card_style(  # noqa: C901 - one branch per style kind
+        self,
+        organizer_key: str | None,
+        event_id: str,
+        style: dict,
+    ) -> dict:
+        """
+        Set the event's invite-card style (organizer-gated).
+
+        Accepts ``{"type":"none"}``, ``{"type":"preset","id":…}``,
+        ``{"type":"flyer"}``, or ``{"type":"image","asset_id":…}``. A flyer
+        style requires the event to have a flyer; an image style requires an
+        image asset owned by the event. The stored JSON is canonical and the
+        returned style is normalized for the client.
+
+        Raises:
+            RsvpValidationError: On bad input or an unauthorized key.
+            RsvpNotFoundError: When the event is unknown.
+        """
+        self._verify_organizer(organizer_key, event_id)
+        event = self.db.get_event(event_id)
+        if event is None:
+            message = f"Event not found: {event_id}"
+            raise RsvpNotFoundError(message)
+
+        kind = style.get("type") if isinstance(style, dict) else None
+        if kind == CARD_STYLE_NONE:
+            canonical: dict = {"type": CARD_STYLE_NONE}
+        elif kind == CARD_STYLE_PRESET:
+            preset = style.get("id")
+            if not isinstance(preset, str) or preset not in CARD_COVER_PRESETS:
+                message = "Unknown card preset"
+                raise RsvpValidationError(message)
+            canonical = {"type": CARD_STYLE_PRESET, "id": preset}
+        elif kind == CARD_STYLE_FLYER:
+            if not event.get("flyer_asset_id"):
+                message = "This event has no flyer to use as a card cover"
+                raise RsvpValidationError(message)
+            canonical = {"type": CARD_STYLE_FLYER}
+        elif kind == CARD_STYLE_IMAGE:
+            asset_id = style.get("asset_id")
+            if not isinstance(asset_id, str) or not asset_id:
+                message = "A card image is required"
+                raise RsvpValidationError(message)
+            meta = self.db.get_media_asset_meta(asset_id)
+            if meta is None or meta["event_id"] != event_id:
+                message = "That image does not belong to this event"
+                raise RsvpValidationError(message)
+            if not meta["mime_type"].startswith("image/"):
+                message = "The card cover must be an image file"
+                raise RsvpValidationError(message)
+            canonical = {"type": CARD_STYLE_IMAGE, "asset_id": asset_id}
+        else:
+            message = "Unknown card style"
+            raise RsvpValidationError(message)
+
+        self.db.set_rsvp_card_style(event_id, json.dumps(canonical, separators=(",", ":")))
+        updated = self.db.get_event(event_id)
+        if updated is None:  # pragma: no cover - the event existed above
+            message = f"Event not found: {event_id}"
+            raise RsvpNotFoundError(message)
+        return {"event_id": event_id, "card_style": self._public_card_style(updated)}
+
     def list_rsvps_for_event(self, organizer_key: str | None, event_id: str) -> list[dict]:
         """List RSVP rows for the organizer tab (contacts decrypted server-side)."""
         self._verify_organizer(organizer_key, event_id)
@@ -428,6 +557,7 @@ class RsvpService:
             # Asset id only (no URL): the funnel fetches the poster from
             # the unauthenticated flyer route when it is set.
             "flyer_asset_id": event.get("flyer_asset_id"),
+            "card_style": self._public_card_style(event),
         }
         if event.get("description_visible", True):
             summary["description"] = event["description"]
@@ -444,3 +574,25 @@ class RsvpService:
             message = f"Event not found: {slug}"
             raise RsvpNotFoundError(message)
         return self.get_public_view(event["id"])
+
+    def get_card_cover_asset(self, event_id: str) -> dict:
+        """Return the event's dedicated card-cover image (public funnel route)."""
+        event = self._verify_event(event_id)
+        style = _parse_card_style(event.get("card_style"))
+        if style["type"] != CARD_STYLE_IMAGE:
+            message = "No card cover for this event"
+            raise RsvpNotFoundError(message)
+        asset_id = style["asset_id"]
+        meta = self.db.get_media_asset_meta(asset_id)
+        if (
+            meta is None
+            or meta["event_id"] != event_id
+            or not meta["mime_type"].startswith("image/")
+        ):
+            message = "No card cover for this event"
+            raise RsvpNotFoundError(message)
+        asset = self.db.get_media_asset(asset_id)
+        if asset is None:  # pragma: no cover - meta and blob share a row
+            message = "No card cover for this event"
+            raise RsvpNotFoundError(message)
+        return asset
