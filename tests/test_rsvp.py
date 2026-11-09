@@ -417,6 +417,18 @@ class TestCardStyle:
         view = rsvp.get_public_view(created["event_id"])
         assert view["event"]["card_style"] == {"type": "preset", "id": "hatch"}
 
+    def test_submit_response_carries_the_current_card_style(self, rsvp, lifecycle):
+        """The submission response carries the style at submit time, so a
+        funnel page loaded before an organizer edit still gets the new look."""
+        created = _make_event(lifecycle)
+        rsvp.update_rsvp_card_style(
+            created["organizer_key"],
+            created["event_id"],
+            {"type": "preset", "id": "dots"},
+        )
+        result = rsvp.submit_rsvp(created["event_id"], "Ada")
+        assert result["card_style"] == {"type": "preset", "id": "dots"}
+
     def test_none_clears_the_style(self, rsvp, lifecycle):
         """Selecting None clears the event style."""
         created = _make_event(lifecycle)

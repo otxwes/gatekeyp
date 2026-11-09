@@ -1844,6 +1844,11 @@ async function wsRsvps(main) {
             if (fs) window.gkpInviteCard.renderCover(fs, fs.width, fs.height, { type: "image" }, img);
             if (cardStyle.type === "flyer") {
                 selectCardCover({ type: "image", image: img, url: flyerUrl, flyer: true, file: null });
+            } else if (selectedCover.flyer && !selectedCover.image) {
+                // The organizer clicked Flyer before the swatch finished
+                // loading; attach the image now instead of leaving the
+                // preview blank.
+                selectCardCover({ ...selectedCover, image: img, url: flyerUrl });
             }
         }).catch(() => {});
     }
@@ -1862,7 +1867,9 @@ async function wsRsvps(main) {
     $$("#rsvp-card-form .cover-chip[data-cover]").forEach((chip) => {
         chip.addEventListener("click", () => {
             const id = chip.dataset.cover;
-            if (id === "flyer" && flyerImage) {
+            if (id === "flyer") {
+                // Select Flyer even before its swatch image has loaded; the
+                // loader attaches the image when it arrives.
                 selectCardCover({ type: "image", image: flyerImage, url: flyerUrl, flyer: true, file: null });
             } else if (id === "none") {
                 selectCardCover({ type: "none", file: null });
@@ -1877,13 +1884,25 @@ async function wsRsvps(main) {
             const file = cardFileInput.files && cardFileInput.files[0];
             if (!file) return;
             const url = URL.createObjectURL(file);
+            if (pendingCardUrl) URL.revokeObjectURL(pendingCardUrl);
+            pendingCardUrl = url;
+            // Select the file synchronously so a save clicked before the
+            // image finishes decoding still uploads this file (the preview
+            // paints paper until the load lands).
+            selectedCover = { type: "image", image: null, url, file };
+            selectCardCover(selectedCover);
             const img = new Image();
             img.onload = () => {
-                if (pendingCardUrl) URL.revokeObjectURL(pendingCardUrl);
-                pendingCardUrl = url;
-                selectCardCover({ type: "image", image: img, url, file });
+                if (selectedCover.file !== file) return; // a newer file replaced it
+                selectedCover = { ...selectedCover, image: img };
+                selectCardCover(selectedCover);
             };
-            img.onerror = () => toast("Could not read that image file.", "error", "Cover");
+            img.onerror = () => {
+                if (selectedCover.file !== file) return;
+                selectedCover = { type: "none", file: null };
+                selectCardCover(selectedCover);
+                toast("Could not read that image file.", "error", "Cover");
+            };
             img.src = url;
         });
     }
@@ -1927,6 +1946,15 @@ async function wsRsvps(main) {
             if (nextStyle.type === "image" && nextStyle.url) {
                 try {
                     selectedCover.image = await window.gkpInviteCard.loadCoverImage({ type: "image", url: nextStyle.url });
+                } catch {
+                    selectedCover = { type: "none", file: null };
+                }
+            } else if (nextStyle.type === "flyer") {
+                // The flyer cover is dynamic; reload it so the preview shows
+                // the poster immediately after a save instead of a blank band.
+                try {
+                    selectedCover.image = flyerImage || await window.gkpInviteCard.loadCoverImage({ type: "image", url: flyerUrl });
+                    flyerImage = selectedCover.image;
                 } catch {
                     selectedCover = { type: "none", file: null };
                 }
@@ -2469,7 +2497,9 @@ function showRsvpResult(eventId, event, result) {
             : `<a class="btn btn-ghost btn-block" href="#/join">Go to the door →</a>`);
     // Immediate card creation: the fresh key's only artifact is its card, so
     // the organizer-styled modal opens on top of the result without a button
-    // hop. Attendees never get a cover picker.
+    // hop. Attendees never get a cover picker. The submission response carries
+    // the style at submit time, so a funnel page opened before an organizer
+    // edit still gets the new look.
     openCardCoverModal({
         eventId,
         title: event.title,
@@ -2477,7 +2507,7 @@ function showRsvpResult(eventId, event, result) {
         fresh: true,
         fileName: result.display_name || "",
         flyerAssetId: event.flyer_asset_id || null,
-        cover: coverFromCardStyle(event.card_style, eventId),
+        cover: coverFromCardStyle(result.card_style || event.card_style, eventId),
         lockedCover: true,
     });
     const unlock = $("#rsvp-unlock");

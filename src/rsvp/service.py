@@ -341,6 +341,10 @@ class RsvpService:
             "status": status,
             "access_key": f"local:{access_key}",
             "expires_at": expires_at,
+            # The current organizer style travels with the submission so a
+            # funnel page loaded before a style edit still renders the latest
+            # card (the public view is cached in the attendee's tab).
+            "card_style": self._public_card_style(event),
         }
 
     # -- Organizer decisions ----------------------------------------------
