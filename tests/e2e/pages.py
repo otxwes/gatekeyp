@@ -289,6 +289,22 @@ class OrganizerPage:
         self.page.wait_for_timeout(600)  # settings save is fetch + silent re-render
         return self.page.locator(".keycode-full .keycode").inner_text().strip()
 
+    def set_card_style(self, preset: str) -> None:
+        """Pick an invite-card preset in the RSVP tab and save it."""
+        self.tab("rsvps")
+        self.page.locator("#rsvp-card-form").wait_for(state="visible")
+        self.page.locator(f'#rsvp-card-form .cover-chip[data-cover="{preset}"]').click()
+        self.page.click("#rsvp-card-save")
+        expect(self.page.locator("#rsvp-card-note")).to_contain_text("Card style saved.")
+
+    def upload_card_art(self, file_path: str | Path) -> None:
+        """Upload a dedicated card image in the RSVP tab and save it."""
+        self.tab("rsvps")
+        self.page.locator("#rsvp-card-form").wait_for(state="visible")
+        self.page.locator("#rsvp-card-file").set_input_files(str(file_path))
+        self.page.click("#rsvp-card-save")
+        expect(self.page.locator("#rsvp-card-note")).to_contain_text("Card style saved.")
+
     def approve_rsvp(self, name: str) -> None:
         # The queue is fetched when the tab renders — re-render it first so a
         # request that arrived after the last render is in the list.

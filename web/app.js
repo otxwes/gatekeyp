@@ -1783,10 +1783,51 @@ async function wsRsvps(main) {
     ]);
     const shareUrl = `${location.href.split("#")[0]}#/rsvp/${org.slug || org.eventId}`;
     const dial = settings.auto_approve;
+    const cardStyle = settings.card_style || { type: "none" };
+    const flyerId = settings.flyer_asset_id || null;
+    const flyerUrl = coverFromCardStyle({ type: "flyer" }, org.eventId).url;
+    let selectedCover = { ...coverFromCardStyle(cardStyle, org.eventId), file: null };
+    let flyerImage = null;
+    let pendingCardUrl = null;
+
+    const styleChips = COVER_PRESETS.map((p) => {
+        const selected = (cardStyle.type === "none" && p.id === "none")
+            || (cardStyle.type === "preset" && p.id === cardStyle.id);
+        return (
+            `<button class="cover-chip${selected ? " is-selected" : ""}" type="button" data-cover="${esc(p.id)}" aria-pressed="${selected}">` +
+            `<canvas width="176" height="60" data-swatch="${esc(p.id)}"></canvas>` +
+            `<span>${esc(p.label)}</span>` +
+            `</button>`
+        );
+    }).join("");
+    const flyerChip = flyerId
+        ? `<button class="cover-chip${cardStyle.type === "flyer" ? " is-selected" : ""}" type="button" data-cover="flyer" aria-pressed="${cardStyle.type === "flyer"}">` +
+          `<canvas width="176" height="60" data-flyer-swatch></canvas>` +
+          `<span>Flyer</span></button>`
+        : "";
+    const uploadSelected = cardStyle.type === "image";
+
     main.innerHTML =
         `<section class="card">` +
         `<div class="keycode-full"><code class="keycode">${esc(shareUrl)}</code>` +
         `<button class="btn btn-secondary" type="button" id="rsvp-copy-link">Copy link</button></div>` +
+        `</section>` +
+        `<section class="card">` +
+        `<h3 class="card-title">Invite card</h3>` +
+        `<p class="field-hint">Attendees get this card when they RSVP. Changes apply to new cards.</p>` +
+        `<form id="rsvp-card-form" class="inline-form" autocomplete="off">` +
+        `<div class="field"><label>Cover</label>` +
+        `<div class="cover-picker">${styleChips}${flyerChip}` +
+        `<label class="cover-chip${uploadSelected ? " is-selected" : ""} cover-upload" id="rsvp-card-upload" for="rsvp-card-file" role="button" tabindex="0" aria-pressed="${uploadSelected}">` +
+        `<span class="cover-upload-icon" aria-hidden="true">＋</span>` +
+        `<span>Own image…</span>` +
+        `</label>` +
+        `<input type="file" id="rsvp-card-file" accept="image/*" hidden>` +
+        `</div></div>` +
+        `<div class="card-preview-wrap"><canvas id="rsvp-card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>` +
+        `<p id="rsvp-card-note" class="form-note" role="status" aria-live="polite"></p>` +
+        `<button class="btn btn-primary" type="submit" id="rsvp-card-save">Save card style</button>` +
+        `</form>` +
         `</section>` +
         `<section class="card">` +
         `<h3 class="card-title">Gate settings</h3>` +
@@ -1818,6 +1859,159 @@ async function wsRsvps(main) {
     $("#rsvp-copy-link").addEventListener("click", async () => {
         const ok = await copyText(shareUrl);
         toast(ok ? "RSVP link copied to clipboard." : "Copy blocked. Select the link manually.", ok ? "ok" : "error", "Copy");
+    });
+
+    // Invite card: the organizer picks the one style every attendee card uses.
+    // The preview and swatches are client-side; the choice is stored per event.
+    const cardPreview = $("#rsvp-card-preview");
+    const cardNote = $("#rsvp-card-note");
+    const cardFileInput = $("#rsvp-card-file");
+
+    const renderCardPreview = () => {
+        const cover = selectedCover.type === "image"
+            ? { type: "image", image: selectedCover.image || null, url: selectedCover.url, flyer: selectedCover.flyer }
+            : selectedCover.type === "preset"
+              ? { type: "preset", id: selectedCover.id }
+              : { type: "none" };
+        window.gkpInviteCard.render(cardPreview, {
+            eventId: org.eventId,
+            title: org.title,
+            cover,
+            coverImage: cover.image || null,
+            scale: 0.25,
+        });
+    };
+
+    const selectCardCover = (next) => {
+        selectedCover = next;
+        const isImage = next.type === "image";
+        const isFlyer = next.flyer === true;
+        $$("#rsvp-card-form .cover-chip[data-cover]").forEach((chip) => {
+            const sel = (next.type === "none" && chip.dataset.cover === "none")
+                || (next.type === "preset" && chip.dataset.cover === next.id)
+                || (isFlyer && chip.dataset.cover === "flyer");
+            chip.classList.toggle("is-selected", sel);
+            chip.setAttribute("aria-pressed", String(sel));
+        });
+        const upload = $("#rsvp-card-upload");
+        if (upload) {
+            upload.classList.toggle("is-selected", isImage && !isFlyer);
+            upload.setAttribute("aria-pressed", String(isImage && !isFlyer));
+        }
+        renderCardPreview();
+    };
+
+    $$("#rsvp-card-form [data-swatch]").forEach((swatch) => {
+        window.gkpInviteCard.renderCover(swatch, swatch.width, swatch.height, { type: "preset", id: swatch.dataset.swatch });
+    });
+
+    if (flyerId) {
+        window.gkpInviteCard.loadCoverImage({ type: "image", src: flyerUrl }).then((img) => {
+            flyerImage = img;
+            const fs = $("#rsvp-card-form [data-flyer-swatch]");
+            if (fs) window.gkpInviteCard.renderCover(fs, fs.width, fs.height, { type: "image" }, img);
+            if (cardStyle.type === "flyer") {
+                selectCardCover({ type: "image", image: img, url: flyerUrl, flyer: true, file: null });
+            }
+        }).catch(() => {});
+    }
+
+    (async () => {
+        if (selectedCover.type === "image" && !selectedCover.image && selectedCover.url) {
+            try {
+                selectedCover.image = await window.gkpInviteCard.loadCoverImage({ type: "image", url: selectedCover.url });
+            } catch {
+                selectedCover = { type: "none", file: null };
+            }
+        }
+        renderCardPreview();
+    })();
+
+    $$("#rsvp-card-form .cover-chip[data-cover]").forEach((chip) => {
+        chip.addEventListener("click", () => {
+            const id = chip.dataset.cover;
+            if (id === "flyer" && flyerImage) {
+                selectCardCover({ type: "image", image: flyerImage, url: flyerUrl, flyer: true, file: null });
+            } else if (id === "none") {
+                selectCardCover({ type: "none", file: null });
+            } else {
+                selectCardCover({ type: "preset", id, file: null });
+            }
+        });
+    });
+
+    if (cardFileInput) {
+        cardFileInput.addEventListener("change", () => {
+            const file = cardFileInput.files && cardFileInput.files[0];
+            if (!file) return;
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+            img.onload = () => {
+                if (pendingCardUrl) URL.revokeObjectURL(pendingCardUrl);
+                pendingCardUrl = url;
+                selectCardCover({ type: "image", image: img, url, file });
+            };
+            img.onerror = () => toast("Could not read that image file.", "error", "Cover");
+            img.src = url;
+        });
+    }
+
+    $("#rsvp-card-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        note(cardNote, "");
+        const btn = $("#rsvp-card-save");
+        btnBusy(btn, true, "Saving…");
+        try {
+            let payload;
+            if (selectedCover.type === "image" && selectedCover.file) {
+                const fd = new FormData();
+                fd.append("file", selectedCover.file);
+                const resp = await fetch(`/api/events/${eventId}/media${qs({ key: org.organizerKey })}`, {
+                    method: "POST",
+                    body: fd,
+                });
+                const uploaded = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(uploaded.detail || "Card image upload failed");
+                payload = { type: "image", asset_id: uploaded.id };
+            } else if (selectedCover.type === "image" && selectedCover.flyer) {
+                payload = { type: "flyer" };
+            } else if (selectedCover.type === "image") {
+                // The current image style is already saved. The settings
+                // response exposes the public URL, not the asset id, so there
+                // is nothing new to post.
+                note(cardNote, "Card style saved.", "ok");
+                return;
+            } else if (selectedCover.type === "preset") {
+                payload = { type: "preset", id: selectedCover.id };
+            } else {
+                payload = { type: "none" };
+            }
+            const result = await api(`/api/events/${eventId}/rsvp/card-style`, {
+                method: "POST",
+                body: { organizer_key: org.organizerKey, style: payload },
+            });
+            const nextStyle = result.card_style || { type: "none" };
+            selectedCover = { ...coverFromCardStyle(nextStyle, org.eventId), file: null };
+            if (nextStyle.type === "image" && nextStyle.url) {
+                try {
+                    selectedCover.image = await window.gkpInviteCard.loadCoverImage({ type: "image", url: nextStyle.url });
+                } catch {
+                    selectedCover = { type: "none", file: null };
+                }
+            }
+            if (pendingCardUrl) {
+                URL.revokeObjectURL(pendingCardUrl);
+                pendingCardUrl = null;
+            }
+            if (cardFileInput) cardFileInput.value = "";
+            selectCardCover(selectedCover);
+            note(cardNote, "Card style saved.", "ok");
+            toast("Invite card updated.", "ok", "Saved");
+        } catch (err) {
+            note(cardNote, err.message, "error");
+        } finally {
+            btnBusy(btn, false);
+        }
     });
 
     // Approve / deny per row. Approving grants the pre-minted key (idempotent);

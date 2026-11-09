@@ -1582,7 +1582,8 @@ p {
     text-align: center;
 }
 
-#card-preview {
+#card-preview,
+#rsvp-card-preview {
     border: 1px solid var(--line);
     border-radius: var(--radius-m);
     box-shadow: var(--shadow-1);
