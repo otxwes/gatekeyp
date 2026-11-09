@@ -633,12 +633,22 @@ function renderWorkspace() {
 
     const orgCardBtn = $("#ws-organizer-card");
     if (orgCardBtn) {
-        orgCardBtn.addEventListener("click", () => {
+        orgCardBtn.addEventListener("click", async () => {
             if (!org || !org.organizerKey) return;
+            let cover = { type: "none" };
+            try {
+                const settings = await api(
+                    `/api/events/${encodeURIComponent(org.eventId)}/rsvp/settings${qs({ key: org.organizerKey })}`
+                );
+                cover = coverFromCardStyle(settings.card_style || { type: "none" }, org.eventId);
+            } catch {
+                cover = { type: "none" };
+            }
             openCardCoverModal({
                 ...inviteCardOpts(),
                 accessKey: org.organizerKey,
                 organizer: true,
+                cover,
             });
         });
     }
@@ -1519,14 +1529,15 @@ function makeUniqueNames(base, count, used) {
     return names;
 }
 
-/** Pick a random preset cover for a bulk-generated card. */
-function randomCoverPreset() {
-    const id = COVER_PRESETS[Math.floor(Math.random() * COVER_PRESETS.length)].id;
-    return id === "none" ? { type: "none" } : { type: "preset", id };
-}
-
 async function wsKeys(main) {
-    const keys = await api(`/api/events/${encodeURIComponent(org.eventId)}/access-keys${qs({ organizer_key: org.organizerKey })}`);
+    const eventId = encodeURIComponent(org.eventId);
+    const [keys, settings] = await Promise.all([
+        api(`/api/events/${eventId}/access-keys${qs({ organizer_key: org.organizerKey })}`),
+        api(`/api/events/${eventId}/rsvp/settings${qs({ key: org.organizerKey })}`).catch(() => ({
+            card_style: { type: "none" },
+        })),
+    ]);
+    const eventCover = coverFromCardStyle(settings.card_style || { type: "none" }, org.eventId);
     main.innerHTML =
         `<section class="card">` +
         `<h3 class="card-title">Access keys</h3>` +
@@ -1555,12 +1566,7 @@ async function wsKeys(main) {
         `<input id="bulk-name" name="base" type="text" maxlength="200" placeholder="e.g. Guest (each key gets a unique number)"></div>` +
         `<div class="field"><label for="bulk-days">Lifetime (days)</label>` +
         `<input id="bulk-days" name="days" type="number" min="1" max="365" value="30"></div>` +
-        `<div class="field"><label for="bulk-cover-mode">Card cover</label>` +
-        `<select id="bulk-cover-mode" class="field-input">` +
-        `<option value="diff">Random per key</option>` +
-        `<option value="same">Same cover for all</option>` +
-        `</select></div>` +
-        `<div id="bulk-cover-picker" class="cover-picker" hidden></div>` +
+        `<p class="field-hint">Uses the event's invite card style.</p>` +
         `<p class="field-hint" id="bulk-note"></p>` +
         `<button class="btn btn-primary" type="submit" id="bulk-key-btn">Generate &amp; download</button>` +
         `</form>` +
@@ -1583,6 +1589,8 @@ async function wsKeys(main) {
                 accessKey: key.access_key,
                 fresh: true,
                 fileName: owner_id || "",
+                cover: eventCover,
+                lockedCover: true,
             });
             toast("Access key generated.", "ok", "New key");
             await wsKeys(main);
@@ -1592,82 +1600,8 @@ async function wsKeys(main) {
         }
     });
 
-    // Bulk generation: unique names, same or random cover per key.
+    // Bulk generation: unique names, one event style for every card.
     const bulkForm = $("#bulk-key-form");
-    const coverPicker = $("#bulk-cover-picker");
-    let sharedCover = { type: "none" };
-    if (coverPicker) {
-        // Preset chips + a Flyer option (if one exists) + Own image upload.
-        coverPicker.innerHTML = COVER_PRESETS.map((p) =>
-            `<button type="button" class="cover-chip${p.id === "none" ? " is-selected" : ""}" data-cover="${esc(p.id)}" aria-pressed="${p.id === "none"}">` +
-            `<canvas width="88" height="30" data-swatch="${esc(p.id)}"></canvas>` +
-            `<span>${esc(p.label)}</span></button>`
-        ).join("") +
-            `<button type="button" class="cover-chip" data-cover="bulkflyer" aria-pressed="false" hidden>` +
-            `<canvas width="88" height="30" data-flyer-swatch></canvas>` +
-            `<span>Flyer</span></button>` +
-            `<label class="cover-chip cover-upload" id="bulk-cover-upload" for="bulk-cover-file" role="button" tabindex="0">` +
-            `<span class="cover-upload-icon" aria-hidden="true">＋</span>` +
-            `<span>Own image…</span></label>` +
-            `<input type="file" id="bulk-cover-file" accept="image/*" hidden>`;
-
-        $$("canvas[data-swatch]", coverPicker).forEach((swatch) => {
-            window.gkpInviteCard.renderCover(swatch, swatch.width, swatch.height, { type: "preset", id: swatch.dataset.swatch });
-        });
-
-        const selectCover = (next, activeCover) => {
-            sharedCover = next;
-            $$(".cover-chip[data-cover]", coverPicker).forEach((c) => {
-                const sel = c.dataset.cover === activeCover;
-                c.classList.toggle("is-selected", sel);
-                c.setAttribute("aria-pressed", String(sel));
-            });
-        };
-        $$(".cover-chip[data-cover]", coverPicker).forEach((chip) => {
-            chip.addEventListener("click", () => {
-                const id = chip.dataset.cover;
-                if (id === "bulkflyer" || id === "bulkimage") return;
-                selectCover(id === "none" ? { type: "none" } : { type: "preset", id }, id);
-            });
-        });
-
-        // Own image as the shared cover.
-        const bulkCoverFile = $("#bulk-cover-file");
-        if (bulkCoverFile) {
-            bulkCoverFile.addEventListener("change", () => {
-                const file = bulkCoverFile.files && bulkCoverFile.files[0];
-                if (!file) return;
-                const url = URL.createObjectURL(file);
-                const img = new Image();
-                img.onload = () => selectCover({ type: "image", image: img, url, name: file.name }, "bulkimage");
-                img.onerror = () => toast("Could not read that image file.", "error", "Cover");
-                img.src = url;
-            });
-        }
-
-        // The event flyer as the shared cover (only if one is set).
-        const flyerId = org && org.meta && org.meta.flyerId;
-        if (flyerId) {
-            const flyerBtn = coverPicker.querySelector('[data-cover="bulkflyer"]');
-            if (flyerBtn) {
-                const src = mediaUrl(flyerId);
-                const img = new Image();
-                img.onload = () => {
-                    flyerBtn.hidden = false;
-                    const fs = flyerBtn.querySelector("canvas");
-                    if (fs) window.gkpInviteCard.renderCover(fs, fs.width, fs.height, { type: "image" }, img);
-                    flyerBtn.addEventListener("click", () => selectCover({ type: "image", image: img, url: src }, "bulkflyer"));
-                };
-                img.src = src;
-            }
-        }
-    }
-    const bulkMode = $("#bulk-cover-mode");
-    if (bulkMode) {
-        bulkMode.addEventListener("change", () => {
-            if (coverPicker) coverPicker.hidden = bulkMode.value !== "same";
-        });
-    }
 
     if (bulkForm) {
         bulkForm.addEventListener("submit", async (event) => {
@@ -1676,7 +1610,6 @@ async function wsKeys(main) {
             const count = Math.min(Math.max(parseInt(getField(f, "count"), 10) || 1, 1), 50);
             const base = (getField(f, "base") || "").trim();
             const days = Math.min(Math.max(parseInt(getField(f, "days"), 10) || 30, 1), 365);
-            const mode = bulkMode ? bulkMode.value : "diff";
             const btn = $("#bulk-key-btn");
             const noteEl = $("#bulk-note");
             if (noteEl) noteEl.textContent = "";
@@ -1689,12 +1622,11 @@ async function wsKeys(main) {
                 });
                 if (noteEl) noteEl.textContent = `Generated ${results.length} keys. Downloading cards…`;
                 for (let i = 0; i < results.length; i += 1) {
-                    const cover = mode === "same" ? sharedCover : randomCoverPreset();
                     const owner = results[i].owner_id || "";
                     await window.gkpInviteCard.download({
                         ...inviteCardOpts(),
                         accessKey: results[i].access_key,
-                        cover,
+                        cover: eventCover,
                         fileName: owner || `card-${i + 1}`,
                     });
                     // Small spacing between downloads for the browser.

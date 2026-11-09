@@ -50,8 +50,8 @@ def test_post_with_media_then_delete(organizer_context, server, tmp_path):
 
 
 def test_flyer_upload_shows_cover_option(organizer_context, server, tmp_path):
-    """Uploading an event flyer shows it centered in the header and makes it
-    available as a card-cover option."""
+    """Uploading an event flyer shows it centered in the header and keeps it
+    available in the organizer's own card picker."""
     org = OrganizerPage(organizer_context.new_page(), server.base_url)
     org.create_event("Flyer Fest", "A story.")
     png = tmp_path / "poster.png"
@@ -66,6 +66,45 @@ def test_flyer_upload_shows_cover_option(organizer_context, server, tmp_path):
     expect(org.page.locator('#modal-root .cover-chip[data-cover="flyer"]')).to_be_visible()
     # The workspace re-open keeps its close button (no fresh key at stake).
     org.page.locator("#modal-root .modal-close").click()
+    org.watcher.expect_clean()
+
+
+def test_single_key_card_uses_event_style(organizer_context, server):
+    """A generated key's card has no cover picker; it uses the event style."""
+    org = OrganizerPage(organizer_context.new_page(), server.base_url)
+    org.create_event("Styled Mint", "One event look.")
+    org.set_card_style("hatch")
+    org.tab("keys")
+    org.page.fill("#key-owner", "Styled Guest")
+    org.page.click("#gen-key-btn")
+    org.page.locator("#card-preview").wait_for(state="visible", timeout=10_000)
+    expect(org.page.locator("#modal-root .cover-chip")).to_have_count(0)
+    with org.page.expect_download() as dl:
+        org.page.locator('[data-act="confirm"]').click()
+    assert dl.value.suggested_filename.endswith("invite.png")
+    org.watcher.expect_clean()
+
+
+def test_bulk_keys_use_event_style_without_a_cover_picker(organizer_context, server):
+    """Bulk generation has no per-card cover UI; every card uses the event style."""
+    org = OrganizerPage(organizer_context.new_page(), server.base_url)
+    org.create_event("Bulk Styled", "One event look.")
+    org.set_card_style("dots")
+    org.tab("keys")
+    expect(org.page.locator("#bulk-cover-mode")).to_have_count(0)
+    expect(org.page.locator("#bulk-cover-picker")).to_have_count(0)
+    org.page.fill("#bulk-count", "2")
+    downloads = []
+
+    def collect_download(download):
+        downloads.append(download)
+
+    org.page.on("download", collect_download)
+    org.page.click("#bulk-key-btn")
+    expect(org.page.locator(".toast", has_text="2 invite cards ready.")).to_be_visible(
+        timeout=30_000
+    )
+    assert len(downloads) == 2
     org.watcher.expect_clean()
 
 
