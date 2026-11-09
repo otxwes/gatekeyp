@@ -98,6 +98,25 @@ def test_app_picker_presets_match_oracle() -> None:
     assert ids == set(card_ref.COVER_PRESET_IDS)
 
 
+def test_app_maps_public_card_styles_to_renderer_covers() -> None:
+    """The public card_style values map onto the renderer's cover object."""
+    app = (_WEB / "app.js").read_text(encoding="utf-8")
+    assert "function coverFromCardStyle(" in app
+    body = re.search(r"function coverFromCardStyle\(.*?\n\}", app, re.DOTALL)
+    assert body, "coverFromCardStyle not found in app.js"
+    for marker in ('"preset"', '"flyer"', '"image"'):
+        assert marker in body.group(0), marker
+
+
+def test_card_modal_supports_a_locked_cover() -> None:
+    """Attendee and single-key cards open locked; the organizer card keeps its
+    picker. The attendee result resolves the event style into a locked cover."""
+    app = (_WEB / "app.js").read_text(encoding="utf-8")
+    assert "lockedCover" in app
+    assert "lockedCover: true" in app
+    assert "coverFromCardStyle(" in app
+
+
 def test_stamp_geometry_and_matrix_match_oracle() -> None:
     """The printed stamp's box, quiet zone, and baked matrix must not drift."""
     import hashlib
