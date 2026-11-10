@@ -1392,7 +1392,7 @@ function openCardCoverModal(card) {
                 : "");
 
         openModal({
-            title: card.organizer ? "Make an organizer card" : "Make an invite card",
+            title: card.organizer ? "Make an organizer card" : "Save card",
             body,
             confirmText: useShare ? null : primaryLabel,
             cancelText: null,
