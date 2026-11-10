@@ -72,15 +72,44 @@ def test_map_has_single_open_map_button(organizer_context, attendee_context, ser
     handle = org.create_event("Mapped Links", "Directions.", location="Main St")
     att = _open_attendee(org, attendee_context, server, handle)
 
-    link = att.page.locator(".event-map-links a")
+    link = att.page.locator(".event-map-links a.btn")
     expect(link).to_have_count(1)
     expect(link).to_have_text("Open map")
-    assert "btn" in (link.get_attribute("class") or "")
     href = link.get_attribute("href")
     assert "openstreetmap.org" in href and "mlat=40.75" in href and "mlon=-73.98" in href
     expect(att.page.locator("[data-copy-address]")).to_have_count(0)
     expect(att.page.locator(".event-map-links", has_text="Organic Maps")).to_have_count(0)
     expect(att.page.locator(".event-map-links", has_text="OsmAnd")).to_have_count(0)
+    att.watcher.expect_clean()
+
+
+def test_map_links_and_attribution_share_a_row_and_leave_is_last(
+    organizer_context, attendee_context, server
+):
+    """The Open map button and the map attribution sit side by side; the Leave
+    button is below the board, not in the event header."""
+    org = OrganizerPage(organizer_context.new_page(), server.base_url)
+    handle = org.create_event("Mapped Row", "One row.", location="Main St")
+    att = _open_attendee(org, attendee_context, server, handle)
+
+    row = att.page.locator(".event-map-links")
+    expect(row).to_have_count(1)
+    button = row.locator("a.btn")
+    attribution = row.locator(".map-attribution")
+    expect(button).to_have_text("Open map")
+    expect(attribution).to_contain_text("OpenFreeMap")
+    expect(attribution).to_contain_text("OpenMapTiles")
+    expect(attribution).to_contain_text("OpenStreetMap")
+
+    button_box = button.bounding_box()
+    attribution_box = attribution.bounding_box()
+    assert attribution_box["x"] > button_box["x"] + button_box["width"] - 5
+    assert attribution_box["y"] < button_box["y"] + button_box["height"]
+    assert button_box["y"] < attribution_box["y"] + attribution_box["height"]
+
+    leave = att.page.locator("#attendee-end").bounding_box()
+    board = att.page.locator(".ep-main").bounding_box()
+    assert leave["y"] > board["y"] + board["height"] - 1
     att.watcher.expect_clean()
 
 

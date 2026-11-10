@@ -1273,3 +1273,43 @@ The raw keys exist only inside downloaded cards, so a style change cannot
 restyle existing cards — only cards generated after the save. The public
 card-cover route must fall back to `none` when the referenced asset is gone
 and 410 after a wipe.
+
+## Attendee board posts + event-page layout (2026-11-09)
+
+**What was done:** the attendee event page gained a **New post** form
+(name, title, content, optional attachment), so attendees can start their
+own board posts instead of only commenting. The backend already allowed any
+event-access key to create a bulletin; the only gate was the UI. Organizer
+moderation now lets the organizer key delete any board content in its event,
+while ordinary access keys stay limited to their direct links. The map's
+Open map button and OpenFreeMap/OpenMapTiles/OSM attribution now share one
+row, and the Leave button moved from the event header to below the board.
+
+**Implementation:**
+- `web/app.js` — `#ep-post-form` on the attendee page; upload → media id →
+  `POST /api/events/{id}/bulletins` with `author_id`; `form.reset()` +
+  `loadAttendeeBoard()` after posting. `mapLinks` now returns one
+  `.event-map-links` row containing the button + `mapAttribution()`;
+  `locationHtml` no longer appends the attribution separately. `Leave` is
+  after `.ep-main`.
+- `web/style.css` — `.event-map-links` is `flex-wrap: nowrap; align-items:
+  center`; `.event-map-links .map-attribution` takes the remaining width with
+  no margin.
+- `src/core/content_manager.py` — `_verify_key_access` gained
+  `allow_organizer_event_access`; `delete_bulletin`/`delete_comment` use it so
+  an organizer key can moderate any bulletin/comment in its event. Ordinary
+  access keys still cannot delete another attendee's content (pinned by
+  `test_access_key_cannot_delete_another_attendees_bulletin`).
+- `tests/e2e/pages.py` — `post_board_post` helper; `confirm_modal` now waits
+  for the modal to close (the delete request is async, so the old helper
+  could click the tab while the backdrop was still up).
+
+**Verification:** 433 unit tests, 69 E2E, `ruff check src tests`, `ruff format
+--check src tests`, `node --check web/app.js`.
+
+**Lesson:** the board's write path was already key-gated; adding attendee
+posts was a UI change. The real security gap was moderation: destructive
+operations deliberately never used event-scope access, so the organizer
+could not delete an attendee-authored post. The fix distinguishes organizer
+keys (event-scope moderation) from ordinary access keys (direct links only)
+rather than opening event-scope deletion to everyone.

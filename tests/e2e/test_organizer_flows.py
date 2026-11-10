@@ -130,6 +130,31 @@ def test_bulletin_comment_and_cleanup(organizer_context, attendee_context, serve
     att.watcher.expect_clean()
 
 
+def test_attendee_creates_board_post(organizer_context, attendee_context, server):
+    """Attendees can post to the board; the organizer sees the author and can
+    delete the post."""
+    org = OrganizerPage(organizer_context.new_page(), server.base_url)
+    handle = org.create_event("Guest Board", "Attendees post too.")
+    key = org.mint_key("Board Guest")
+    att = AttendeePage(attendee_context.new_page(), server.base_url)
+    att.unlock_by_stego_png(handle.attendee_card_png(key))
+
+    att.post_board_post(author="Board Guest", title="Guest post", body="Hello from the floor")
+    expect(att.page.locator("#ep-board .bulletin-card", has_text="Guest post")).to_be_visible()
+
+    org.open_workspace(handle)
+    org.tab("board")
+    card = org.page.locator("#board-posts .bulletin-card", has_text="Guest post")
+    expect(card).to_be_visible()
+    expect(card).to_contain_text("Board Guest")
+    org.delete_bulletin("Guest post")
+
+    att.reload_keeps_session()
+    expect(att.page.locator("#ep-board .bulletin-card", has_text="Guest post")).to_have_count(0)
+    org.watcher.expect_clean()
+    att.watcher.expect_clean()
+
+
 def test_mint_produces_downloadable_stego_card(organizer_context, server, tmp_path):
     """A7: mint shows the one-time modal and the derived card is a real PNG."""
     org = OrganizerPage(organizer_context.new_page(), server.base_url)

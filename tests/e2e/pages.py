@@ -322,8 +322,10 @@ class OrganizerPage:
     # -- Organizer CRUD edges (Group A) -----------------------------------
 
     def confirm_modal(self) -> None:
-        """Click the primary confirm button of the current modal dialog."""
+        """Click the primary confirm button of the current modal dialog and wait
+        for the dialog to close."""
         self.page.locator('#modal-root [data-act="confirm"]').click()
+        self.page.locator("#modal-root .modal").wait_for(state="hidden", timeout=15_000)
 
     def bulletin_card(self, title: str):
         self.tab("board")
@@ -544,6 +546,20 @@ class AttendeePage:
         card.locator("input.cf-body").fill(body)
         card.locator(".comment-form button[type=submit]").click()
         expect(card.locator(".c-meta").first).to_contain_text(author)
+
+    def post_board_post(
+        self, *, author: str, title: str, body: str, media_file: str | Path | None = None
+    ) -> None:
+        """Create a board post from the attendee event page."""
+        self.page.fill("#ep-post-author", author)
+        self.page.fill("#ep-post-title", title)
+        self.page.fill("#ep-post-body", body)
+        if media_file:
+            self.page.locator("#ep-post-media").set_input_files(str(media_file))
+        self.page.click("#ep-post-btn")
+        expect(self.page.locator("#ep-board .bulletin-card", has_text=title)).to_be_visible(
+            timeout=15_000
+        )
 
     def expect_rsvp_note(self, text: str) -> None:
         expect(self.page.locator("#rsvp-note")).to_contain_text(text)

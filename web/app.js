@@ -2533,16 +2533,18 @@ function mapLinks(event) {
     const address = event.location_data;
     if (event.location_lat == null || event.location_lon == null) {
         const search = `https://www.openstreetmap.org/search?query=${encodeURIComponent(address)}`;
-        return `<p class="event-map-links">` +
+        return `<div class="event-map-links">` +
             `<a class="btn btn-ghost btn-sm" href="${esc(search)}" target="_blank" rel="noopener noreferrer">Open map</a>` +
-            `</p>`;
+            mapAttribution() +
+            `</div>`;
     }
     const lat = event.location_lat;
     const lon = event.location_lon;
     const osm = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`;
-    return `<p class="event-map-links">` +
+    return `<div class="event-map-links">` +
         `<a class="btn btn-ghost btn-sm" href="${esc(osm)}" target="_blank" rel="noopener noreferrer">Open map</a>` +
-        `</p>`;
+        mapAttribution() +
+        `</div>`;
 }
 
 function mapFigure(event) {
@@ -2582,7 +2584,7 @@ function mountMap(mapEl) {
 function locationHtml(event) {
     if (!event.location_data) return "";
     return `<p class="ep-meta">${esc(event.location_data)}</p>` +
-        mapFigure(event) + mapLinks(event) + mapAttribution();
+        mapFigure(event) + mapLinks(event);
 }
 
 /** Date, time, and the organizer's timezone label — each rendered only when
@@ -2611,12 +2613,24 @@ function renderEventPage() {
             ? `<img class="event-flyer" src="${esc(mediaUrl(event.flyer_asset_id))}" alt="Event flyer" loading="lazy" referrerpolicy="no-referrer">`
             : "") +
         `<div id="ep-location">${locationHtml(event)}</div>` +
-        `<div class="ep-actions"><button class="btn btn-ghost btn-sm" type="button" id="attendee-end">Leave</button></div>` +
         `</header>` +
         `<div class="ep-main">` +
+        `<section class="card"><h3 class="card-title">New post</h3>` +
+        `<form id="ep-post-form" class="inline-form" autocomplete="off">` +
+        `<div class="field"><label for="ep-post-author">Your name</label>` +
+        `<input id="ep-post-author" name="author" type="text" maxlength="256" autocomplete="off"></div>` +
+        `<div class="field"><label for="ep-post-title">Title</label>` +
+        `<input id="ep-post-title" name="title" type="text" maxlength="256" required></div>` +
+        `<div class="field"><label for="ep-post-body">Content</label>` +
+        `<textarea id="ep-post-body" name="body" rows="4" maxlength="65536" required></textarea></div>` +
+        `<div class="field"><label for="ep-post-media">Attachment (optional)</label>` +
+        `<input id="ep-post-media" name="media" type="file"></div>` +
+        `<button class="btn btn-primary" type="submit" id="ep-post-btn">Post</button>` +
+        `</form></section>` +
         `<section class="card"><h3 class="card-title">Board</h3>` +
         `<div id="ep-board">Loading…</div></section>` +
-        `</div>`;
+        `</div>` +
+        `<div class="ep-actions"><button class="btn btn-ghost btn-sm" type="button" id="attendee-end">Leave</button></div>`;
 
     const mapEl = root.querySelector("[data-gatekeyp-map]");
     mountMap(mapEl);
@@ -2627,6 +2641,56 @@ function renderEventPage() {
         location.hash = "#/join";
         renderJoin();
         toast("Key dropped. To re-enter, use the invite again.", "info", "Signed out");
+    });
+
+    // Attendees can post to the board too: the backend already allows any
+    // event-access key to create a bulletin; this is the same flow as the
+    // organizer's form, with the author's own name and an optional attachment.
+    $("#ep-post-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const btn = $("#ep-post-btn");
+        const title = getField(form, "title");
+        const body = getField(form, "body");
+        const author = getField(form, "author") || "Anonymous";
+        if (!title || !body) {
+            toast("Title and content are required.", "error", "Could not post");
+            return;
+        }
+        btnBusy(btn, true, "Posting…");
+        try {
+            let mediaId = null;
+            const input = $("#ep-post-media");
+            if (input && input.files && input.files.length) {
+                const fd = new FormData();
+                fd.append("file", input.files[0]);
+                const url = `/api/events/${encodeURIComponent(attendee.eventId)}/media${qs({ key: attendee.accessKey })}`;
+                const resp = await fetch(url, { method: "POST", body: fd });
+                const uploaded = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    throw new Error(uploaded.detail || `Upload failed (${resp.status})`);
+                }
+                mediaId = (uploaded && uploaded.id) || null;
+            }
+            await api(`/api/events/${encodeURIComponent(attendee.eventId)}/bulletins`, {
+                method: "POST",
+                body: {
+                    key: attendee.accessKey,
+                    event_id: attendee.eventId,
+                    title,
+                    body,
+                    author_id: author,
+                    media_id: mediaId,
+                },
+            });
+            form.reset();
+            toast("Post published.", "ok", "Board updated");
+            await loadAttendeeBoard();
+        } catch (err) {
+            toast(err.message, "error", "Could not post");
+        } finally {
+            btnBusy(btn, false);
+        }
     });
 
     loadAttendeeBoard();

@@ -34,7 +34,7 @@ This document identifies the primary adversaries, trust boundaries, and data flo
 | :--- | :--- | :--- |
 | Event location coordinates | **High** | Encrypted at rest; only returned with valid key |
 | Contact info (organizer/attendee) | **High** | Encrypted at rest; only returned with valid key |
-| Communication board posts | **Medium** | Encrypted at rest; key-gated |
+| Communication board posts | **Medium** | Encrypted at rest; key-gated; author names self-declared |
 | Event titles/descriptions | **Low-Medium** | Plaintext or encrypted; public/limited |
 | Key hashes | **Medium** | Keyed hash (HMAC) or Argon2id; never plaintext |
 | IP addresses / access logs | **Medium** | Minimize retention; no PII; aggregate only |
@@ -73,6 +73,11 @@ This document identifies the primary adversaries, trust boundaries, and data flo
 - **Mitigation:** the map is tap-to-load — no MapLibre, style, or tile request happens on page load. Every response carries `Referrer-Policy: no-referrer`, the HTML carries the meta tag, and outbound links use `rel="noreferrer"`. The organizer can turn the map off per event (create-time or workspace), and `GATEKEYP_MAP_STYLE_URL=""` disables maps and geocoding globally. MapLibre is vendored, pinned, and hash-recorded; no CDN. OpenFreeMap's policy says no IP logging by default and no cookies; Cloudflare may process requests. Self-hosting OpenFreeMap is the zero-third-party option.
 - **Residual risk:** when the map is opened, the provider can observe the venue area and the attendee IP. The lite page's location is already public. No geolocation permission is requested.
 
+### 5.8 Board impersonation and spam
+- **Threat:** an attendee with a valid event key posts under a misleading name (for example, pretending to be the organizer) or floods the board with posts.
+- **Mitigation:** the board is key-gated — only holders of a valid event-access key can post, and revoked/expired keys stop working. Writes go through the existing per-IP write rate limiter, bodies are length-capped and encrypted at rest, and the organizer key can delete any bulletin or comment in its event (ordinary access keys cannot delete content they do not directly own). Author names are self-declared labels, not authenticated identities.
+- **Residual risk:** there is no cryptographic identity on a board post; a determined attendee can choose a misleading display name. The organizer's moderation and the closed, invite-only event boundary are the controls. Do not treat board author names as verified identity.
+
 ## 6. Data Minimization Principles
 
 1. **Collect only what's necessary:** No analytics SDKs, no device fingerprinting, no persistent cross-instance identifiers.
@@ -97,6 +102,7 @@ This document identifies the primary adversaries, trust boundaries, and data flo
 - [x] Media uploads validated (MIME-type allowlist, 10 MB size limit)
 - [x] Media assets, bulletins, and comments encrypted at rest (Fernet/AES-GCM)
 - [x] All content access key-gated (valid key required for upload/retrieval)
+- [x] Board participation is key-gated, not identity-authenticated: any key with event access can create bulletins and comments, and author names are self-declared. The organizer key may delete any board content in its event (moderation), while ordinary access keys remain limited to their own direct links. Accepted trade-off: the board is a community surface for a closed event; the organizer is the trust anchor and moderator.
 - [x] No third-party tracking/analytics in web UI
 - [x] Web UI served from same process (no external CDN dependencies)
 - [x] Event lifecycle management enforces key expiration and revocation

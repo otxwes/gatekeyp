@@ -111,7 +111,12 @@ class ContentManager:
     # ------------------------------------------------------------------
 
     def _verify_key_access(
-        self, input_key: str, content_id: str, *, allow_event_access: bool = False
+        self,
+        input_key: str,
+        content_id: str,
+        *,
+        allow_event_access: bool = False,
+        allow_organizer_event_access: bool = False,
     ) -> str:
         """
         Verify that a key grants access to a content item.
@@ -124,7 +129,11 @@ class ContentManager:
             content_id: The content id to check (event, block, bulletin or asset).
             allow_event_access: If True, also grant access when the content
                 belongs to an event the key can unlock. Used for read and
-                participation operations; destructive operations never enable it.
+                participation operations.
+            allow_organizer_event_access: If True, also grant access to an
+                organizer key whose event scope covers the content. Used for
+                moderation (deleting board content); ordinary access keys stay
+                limited to their direct links.
         """
         validation = self.key_manager.validate_key(input_key)
         if validation["status"] != "valid":
@@ -139,12 +148,16 @@ class ContentManager:
         # an event, so any key that can unlock that event may read them and
         # contribute, even when the item was added after the key was issued
         # (access keys snapshot their links at generation time).
-        if allow_event_access:
+        if allow_event_access or allow_organizer_event_access:
             parent_event = self.db.get_parent_event(content_id)
             if parent_event is not None and any(
                 c["content_id"] == parent_event for c in content_ids
             ):
-                return key_hash
+                if allow_event_access:
+                    return key_hash
+                key_info = self.db.get_key(key_hash)
+                if key_info is not None and key_info.get("type") == "organizer":
+                    return key_hash
 
         message = "Key does not grant access to this content"
         raise ContentAccessError(message)
@@ -433,8 +446,10 @@ class ContentManager:
         Returns:
             True if the bulletin was deleted.
         """
-        # Verify the key grants access to this bulletin
-        self._verify_key_access(input_key, bulletin_id)
+        # Verify the key grants access to this bulletin. The organizer key may
+        # moderate any bulletin in its event; ordinary access keys stay limited
+        # to their direct links.
+        self._verify_key_access(input_key, bulletin_id, allow_organizer_event_access=True)
 
         return self.db.delete_bulletin(bulletin_id)
 
@@ -532,6 +547,10 @@ class ContentManager:
             message = "Comment not found"
             raise ContentAccessError(message)
 
-        self._verify_key_access(input_key, comment["bulletin_id"])
+        # The organizer key may moderate comments on any bulletin in its
+        # event; ordinary access keys stay limited to their direct links.
+        self._verify_key_access(
+            input_key, comment["bulletin_id"], allow_organizer_event_access=True
+        )
 
         return self.db.delete_comment(comment_id)

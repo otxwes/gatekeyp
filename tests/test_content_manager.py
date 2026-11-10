@@ -408,6 +408,49 @@ class TestBulletins:
         with pytest.raises(ContentAccessError):
             content_manager.get_bulletin(raw_key, result["id"])
 
+    def test_organizer_can_delete_an_attendee_bulletin(self, content_manager, setup_event_and_key):
+        """The organizer key moderates a bulletin created by an attendee key."""
+        attendee_key = setup_event_and_key["raw_key"]
+        event_id = setup_event_and_key["event_id"]
+        bulletin = content_manager.create_bulletin(
+            input_key=attendee_key,
+            event_id=event_id,
+            title="Guest post",
+            body="Hello from the floor",
+            author_id="Guest",
+        )
+        organizer_key = "local:organizer-moderation-key"
+        organizer_hash = content_manager.key_manager.hash_key(organizer_key.removeprefix("local:"))
+        content_manager.db.add_key(
+            hash_key=organizer_hash, key_type="organizer", owner_id="organizer"
+        )
+        content_manager.db.add_key_content_link(organizer_hash, event_id, "event")
+
+        assert content_manager.delete_bulletin(organizer_key, bulletin["id"]) is True
+        with pytest.raises(ContentAccessError):
+            content_manager.get_bulletin(attendee_key, bulletin["id"])
+
+    def test_access_key_cannot_delete_another_attendees_bulletin(
+        self, content_manager, setup_event_and_key
+    ):
+        """Event access alone does not let an attendee delete someone else's post."""
+        first_key = setup_event_and_key["raw_key"]
+        event_id = setup_event_and_key["event_id"]
+        bulletin = content_manager.create_bulletin(
+            input_key=first_key,
+            event_id=event_id,
+            title="Guest post",
+            body="Hello",
+            author_id="Guest",
+        )
+        other_key = "local:other-attendee-key"
+        other_hash = content_manager.key_manager.hash_key(other_key.removeprefix("local:"))
+        content_manager.db.add_key(hash_key=other_hash, key_type="access", owner_id="other")
+        content_manager.db.add_key_content_link(other_hash, event_id, "event")
+
+        with pytest.raises(ContentAccessError):
+            content_manager.delete_bulletin(other_key, bulletin["id"])
+
 
 class TestComments:
     """Tests for secure communication board comments."""
