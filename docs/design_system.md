@@ -21,21 +21,25 @@ pattern isn't here, don't invent it in CSS — add it here first, then wire the 
    the work color used to do.
 3. **Text is the hero; type does the work.** Three faces, each with a job: serif display for
    identity & invitation, system sans for UI & reading, mono for keys & data. Nothing else.
-4. **Privacy-lean by construction.** No webfonts, no trackers, no remote assets. The UI is as
-   light as the product.
+4. **Privacy-lean by construction.** Self-hosted fonts only (ABC Areal), no CDN, no
+   trackers, no remote assets. The UI is as light as the product.
 5. **Motion is feedback, not decoration.** Short, purposeful, reducible.
 6. **Accessibility is a design constraint, not a QA step.** Contrast, focus, targets, reduced
    motion are baked into tokens.
 
 ## 3. Type system
 
-### 3.1 Faces (system stacks only — no webfonts)
+### 3.1 Faces (self-hosted ABC Areal + system fallbacks)
 
 | Face | Stack | Job |
 |---|---|---|
-| **Serif display** | Iowan Old Style, Palatino Linotype, Palatino, Georgia, Times New Roman, serif | Titles, wordmark, keynote moments |
-| **Sans UI** | -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif | Chrome, running text, labels |
-| **Mono data** | ui-monospace, SF Mono, SFMono-Regular, Menlo, Consolas, Liberation Mono, monospace | Keys, IDs, codes, timestamps, facts |
+| **Serif display** | ABC Areal (self-hosted WOFF2; fallback Iowan Old Style, Palatino Linotype, Palatino, Georgia, Times New Roman, serif) | Titles, wordmark, keynote moments |
+| **Sans UI** | ABC Areal (self-hosted WOFF2; fallback -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif) | Chrome, running text, labels |
+| **Mono data** | ABC Areal Mono (self-hosted WOFF2; fallback ui-monospace, SF Mono, SFMono-Regular, Menlo, Consolas, Liberation Mono, monospace) | Keys, IDs, codes, timestamps, facts |
+
+The WOFF2 files live in `web/fonts/ABC-Areal` (licensed, self-hosted) and are served from
+the same process — no third-party font request. The fallback stacks keep the UI readable
+if a font fails to load.
 
 ### 3.2 Scale (always tokenize; never free-type a size)
 

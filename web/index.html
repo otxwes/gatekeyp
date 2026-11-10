@@ -85,7 +85,11 @@
                                 </div>
                                 <div class="field">
                                     <label for="create-flyer">Event flyer <span class="opt">optional</span></label>
-                                    <input type="file" id="create-flyer" name="flyer" accept="image/*,application/pdf,text/plain">
+                                    <div class="file-pick">
+                                        <button class="btn btn-ghost btn-sm" type="button" id="create-flyer-pick">Choose file</button>
+                                        <span class="file-pick-name" id="create-flyer-name" aria-live="polite">No file</span>
+                                        <input type="file" id="create-flyer" name="flyer" accept="image/*,application/pdf,text/plain" hidden>
+                                    </div>
                                 </div>
                                 <p id="create-note" class="form-note" role="status" aria-live="polite"></p>
                                 <button type="submit" class="btn btn-primary btn-block" id="create-btn">

@@ -134,6 +134,21 @@ function qs(params) {
     return parts.length ? `?${parts.join("&")}` : "";
 }
 
+/** Upload one media file to an event and return the asset metadata. */
+async function uploadEventMedia(eventId, key, file) {
+    const fd = new FormData();
+    fd.append("file", file);
+    const resp = await fetch(
+        `/api/events/${encodeURIComponent(eventId)}/media${qs({ key })}`,
+        { method: "POST", body: fd }
+    );
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+        throw new Error(body.detail || `Upload failed (${resp.status})`);
+    }
+    return body;
+}
+
 /** A media asset's retrieval URL, keyed for the current session. */
 function mediaUrl(assetId) {
     const key = (org && org.organizerKey) || (attendee && attendee.accessKey) || "";
@@ -432,6 +447,7 @@ function bindOrganizeEntry() {
     });
 
     const createForm = $("#create-event-form");
+    bindFilePicker("create-flyer-pick", "create-flyer", "create-flyer-name");
     createForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         const noteEl = $("#create-note");
@@ -485,15 +501,11 @@ function bindOrganizeEntry() {
             // event's flyer so card covers can reuse it.
             const flyerInput = $("#create-flyer");
             if (flyerInput && flyerInput.files && flyerInput.files.length) {
-                const fd = new FormData();
-                fd.append("file", flyerInput.files[0]);
-                const url = `/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.organizerKey })}`;
-                const resp = await fetch(url, { method: "POST", body: fd });
-                if (!resp.ok) {
-                    const data = await resp.json().catch(() => ({}));
-                    throw new Error(data.detail || "Flyer upload failed");
-                }
-                const uploaded = await resp.json();
+                const uploaded = await uploadEventMedia(
+                    org.eventId,
+                    org.organizerKey,
+                    flyerInput.files[0]
+                );
                 const newId = (uploaded && uploaded.id) || null;
                 await api(`/api/events/${encodeURIComponent(org.eventId)}/flyer`, {
                     method: "POST",
@@ -502,6 +514,8 @@ function bindOrganizeEntry() {
                 org.meta.flyerId = newId;
             }
             createForm.reset();
+            const createFlyerName = $("#create-flyer-name");
+            if (createFlyerName) createFlyerName.textContent = "No file";
             saveSession();
             goWorkspace();
             openCardCoverModal({
@@ -946,15 +960,11 @@ async function wsBoard(main) {
         const btn = $("#board-flyer-btn");
         btnBusy(btn, true, "Uploading…");
         try {
-            const fd = new FormData();
-            fd.append("file", input.files[0]);
-            const url = `/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.organizerKey })}`;
-            const resp = await fetch(url, { method: "POST", body: fd });
-            if (!resp.ok) {
-                const data = await resp.json().catch(() => ({}));
-                throw new Error(data.detail || `Upload failed (${resp.status})`);
-            }
-            const uploaded = await resp.json();
+            const uploaded = await uploadEventMedia(
+                org.eventId,
+                org.organizerKey,
+                input.files[0]
+            );
             const newId = (uploaded && uploaded.id) || null;
             await api(`/api/events/${encodeURIComponent(org.eventId)}/flyer`, {
                 method: "POST",
@@ -997,20 +1007,15 @@ async function wsBoard(main) {
         const btn = $("#board-post-btn");
         btnBusy(btn, true, "Posting…");
         try {
-
             // Optional attachment: upload first, then attach to the post.
             const input = $("#media-file");
             let mediaId = null;
             if (input && input.files && input.files.length) {
-                const fd = new FormData();
-                fd.append("file", input.files[0]);
-                const url = `/api/events/${encodeURIComponent(org.eventId)}/media${qs({ key: org.organizerKey })}`;
-                const resp = await fetch(url, { method: "POST", body: fd });
-                if (!resp.ok) {
-                    const data = await resp.json().catch(() => ({}));
-                    throw new Error(data.detail || `Upload failed (${resp.status})`);
-                }
-                const uploaded = await resp.json();
+                const uploaded = await uploadEventMedia(
+                    org.eventId,
+                    org.organizerKey,
+                    input.files[0]
+                );
                 mediaId = (uploaded && uploaded.id) || null;
             }
 
@@ -1292,10 +1297,10 @@ const COVER_PRESETS = [
     { id: "keyhole", label: "Keyhole" },
 ];
 
-/** Modal: pick a cover (preset pattern, the event flyer, or an own image
- *  spread across the whole card) then download the invite card. Shared by the
- *  one-shot card button and the per-row "Card" action — purely client-side,
- *  the key never leaves the tab. */
+/** Modal: preview the card and download/share it. Locked cards use the
+ *  organizer-chosen event style (no picker); the organizer card keeps the
+ *  preset/flyer/own-image picker. Purely client-side, the key never leaves
+ *  the tab. */
 function openCardCoverModal(card) {
     let cover = card.cover ? { ...card.cover } : { type: "none" };
     const locked = Boolean(card.lockedCover);
@@ -1413,10 +1418,10 @@ function openCardCoverModal(card) {
         const picker =
             `<div class="field"><label>Cover</label>` +
             `<div class="cover-picker">${chips}${flyerChip}` +
-            `<label class="cover-chip${initialImage ? " is-selected" : ""} cover-upload" id="cover-upload-chip" for="cover-file" role="button" tabindex="0" aria-pressed="${initialImage}">` +
+            `<button class="cover-chip${initialImage ? " is-selected" : ""} cover-upload" type="button" id="cover-upload-chip" aria-pressed="${initialImage}">` +
             `<span class="cover-upload-icon" aria-hidden="true">＋</span>` +
             `<span>Own image…</span>` +
-            `</label>` +
+            `</button>` +
             `<input type="file" id="cover-file" accept="image/*" hidden>` +
             `</div>` +
             `</div>`;
@@ -1513,6 +1518,9 @@ function openCardCoverModal(card) {
                     }
                 });
             });
+
+            const uploadChip = $("#cover-upload-chip");
+            if (uploadChip) uploadChip.addEventListener("click", () => $("#cover-file").click());
 
             const fileInput = $("#cover-file");
             if (fileInput) {
@@ -1792,10 +1800,10 @@ async function wsRsvps(main) {
         `<form id="rsvp-card-form" class="inline-form" autocomplete="off">` +
         `<div class="field"><label>Cover</label>` +
         `<div class="cover-picker">${styleChips}${flyerChip}` +
-        `<label class="cover-chip${uploadSelected ? " is-selected" : ""} cover-upload" id="rsvp-card-upload" for="rsvp-card-file" role="button" tabindex="0" aria-pressed="${uploadSelected}">` +
+        `<button class="cover-chip${uploadSelected ? " is-selected" : ""} cover-upload" type="button" id="rsvp-card-upload" aria-pressed="${uploadSelected}">` +
         `<span class="cover-upload-icon" aria-hidden="true">＋</span>` +
         `<span>Own image…</span>` +
-        `</label>` +
+        `</button>` +
         `<input type="file" id="rsvp-card-file" accept="image/*" hidden>` +
         `</div></div>` +
         `<div class="card-preview-wrap"><canvas id="rsvp-card-preview" width="200" height="300" aria-label="Invite card preview"></canvas></div>` +
@@ -1922,6 +1930,10 @@ async function wsRsvps(main) {
     });
 
     if (cardFileInput) {
+        const cardUploadChip = $("#rsvp-card-upload");
+        if (cardUploadChip) {
+            cardUploadChip.addEventListener("click", () => cardFileInput.click());
+        }
         cardFileInput.addEventListener("change", () => {
             const file = cardFileInput.files && cardFileInput.files[0];
             if (!file) return;
@@ -1957,14 +1969,11 @@ async function wsRsvps(main) {
         try {
             let payload;
             if (selectedCover.type === "image" && selectedCover.file) {
-                const fd = new FormData();
-                fd.append("file", selectedCover.file);
-                const resp = await fetch(`/api/events/${eventId}/media${qs({ key: org.organizerKey })}`, {
-                    method: "POST",
-                    body: fd,
-                });
-                const uploaded = await resp.json().catch(() => ({}));
-                if (!resp.ok) throw new Error(uploaded.detail || "Card image upload failed");
+                const uploaded = await uploadEventMedia(
+                    org.eventId,
+                    org.organizerKey,
+                    selectedCover.file
+                );
                 payload = { type: "image", asset_id: uploaded.id };
             } else if (selectedCover.type === "image" && selectedCover.flyer) {
                 payload = { type: "flyer" };
@@ -2722,14 +2731,11 @@ function renderEventPage() {
             let mediaId = null;
             const input = $("#ep-post-media");
             if (input && input.files && input.files.length) {
-                const fd = new FormData();
-                fd.append("file", input.files[0]);
-                const url = `/api/events/${encodeURIComponent(attendee.eventId)}/media${qs({ key: attendee.accessKey })}`;
-                const resp = await fetch(url, { method: "POST", body: fd });
-                const uploaded = await resp.json().catch(() => ({}));
-                if (!resp.ok) {
-                    throw new Error(uploaded.detail || `Upload failed (${resp.status})`);
-                }
+                const uploaded = await uploadEventMedia(
+                    attendee.eventId,
+                    attendee.accessKey,
+                    input.files[0]
+                );
                 mediaId = (uploaded && uploaded.id) || null;
             }
             await api(`/api/events/${encodeURIComponent(attendee.eventId)}/bulletins`, {

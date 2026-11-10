@@ -46,8 +46,8 @@ gatekeyp is designed to help communities organize events while prioritizing:
   - Static web UI served from the same process
   - CORS support for development
 - **Web UI**: Mobile-first, privacy-preserving frontend (hash-routed SPA, no build step)
-  - Organizer desk: create / open events, four-tab workspace (Content, Bulletin
-    board, Media, Access keys) with a header Decommission action; the
+  - Organizer desk: create / open events, four-tab workspace (Board, Event
+    details, Access keys, RSVP funnel) with a header Decommission action; the
     organizer card is the only key artifact (card-first: raw key text is never
     displayed or copied anywhere, and creation flows straight into card
     making)
