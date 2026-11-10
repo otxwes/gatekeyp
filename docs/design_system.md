@@ -191,6 +191,7 @@ single dark theme. Canonical states:
 |---|---|---|
 | Buttons | `.btn` (+`-primary/-secondary/-ghost/-danger`, `-sm`, `-block`) | hover bg/border, `:active` 1px, `:disabled` 0.55 opacity |
 | Cards | `.card`, `.form-card` | resting `shadow-1`, `--line` hairline |
+| Board composer | `.composer`, `.composer-field`, `.composer-title`, `.composer-body`, `.composer-foot`, `.composer-author`, `.composer-attach`, `.composer-file`, `.file-pick` | notice-slip composer: serif title as the headline, ruled-paper body, visible labels, custom file picker, 44px targets, focus ring; used by the attendee board and the organizer New post/flyer forms |
 | Badges / tags | `.badge` (+`-active/-revoked/-warn/-neutral/-ghost`), `.tag` | motif states: active = solid ink fill, warn = dashed keyline + wash, revoked = hatched + double keyline (§12), neutral/ghost = quiet chips |
 | Items / key rows | `.item`, `.key-detail-row` | hover `border-color` + `shadow-1` |
 | Toasts | `.toast` (+`-ok/-error`) | `--line-strong` + semantic left bar, in/out anim |

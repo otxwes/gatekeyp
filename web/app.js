@@ -885,32 +885,43 @@ async function wsBoard(main) {
         : "";
 
     main.innerHTML =
+        `<section class="card">` +
+        `<h3 class="card-title">New post</h3>` +
+        `<form id="board-post-form" class="composer" autocomplete="off">` +
+        `<div class="composer-field"><label for="bulletin-title">Title</label>` +
+        `<input id="bulletin-title" name="title" class="composer-title" type="text" maxlength="256" required></div>` +
+        `<div class="composer-field"><label for="bulletin-body">Content</label>` +
+        `<textarea id="bulletin-body" name="body" class="composer-body" rows="4" maxlength="65536" required></textarea></div>` +
+        `<div class="composer-foot">` +
+        `<div class="composer-attach">` +
+        `<button class="btn btn-ghost btn-sm" type="button" id="board-post-attach">Attach file</button>` +
+        `<span class="composer-file" id="board-post-file" aria-live="polite">No file</span>` +
+        `<input type="file" id="media-file" name="media" hidden>` +
+        `</div>` +
+        `<button class="btn btn-primary" type="submit" id="board-post-btn">Post</button>` +
+        `</div>` +
+        `<p id="board-post-note" class="form-note" role="status" aria-live="polite"></p>` +
+        `</form>` +
+        `</section>` +
+
         (posts.length
             ? `<section class="card"><h3 class="card-title">Posts</h3>` +
               `<div id="board-posts">${posts.map((p) => boardPostHTML(p, assetsById)).join("")}</div>` +
               `</section>`
-            : `<section class="card">${emptyState("No posts yet", "Write the first one below.")}</section>`) +
+            : `<section class="card">${emptyState("No posts yet", "Write the first one above.")}</section>`) +
 
         `<section class="card">` +
         `<h3 class="card-title">Event flyer</h3>` +
         `<div id="board-flyer-current">${flyerNote}</div>` +
         `<form id="board-flyer-form" autocomplete="off">` +
         `<div class="field"><label for="board-flyer-file">Upload or replace the event flyer</label>` +
-        `<input type="file" id="board-flyer-file" accept="image/*,application/pdf,text/plain"></div>` +
+        `<div class="file-pick">` +
+        `<button class="btn btn-ghost btn-sm" type="button" id="board-flyer-pick">Choose file</button>` +
+        `<span class="file-pick-name" id="board-flyer-name" aria-live="polite">No file</span>` +
+        `<input type="file" id="board-flyer-file" accept="image/*,application/pdf,text/plain" hidden>` +
+        `</div></div>` +
+        `<p id="board-flyer-note" class="form-note" role="status" aria-live="polite"></p>` +
         `<button class="btn btn-primary" type="submit" id="board-flyer-btn">Upload flyer</button>` +
-        `</form>` +
-        `</section>` +
-
-        `<section class="card">` +
-        `<h3 class="card-title">New post</h3>` +
-        `<form id="board-post-form" autocomplete="off">` +
-        `<div class="field"><label for="bulletin-title">Title</label>` +
-        `<input id="bulletin-title" name="title" type="text" maxlength="256" required></div>` +
-        `<div class="field"><label for="bulletin-body">Content</label>` +
-        `<textarea id="bulletin-body" name="body" rows="4" maxlength="65536" required></textarea></div>` +
-        `<div class="field"><label for="media-file">Attachment (optional)</label>` +
-        `<input id="media-file" name="media" type="file"></div>` +
-        `<button class="btn btn-primary" type="submit" id="board-post-btn">Post</button>` +
         `</form>` +
         `</section>`;
 
@@ -918,12 +929,20 @@ async function wsBoard(main) {
     $$(".bulletin-card", main).forEach((card) => bindBulletinCard(card, true));
     // Bind standalone media tiles
     bindMediaTiles(main);
+    // Custom file pickers (post attachment + flyer)
+    bindFilePicker("board-post-attach", "media-file", "board-post-file");
+    bindFilePicker("board-flyer-pick", "board-flyer-file", "board-flyer-name");
 
     // Upload or replace the event flyer.
     $("#board-flyer-form").addEventListener("submit", async (event) => {
         event.preventDefault();
+        const noteEl = $("#board-flyer-note");
+        note(noteEl, "");
         const input = $("#board-flyer-file");
-        if (!input || !input.files || !input.files.length) return;
+        if (!input || !input.files || !input.files.length) {
+            note(noteEl, "Choose a file first.", "error");
+            return;
+        }
         const btn = $("#board-flyer-btn");
         btnBusy(btn, true, "Uploading…");
         try {
@@ -953,7 +972,7 @@ async function wsBoard(main) {
             toast("Event flyer updated.", "ok", "Saved");
             renderWorkspace();
         } catch (err) {
-            toast(err.message, "error", "Could not upload flyer");
+            note(noteEl, err.message, "error");
             btnBusy(btn, false);
         }
     });
@@ -961,12 +980,23 @@ async function wsBoard(main) {
     // Submit
     $("#board-post-form").addEventListener("submit", async (event) => {
         event.preventDefault();
+        const title = getField(event.target, "title");
+        const body = getField(event.target, "body");
+        const noteEl = $("#board-post-note");
+        note(noteEl, "");
+        if (!title) {
+            note(noteEl, "Add a title.", "error");
+            $("#bulletin-title").focus();
+            return;
+        }
+        if (!body) {
+            note(noteEl, "Write the post.", "error");
+            $("#bulletin-body").focus();
+            return;
+        }
         const btn = $("#board-post-btn");
         btnBusy(btn, true, "Posting…");
         try {
-            const title = getField(event.target, "title");
-            const body = getField(event.target, "body");
-            if (!title || !body) throw new Error("Title and content are required.");
 
             // Optional attachment: upload first, then attach to the post.
             const input = $("#media-file");
@@ -998,7 +1028,7 @@ async function wsBoard(main) {
             toast("Post published.", "ok", "Board updated");
             await wsBoard(main);
         } catch (err) {
-            toast(err.message, "error", "Could not post");
+            note(noteEl, err.message, "error");
             btnBusy(btn, false);
         }
     });
@@ -1007,6 +1037,18 @@ async function wsBoard(main) {
 /* ------------------------------------------------------------------
  * Shared bulletin + comment rendering
  * ------------------------------------------------------------------ */
+/** Wire a real button to a hidden file input and show the chosen name. */
+function bindFilePicker(buttonId, inputId, nameId) {
+    const button = $(`#${buttonId}`);
+    const input = $(`#${inputId}`);
+    const name = $(`#${nameId}`);
+    if (!button || !input) return;
+    button.addEventListener("click", () => input.click());
+    input.addEventListener("change", () => {
+        if (name) name.textContent = input.files && input.files[0] ? input.files[0].name : "No file";
+    });
+}
+
 function bulletinCardHTML(bulletin, manage) {
     return `<article class="bulletin-card" data-bid="${esc(bulletin.id)}">` +
         `<div class="bulletin-head" role="button" tabindex="0" aria-expanded="false">` +
@@ -2615,20 +2657,28 @@ function renderEventPage() {
         `<div id="ep-location">${locationHtml(event)}</div>` +
         `</header>` +
         `<div class="ep-main">` +
-        `<section class="card"><h3 class="card-title">New post</h3>` +
-        `<form id="ep-post-form" class="inline-form" autocomplete="off">` +
-        `<div class="field"><label for="ep-post-author">Your name</label>` +
-        `<input id="ep-post-author" name="author" type="text" maxlength="256" autocomplete="off"></div>` +
-        `<div class="field"><label for="ep-post-title">Title</label>` +
-        `<input id="ep-post-title" name="title" type="text" maxlength="256" required></div>` +
-        `<div class="field"><label for="ep-post-body">Content</label>` +
-        `<textarea id="ep-post-body" name="body" rows="4" maxlength="65536" required></textarea></div>` +
-        `<div class="field"><label for="ep-post-media">Attachment (optional)</label>` +
-        `<input id="ep-post-media" name="media" type="file"></div>` +
+        `<section class="card board-card">` +
+        `<h3 class="card-title">Board</h3>` +
+        `<form id="ep-post-form" class="composer" autocomplete="off">` +
+        `<h4 class="composer-label">New post</h4>` +
+        `<div class="composer-field"><label for="ep-post-title">Title</label>` +
+        `<input id="ep-post-title" name="title" class="composer-title" type="text" maxlength="256" required></div>` +
+        `<div class="composer-field"><label for="ep-post-body">Content</label>` +
+        `<textarea id="ep-post-body" name="body" class="composer-body" rows="4" maxlength="65536" required></textarea></div>` +
+        `<div class="composer-foot">` +
+        `<label class="composer-author" for="ep-post-author"><span>Your name <span class="opt">optional</span></span>` +
+        `<input id="ep-post-author" name="author" type="text" maxlength="256" autocomplete="off"></label>` +
+        `<div class="composer-attach">` +
+        `<button class="btn btn-ghost btn-sm" type="button" id="ep-post-attach">Attach file</button>` +
+        `<span class="composer-file" id="ep-post-file" aria-live="polite">No file</span>` +
+        `<input type="file" id="ep-post-media" name="media" hidden>` +
+        `</div>` +
         `<button class="btn btn-primary" type="submit" id="ep-post-btn">Post</button>` +
-        `</form></section>` +
-        `<section class="card"><h3 class="card-title">Board</h3>` +
-        `<div id="ep-board">Loading…</div></section>` +
+        `</div>` +
+        `<p id="ep-post-note" class="form-note" role="status" aria-live="polite"></p>` +
+        `</form>` +
+        `<div id="ep-board">Loading…</div>` +
+        `</section>` +
         `</div>` +
         `<div class="ep-actions"><button class="btn btn-ghost btn-sm" type="button" id="attendee-end">Leave</button></div>`;
 
@@ -2646,17 +2696,27 @@ function renderEventPage() {
     // Attendees can post to the board too: the backend already allows any
     // event-access key to create a bulletin; this is the same flow as the
     // organizer's form, with the author's own name and an optional attachment.
+    bindFilePicker("ep-post-attach", "ep-post-media", "ep-post-file");
+
     $("#ep-post-form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const form = event.currentTarget;
-        const btn = $("#ep-post-btn");
         const title = getField(form, "title");
         const body = getField(form, "body");
         const author = getField(form, "author") || "Anonymous";
-        if (!title || !body) {
-            toast("Title and content are required.", "error", "Could not post");
+        const noteEl = $("#ep-post-note");
+        note(noteEl, "");
+        if (!title) {
+            note(noteEl, "Add a title.", "error");
+            $("#ep-post-title").focus();
             return;
         }
+        if (!body) {
+            note(noteEl, "Write the post.", "error");
+            $("#ep-post-body").focus();
+            return;
+        }
+        const btn = $("#ep-post-btn");
         btnBusy(btn, true, "Posting…");
         try {
             let mediaId = null;
@@ -2684,10 +2744,12 @@ function renderEventPage() {
                 },
             });
             form.reset();
+            const fileEl = $("#ep-post-file");
+            if (fileEl) fileEl.textContent = "No file";
             toast("Post published.", "ok", "Board updated");
             await loadAttendeeBoard();
         } catch (err) {
-            toast(err.message, "error", "Could not post");
+            note(noteEl, err.message, "error");
         } finally {
             btnBusy(btn, false);
         }

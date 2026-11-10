@@ -1313,3 +1313,38 @@ operations deliberately never used event-scope access, so the organizer
 could not delete an attendee-authored post. The fix distinguishes organizer
 keys (event-scope moderation) from ordinary access keys (direct links only)
 rather than opening event-scope deletion to everyone.
+
+## Board composer UX pass (2026-11-09)
+
+**What was wrong:** the new attendee post form used the generic `.inline-form`
+row: name, title, a 96px textarea, and a native file input all on one line,
+with the Post button floating at the bottom of the textarea. It read like a
+settings panel bolted onto the event page, not like writing on the event's
+notice board.
+
+**The fix:** a notice-slip composer, integrated into the board card:
+- the post title is a large serif headline input, the body is a ruled-paper
+  textarea (1.7em rule lines, `background-attachment: local`);
+- visible small labels, not placeholders; the author is a compact signature
+  line in the foot;
+- the native file input is hidden behind a real "Attach file" button with a
+  mono filename readout;
+- the foot is author / attach / Post, with 44px targets and a full-width
+  stack at ≤600px;
+- the attendee composer sits inside the Board card above the posts; the
+  organizer's New post card moved above the posts and uses the same composer;
+  the flyer card uses the same custom file picker.
+
+**Skills applied:** Anthropic `frontend-design` (subject-grounded design
+plan, one bold move, self-critique), `ui-ux-pro-max` (visible labels, input
+affordance, submit feedback, focus, 44px targets; e-ink/editorial style
+matches), and `taste-skill` (anti-slop, one system, equal edges, no native
+control chrome).
+
+**Verification:** 433 unit tests, 69 E2E, `ruff check src tests`, `ruff format
+--check src tests`, `node --check web/app.js`.
+
+**Lesson:** an in-app form inherits the surface's material. A notice board
+wants a notice slip — headline type, ruled body, a stamped attachment — not a
+row of generic fields. Keep labels visible for accessibility, but let the
+artifact carry the layout.

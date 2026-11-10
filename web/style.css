@@ -1123,6 +1123,174 @@ p {
     color: var(--bad);
 }
 
+/* Board composer — a notice slip inside the board, not a settings form. */
+.composer {
+    display: grid;
+    gap: var(--space-3);
+    margin: var(--space-4) 0 0;
+}
+
+.composer-label {
+    font-family: var(--font-serif);
+    font-size: var(--text-md);
+    font-weight: 600;
+    margin: 0;
+}
+
+.composer-field {
+    display: grid;
+    gap: var(--space-1);
+}
+
+.composer-field label,
+.composer-author span {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+
+.composer-author .opt {
+    color: var(--ink-faint);
+    font-weight: 400;
+}
+
+.composer-title,
+.composer-body {
+    width: 100%;
+    color: var(--ink);
+    background-color: var(--surface-2);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-s);
+    padding: 0.55em 0.7em;
+    transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.composer-title {
+    font-family: var(--font-serif);
+    font-size: clamp(1.35rem, 3vw, 1.75rem);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+}
+
+.composer-body {
+    font: inherit;
+    font-size: var(--text-base);
+    line-height: 1.7;
+    min-height: 140px;
+    resize: vertical;
+    background-image: repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent calc(1.7em - 1px),
+        var(--line) calc(1.7em - 1px),
+        var(--line) 1.7em
+    );
+    background-attachment: local;
+}
+
+.composer-title::placeholder,
+.composer-body::placeholder {
+    color: var(--ink-faint);
+}
+
+.composer-title:focus,
+.composer-body:focus,
+.composer-author input:focus {
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+    outline: none;
+}
+
+.composer-author input:focus {
+    border-bottom-color: var(--accent);
+}
+
+.composer-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--space-3);
+}
+
+.composer-author {
+    display: grid;
+    gap: var(--space-1);
+    flex: 0 1 220px;
+    min-width: 160px;
+}
+
+.composer-author input {
+    font: inherit;
+    font-size: var(--text-sm);
+    color: var(--ink);
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--line-strong);
+    padding: 0.35em 0;
+    width: 100%;
+    transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.composer-attach {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    flex: 0 1 auto;
+}
+
+.composer-file,
+.file-pick-name {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--ink-faint);
+    max-width: 18ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.composer-foot .btn-primary {
+    margin-left: auto;
+}
+
+.board-card #ep-board {
+    margin-top: var(--space-4);
+    border-top: 1px solid var(--line);
+    padding-top: var(--space-4);
+}
+
+.board-card #ep-board .empty {
+    padding: var(--space-4) var(--space-3);
+}
+
+.file-pick {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+@media (max-width: 600px) {
+    .composer-foot {
+        align-items: stretch;
+    }
+
+    .composer-author,
+    .composer-attach {
+        flex: 1 1 100%;
+    }
+
+    .composer-attach {
+        justify-content: space-between;
+    }
+
+    .composer-foot .btn-primary {
+        width: 100%;
+        margin-left: 0;
+    }
+}
+
 /* ------------------------------------------------------------
    10. Media
    ------------------------------------------------------------ */

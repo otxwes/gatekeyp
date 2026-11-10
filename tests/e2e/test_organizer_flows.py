@@ -130,17 +130,25 @@ def test_bulletin_comment_and_cleanup(organizer_context, attendee_context, serve
     att.watcher.expect_clean()
 
 
-def test_attendee_creates_board_post(organizer_context, attendee_context, server):
+def test_attendee_creates_board_post(organizer_context, attendee_context, server, tmp_path):
     """Attendees can post to the board; the organizer sees the author and can
-    delete the post."""
+    delete the post. The custom attach control shows the chosen file."""
     org = OrganizerPage(organizer_context.new_page(), server.base_url)
     handle = org.create_event("Guest Board", "Attendees post too.")
     key = org.mint_key("Board Guest")
     att = AttendeePage(attendee_context.new_page(), server.base_url)
     att.unlock_by_stego_png(handle.attendee_card_png(key))
 
+    png = tmp_path / "attachment.png"
+    png.write_bytes(MEDIA_PNG)
+    with att.page.expect_file_chooser() as chooser:
+        att.page.click("#ep-post-attach")
+    chooser.value.set_files(png)
+    expect(att.page.locator("#ep-post-file")).to_have_text(png.name)
+
     att.post_board_post(author="Board Guest", title="Guest post", body="Hello from the floor")
     expect(att.page.locator("#ep-board .bulletin-card", has_text="Guest post")).to_be_visible()
+    expect(att.page.locator("#ep-board .media-tile")).to_be_visible()
 
     org.open_workspace(handle)
     org.tab("board")
